@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "id": 4681,
+      "source_id": "PythonBasic",
+      "rel_path": "fluent_python/module/function/function_index.py",
+      "lang": "python",
+      "snippet": "...py\",                          # 一等对象、operator、functools\r\n    \"function_attr.py\",                      # 可调用对象、partial、inspect.signature\r\n    \"function_closure.py\",                   # <mark>闭包</mark>、nonlocal\r\n    \"function_closure_decorator.py\",         # 闭包实现装饰器、wraps\r\n    \"function_decorator.py\",                 # 装饰器基础\r\n    \"function_decorator_parameterize.py..."
+    },
+    {
+      "id": 4699,
+      "source_id": "PythonBasic",
+      "rel_path": "fluent_python/module/module_index.py",
+      "lang": "python",
+      "snippet": "...集合及 collections 变体\"),\r\n    (\"text\", \"str / bytes / 编码\"),\r\n    (\"iterator\", \"可迭代对象、迭代器、生成器、itertools\"),\r\n    (\"function\", \"一等函数、<mark>闭包</mark>、装饰器\"),\r\n    (\"class\", \"类与对象、运算符重载、Vector/Deck\"),\r\n    (\"protocol\", \"鸭子类型、鹅类型、ABC\"),\r\n    (\"regular\", \"正则表达式 re\"),\r\n    (\"random\", \"random..."
+    },
+    {
+      "id": 345,
+      "source_id": "JavaBasic",
+      "rel_path": "src/main/java/logic/io/traditionalIO/stream/buffered/BufferedReaderBase.java",
+      "lang": "java",
+      "snippet": "Line())!= null) {\r\n            System.out.println(s);\r\n        }\r\n\r\n        // 关<mark>闭包</mark>装流：节点流会自动关闭\r\n        br.close();\r\n    }\r\n}\r\n"
+    }
+  ]
+}

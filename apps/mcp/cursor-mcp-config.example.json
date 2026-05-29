@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mind-sync": {
+      "command": "python",
+      "args": [
+        "C:/Workspace/10.program/90.ai/mind-sync/apps/mcp/server.py"
+      ],
+      "env": {
+        "MINDSYNC_BASE_URL": "http://localhost:8000",
+        "MINDSYNC_API_KEY": "mind-sync-dev-key"
+      }
+    }
+  }
+}

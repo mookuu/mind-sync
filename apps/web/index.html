@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mind-sync</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>mind-sync</h1>
+      <div class="actions">
+        <button id="settingsBtn">设置</button>
+        <button id="syncBtn">一键同步</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>登录</h2>
+        <div class="login-row">
+          <input id="pwd" type="password" placeholder="输入访问密码" />
+          <button id="loginBtn">登录</button>
+        </div>
+        <p id="loginStatus"></p>
+        <p id="nextAutoSyncText">下次自动同步时间：--</p>
+        <p id="lastAutoSyncText">最近一次自动同步状态：--</p>
+      </section>
+
+      <section class="panel">
+        <h2>搜索</h2>
+        <div class="search-row">
+          <input id="q" type="text" placeholder="搜索 Markdown/代码..." />
+          <select id="sourceFilter">
+            <option value="">全部来源</option>
+          </select>
+          <select id="typeFilter">
+            <option value="">全部类型</option>
+            <option value="markdown">Markdown</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+          </select>
+          <button id="searchBtn">搜索</button>
+        </div>
+        <ul id="results"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>结构化问答</h2>
+        <div class="search-row">
+          <input id="askQ" type="text" placeholder="输入问题（例如：闭包和装饰器关系）" />
+          <button id="askBtn">提问</button>
+        </div>
+        <div class="search-row" style="margin-top: 8px">
+          <label style="display:flex;align-items:center;gap:6px">
+            <input id="saveInsight" type="checkbox" />
+            保存为 wiki insight
+          </label>
+        </div>
+        <p id="askMeta"></p>
+        <pre id="askAnswer"></pre>
+      </section>
+
+      <section class="panel">
+        <h2>文档预览</h2>
+        <p id="docMeta"></p>
+        <pre id="docContent"></pre>
+      </section>
+    </main>
+
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-card">
+        <h3>设置</h3>
+        <label class="row">
+          <input id="autoSyncEnabled" type="checkbox" />
+          启用自动定时同步（默认关闭）
+        </label>
+        <label class="row">
+          间隔（分钟）
+          <input id="autoSyncInterval" type="number" min="1" max="1440" value="60" />
+        </label>
+        <div class="row">
+          <button id="saveSettingsBtn">保存设置</button>
+          <button id="closeSettingsBtn">关闭</button>
+        </div>
+        <p id="settingsStatus"></p>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+  </html>

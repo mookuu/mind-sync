@@ -1,0 +1,32 @@
+services:
+  api:
+    build: ./apps/api
+    container_name: mind-sync-api
+    env_file:
+      - .env
+    environment:
+      - DATA_DIR=${DATA_DIR:-/data}
+      - SOURCES_FILE=${SOURCES_FILE:-/workspace/sources.yaml}
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - API_KEY=${API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+    volumes:
+      - ./data:/data
+      - ./sources.yaml:/workspace/sources.yaml:ro
+      - ./apps/api/app:/app/app
+      - C:/Workspace/10.program/90.ai/knowledge_engineering:/sources/knowledge_engineering:ro
+      - C:/Workspace/10.program/10.language/JavaBasic:/sources/JavaBasic:ro
+      - C:/Workspace/10.program/10.language/PythonBasic:/sources/PythonBasic:ro
+    ports:
+      - "8000:8000"
+
+  web:
+    build: ./apps/web
+    container_name: mind-sync-web
+    depends_on:
+      - api
+    ports:
+      - "8080:80"

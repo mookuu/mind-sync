@@ -1,0 +1,22 @@
+sources:
+  - id: knowledge_engineering
+    type: local
+    path: "C:/Workspace/10.program/90.ai/knowledge_engineering"
+    include:
+      - "**/*.md"
+      - "**/*.py"
+      - "**/*.java"
+
+  - id: JavaBasic
+    type: local
+    path: "C:/Workspace/10.program/10.language/JavaBasic"
+    include:
+      - "**/*.md"
+      - "**/*.java"
+
+  - id: PythonBasic
+    type: local
+    path: "C:/Workspace/10.program/10.language/PythonBasic"
+    include:
+      - "**/*.md"
+      - "**/*.py"
