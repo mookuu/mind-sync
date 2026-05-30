@@ -83,6 +83,10 @@ def main() -> int:
     doc_p.add_argument("doc_id", type=int)
     doc_p.set_defaults(func=lambda a: request_api(a.base_url, a.api_key, "GET", f"/api/document/{a.doc_id}"))
 
+    sub.add_parser("wiki-graph", help="analyze wiki link graph").set_defaults(
+        func=lambda a: request_api(a.base_url, a.api_key, "GET", "/api/wiki-graph")
+    )
+
     query_p = sub.add_parser("query", help="query wiki")
     query_p.add_argument("question")
     query_p.add_argument("--limit", type=int, default=8)

@@ -20,3 +20,9 @@ sources:
     include:
       - "**/*.md"
       - "**/*.py"
+
+  - id: wiki
+    type: local
+    path: "/data/wiki"
+    include:
+      - "**/*.md"

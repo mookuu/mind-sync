@@ -1,92 +1,277 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-color-mode="dark" data-auth="checking">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>mind-sync</title>
+    <script>
+      (function () {
+        // ms_token 为 HttpOnly，JS 不可读；ms_csrf 与登录态同步且可读
+        var hasSession = /(?:^|;\s*)ms_csrf=([^;]+)/.test(document.cookie);
+        document.documentElement.dataset.auth = hasSession ? "session" : "checking";
+      })();
+    </script>
+    <style id="auth-boot-critical">
+      html[data-auth="checking"] #loginScreen,
+      html[data-auth="checking"] #appRoot {
+        display: none !important;
+      }
+      html[data-auth="session"] #loginScreen {
+        display: none !important;
+      }
+      html[data-auth="session"] #appRoot {
+        display: flex !important;
+      }
+      html[data-auth="guest"] #appRoot {
+        display: none !important;
+      }
+      html[data-auth="guest"] #loginScreen {
+        display: grid !important;
+      }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/vendor/github-dark.min.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <header>
-      <h1>mind-sync</h1>
-      <div class="actions">
-        <button id="settingsBtn">设置</button>
-        <button id="syncBtn">一键同步</button>
-      </div>
-    </header>
-
-    <main>
-      <section class="panel">
-        <h2>登录</h2>
-        <div class="login-row">
-          <input id="pwd" type="password" placeholder="输入访问密码" />
-          <button id="loginBtn">登录</button>
+    <div id="loginScreen" class="login-screen">
+      <div class="login-card">
+        <div class="login-logo">
+          <span class="logo-mark">ms</span>
+          <div>
+            <h1>mind-sync</h1>
+            <p>个人知识库 · 文档浏览与可信问答</p>
+          </div>
         </div>
-        <p id="loginStatus"></p>
-        <p id="nextAutoSyncText">下次自动同步时间：--</p>
-        <p id="lastAutoSyncText">最近一次自动同步状态：--</p>
-      </section>
-
-      <section class="panel">
-        <h2>搜索</h2>
-        <div class="search-row">
-          <input id="q" type="text" placeholder="搜索 Markdown/代码..." />
-          <select id="sourceFilter">
-            <option value="">全部来源</option>
-          </select>
-          <select id="typeFilter">
-            <option value="">全部类型</option>
-            <option value="markdown">Markdown</option>
-            <option value="python">Python</option>
-            <option value="java">Java</option>
-          </select>
-          <button id="searchBtn">搜索</button>
-        </div>
-        <ul id="results"></ul>
-      </section>
-
-      <section class="panel">
-        <h2>结构化问答</h2>
-        <div class="search-row">
-          <input id="askQ" type="text" placeholder="输入问题（例如：闭包和装饰器关系）" />
-          <button id="askBtn">提问</button>
-        </div>
-        <div class="search-row" style="margin-top: 8px">
-          <label style="display:flex;align-items:center;gap:6px">
-            <input id="saveInsight" type="checkbox" />
-            保存为 wiki insight
-          </label>
-        </div>
-        <p id="askMeta"></p>
-        <pre id="askAnswer"></pre>
-      </section>
-
-      <section class="panel">
-        <h2>文档预览</h2>
-        <p id="docMeta"></p>
-        <pre id="docContent"></pre>
-      </section>
-    </main>
-
-    <div id="settingsModal" class="modal hidden">
-      <div class="modal-card">
-        <h3>设置</h3>
-        <label class="row">
-          <input id="autoSyncEnabled" type="checkbox" />
-          启用自动定时同步（默认关闭）
-        </label>
-        <label class="row">
-          间隔（分钟）
-          <input id="autoSyncInterval" type="number" min="1" max="1440" value="60" />
-        </label>
-        <div class="row">
-          <button id="saveSettingsBtn">保存设置</button>
-          <button id="closeSettingsBtn">关闭</button>
-        </div>
-        <p id="settingsStatus"></p>
+        <label class="field-label" for="pwd">访问密码</label>
+        <input id="pwd" type="password" placeholder="输入 AUTH_PASSWORD" autocomplete="current-password" />
+        <p id="loginError" class="login-error hidden"></p>
+        <button id="loginBtn" class="btn btn-primary btn-block">登录</button>
+        <p id="loginStatus" class="login-hint">请先登录以浏览文档</p>
       </div>
     </div>
 
+    <div id="appRoot" class="app-root hidden">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="logo-mark sm">ms</span>
+          <span class="topbar-title">mind-sync</span>
+          <span id="authBadge" class="badge badge-success">已登录</span>
+        </div>
+        <div class="topbar-center">
+          <input id="globalSearch" type="search" placeholder="快速搜索文档… (Enter)" />
+        </div>
+        <div class="topbar-actions">
+          <button id="syncBtn" class="btn btn-primary">同步</button>
+          <button id="settingsBtn" class="btn">设置</button>
+          <button id="accountBtn" class="btn">账户</button>
+        </div>
+      </header>
+
+      <div class="app-frame">
+        <aside class="sidebar">
+          <nav class="sidebar-nav">
+            <button type="button" class="nav-item active" data-view="library">文档库</button>
+            <button type="button" class="nav-item" data-view="search">搜索</button>
+            <button type="button" class="nav-item" data-view="qa">问答</button>
+            <button type="button" class="nav-item" data-view="graph">Wiki 图谱</button>
+            <button type="button" class="nav-item" data-view="sync">同步状态</button>
+          </nav>
+        </aside>
+
+        <main class="content-area">
+          <!-- 文档库（默认） -->
+          <section id="view-library" class="view active">
+            <div class="view-header">
+              <h2>原始文档</h2>
+              <p class="subtle">按来源与语言分类浏览，点击文件即可阅读</p>
+            </div>
+            <div class="library-layout">
+              <div id="libraryTree" class="library-tree"></div>
+              <div class="doc-panel">
+                <div id="docBreadcrumb" class="breadcrumb">选择左侧文件开始阅读</div>
+                <div id="docNav" class="doc-nav hidden">
+                  <button id="prevMatchBtn" type="button">上一个</button>
+                  <span id="matchCount">0 / 0</span>
+                  <button id="nextMatchBtn" type="button">下一个</button>
+                </div>
+                <div class="doc-toolbar">
+                  <label class="doc-image-toggle">
+                    <input id="imageEnhanceToggle" type="checkbox" checked />
+                    深色底图增强（反转对比）
+                  </label>
+                </div>
+                <p id="docMeta" class="doc-meta"></p>
+                <div id="docContent" class="doc-content"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 搜索 -->
+          <section id="view-search" class="view hidden">
+            <div class="view-header"><h2>全文搜索</h2></div>
+            <div class="filter-bar">
+              <input id="q" type="text" placeholder="搜索 Markdown/代码…" />
+              <select id="categoryFilter">
+                <option value="">全部分类</option>
+                <option value="source">原始素材</option>
+                <option value="summary">学习摘要</option>
+                <option value="query">问答沉淀</option>
+              </select>
+              <select id="topicFilter"><option value="">全部主题</option></select>
+              <select id="sourceFilter"><option value="">全部来源</option></select>
+              <select id="typeFilter">
+                <option value="">全部类型</option>
+                <option value="markdown">Markdown</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+              </select>
+              <button id="searchBtn" class="btn btn-primary">搜索</button>
+            </div>
+            <div class="browse-row">
+              <span id="browseTitle" class="subtle">分类浏览</span>
+              <button id="browseBtn" type="button" class="btn btn-sm">加载列表</button>
+            </div>
+            <ul id="browseList" class="result-list browse-list"></ul>
+            <ul id="results" class="result-list"></ul>
+          </section>
+
+          <!-- 问答 -->
+          <section id="view-qa" class="view hidden">
+            <div class="view-header"><h2>结构化问答</h2></div>
+            <div class="filter-bar">
+              <input id="askQ" type="text" placeholder="输入问题…" />
+              <button id="askBtn" class="btn btn-primary">提问</button>
+            </div>
+            <label class="checkbox-row">
+              <input id="saveInsight" type="checkbox" />
+              保存到 wiki/queries
+            </label>
+            <p id="askMeta" class="subtle"></p>
+            <pre id="askAnswer" class="answer-box"></pre>
+            <h3 class="section-label">证据列表</h3>
+            <ul id="evidenceList" class="result-list"></ul>
+          </section>
+
+          <!-- 图谱 -->
+          <section id="view-graph" class="view hidden">
+            <div class="view-header">
+              <h2>Wiki 图谱</h2>
+              <button id="refreshGraphBtn" class="btn btn-sm">刷新</button>
+            </div>
+            <p id="graphSummary" class="subtle">节点: -- | 边: --</p>
+            <p id="graphMeta" class="subtle">孤儿页: -- | Hub页: --</p>
+            <div class="filter-bar">
+              <input id="graphFilterInput" type="text" placeholder="过滤节点…" />
+              <select id="graphMinDegreeSelect">
+                <option value="0">最小度: 0</option>
+                <option value="1">最小度: 1</option>
+                <option value="2">最小度: 2</option>
+                <option value="3">最小度: 3</option>
+              </select>
+              <button id="graphResetLayoutBtn" type="button" class="btn btn-sm">重排布局</button>
+            </div>
+            <div id="graphCanvas" class="graph-canvas"></div>
+            <div class="graph-list-panel">
+              <div class="graph-list-head">
+                <h3 id="graphListTitle">关键节点</h3>
+                <div class="graph-tabs">
+                  <button id="graphViewTopBtn" type="button" class="graph-tab-btn active">关键</button>
+                  <button id="graphViewOrphanBtn" type="button" class="graph-tab-btn">孤儿</button>
+                  <button id="graphViewHubBtn" type="button" class="graph-tab-btn">Hub</button>
+                </div>
+              </div>
+              <ul id="graphUnifiedList" class="result-list"></ul>
+            </div>
+          </section>
+
+          <!-- 同步 -->
+          <section id="view-sync" class="view hidden">
+            <div class="view-header"><h2>同步状态</h2></div>
+            <div class="sync-card">
+              <p id="syncProgressText" class="sync-progress">当前同步：空闲</p>
+              <p id="lastSyncSummaryText">最近一次同步：--</p>
+              <p id="nextAutoSyncText">下次自动同步：--</p>
+              <p id="lastAutoSyncText">最近自动同步：--</p>
+              <p id="syncScopeText" class="subtle">同步范围：--</p>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <!-- 设置（模块化 Tab） -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-card modal-wide">
+        <div class="modal-split">
+          <nav class="settings-nav">
+            <h3>设置</h3>
+            <button type="button" class="settings-tab active" data-settings-tab="sync">同步</button>
+            <button type="button" class="settings-tab" data-settings-tab="sources">来源</button>
+            <button type="button" class="settings-tab" data-settings-tab="purpose">研究方向</button>
+            <button type="button" class="settings-tab" data-settings-tab="audit">审计日志</button>
+          </nav>
+          <div class="settings-body">
+            <section id="settingsTab-sync" class="settings-pane active">
+              <h4>自动同步</h4>
+              <label class="checkbox-row">
+                <input id="autoSyncEnabled" type="checkbox" />
+                启用定时同步（默认关闭）
+              </label>
+              <label class="field-label">间隔（分钟）</label>
+              <input id="autoSyncInterval" type="number" min="1" max="1440" value="60" />
+              <h4 class="mt">默认同步范围</h4>
+              <p class="subtle">一键同步时使用以下范围；可在「来源」页查看路径。</p>
+              <div id="syncPresetList" class="preset-list"></div>
+              <div id="syncCustomSources" class="source-checkboxes hidden"></div>
+              <div class="btn-row">
+                <button id="saveSettingsBtn" class="btn btn-primary">保存</button>
+                <button id="closeSettingsBtn" class="btn">关闭</button>
+              </div>
+              <p id="settingsStatus" class="status-msg"></p>
+            </section>
+            <section id="settingsTab-sources" class="settings-pane hidden">
+              <h4>已配置来源</h4>
+              <p class="subtle">来自 sources.yaml，需在服务器上编辑后重启 API。</p>
+              <ul id="sourcesList" class="sources-list"></ul>
+            </section>
+            <section id="settingsTab-purpose" class="settings-pane hidden">
+              <h4>purpose.md</h4>
+              <p class="subtle">问答时会注入 LLM，文件位于 data/purpose.md</p>
+              <pre id="purposePreview" class="purpose-preview"></pre>
+            </section>
+            <section id="settingsTab-audit" class="settings-pane hidden">
+              <div class="row-between">
+                <h4 id="auditListTitle">最近审计</h4>
+                <button id="refreshAuditBtn" type="button" class="btn btn-sm">刷新</button>
+              </div>
+              <p id="auditStatus" class="subtle">加载中…</p>
+              <ul id="auditList" class="audit-list"></ul>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="accountModal" class="modal hidden">
+      <div class="modal-card">
+        <h3>账户</h3>
+        <p id="accountModeText" class="subtle">--</p>
+        <div class="btn-row">
+          <button id="logoutBtn" class="btn btn-danger">退出登录</button>
+          <button id="closeAccountBtn" class="btn">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loginModal" class="hidden"></div>
+
+    <script src="/vendor/highlight.min.js"></script>
+    <script src="/vendor/marked.min.js"></script>
     <script src="/app.js"></script>
+    <script src="/preview.js"></script>
+    <script src="/ui.js"></script>
   </body>
-  </html>
+</html>

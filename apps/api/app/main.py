@@ -1,502 +1,95 @@
 import hashlib
-import os
-import re
-import sqlite3
-import threading
+import secrets
 import time
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-import httpx
-import yaml
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from itsdangerous import BadSignature, URLSafeSerializer
-from pydantic import BaseModel
-from pydantic_settings import BaseSettings
+from fastapi.responses import FileResponse
 
+from .config import CORS_ALLOW_CREDENTIALS, CORS_ORIGINS, settings
+from .db import LINT_DIR, WIKI_DIR, get_db, init_db, load_settings_map, read_settings
+from .models import IngestRequest, LintRequest, LoginRequest, QueryRequest, SettingsUpdateRequest, SyncRequest
+from .services.assets import guess_media_type, resolve_document_asset, resolve_wiki_asset
+from .services.audit import add_audit_event, fetch_audit_events
+from .services.auth import (
+    check_login_rate_limit,
+    clear_login_failures,
+    csrf_header_key,
+    enforce_csrf,
+    mark_login_failure,
+    parse_api_keys,
+    require_any_auth,
+    require_auth,
+    revoke_session_token,
+    serializer,
+)
+from .services.categories import (
+    browse_documents,
+    category_sql_clause,
+    classify_document,
+    list_category_stats,
+    path_prefix_sql_clause,
+    topic_sql_clause,
+)
+from .services.evidence import build_evidence_items
+from .services.indexer import (
+    index_single_source,
+    load_sources,
+    read_text_safely,
+    resolve_source_root,
+    snippet_from_content,
+)
+from .services.library import build_library_index
+from .services.link_graph import analyze_wiki_graph
+from .services.lint_engine import run_lint_report
+from .services.sync_settings import SYNC_PRESETS, enrich_settings_response
+from .services.purpose import load_purpose_text, purpose_status
+from .services.query_engine import QueryEngineConfig, generate_structured_answer
+from .services.scheduler import AutoSyncScheduler
+from .services.sync_engine import (
+    SYNC_LOCK,
+    SYNC_STATE,
+    get_sync_status_payload,
+    is_sync_running,
+    restore_last_sync_summary,
+    run_sync_job,
+)
 
-class Settings(BaseSettings):
-    auth_password: str = "changeme"
-    secret_key: str = "replace-with-random-secret"
-    api_key: str = "mind-sync-dev-key"
-    data_dir: str = "/data"
-    sources_file: str = "/workspace/sources.yaml"
-    llm_base_url: str = "https://api.siliconflow.cn/v1"
-    llm_api_key: str = ""
-    llm_model: str = "deepseek-ai/DeepSeek-V4-Flash"
-
-
-settings = Settings()
 app = FastAPI(title="mind-sync API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-serializer = URLSafeSerializer(settings.secret_key, salt="mind-sync")
 
-
-@dataclass
-class Source:
-    id: str
-    path: str
-    include: list[str]
-
-
-class LoginRequest(BaseModel):
-    password: str
-
-
-class QueryRequest(BaseModel):
-    question: str
-    limit: int = 8
-    save_to_wiki: bool = False
-    model: str | None = None
-
-
-class IngestRequest(BaseModel):
-    source_id: str | None = None
-    rel_path: str | None = None
-
-
-class LintRequest(BaseModel):
-    stale_days: int = 180
-
-
-class SettingsUpdateRequest(BaseModel):
-    auto_sync_enabled: bool | None = None
-    auto_sync_interval_minutes: int | None = None
-
-
-DB_PATH = Path(settings.data_dir) / "mind_sync.db"
-Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
-WIKI_DIR = Path(settings.data_dir) / "wiki"
-LINT_DIR = Path(settings.data_dir) / "lint-reports"
-SETTINGS_DEFAULTS = {
-    "auto_sync_enabled": "false",
-    "auto_sync_interval_minutes": "60",
-}
-AUTO_SYNC_LAST_RUN = 0.0
-SCHEDULER_STARTED = False
-AUTO_SYNC_INFO: dict[str, Any] = {
-    "status": "idle",
-    "started_at": None,
-    "finished_at": None,
-    "indexed": 0,
-    "skipped": 0,
-    "deleted": 0,
-    "error": None,
-}
-SYNC_LOCK = threading.Lock()
-SYNC_STATE: dict[str, Any] = {
-    "running": False,
-    "started_at": None,
-    "finished_at": None,
-    "indexed": 0,
-    "skipped": 0,
-    "deleted": 0,
-    "sources": [],
-    "current_source": None,
-    "processed_files": 0,
-    "total_files": 0,
-    "error": None,
-}
-
-
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA busy_timeout=30000;")
-    return conn
-
-
-def init_db() -> None:
-    conn = get_db()
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS documents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_id TEXT NOT NULL,
-            rel_path TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            lang TEXT NOT NULL,
-            mtime REAL NOT NULL,
-            sha1 TEXT NOT NULL,
-            updated_at REAL NOT NULL,
-            UNIQUE(source_id, rel_path)
-        );
-        CREATE TABLE IF NOT EXISTS app_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-        """
-    )
-    conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(title, content, rel_path, source_id)")
-    for k, v in SETTINGS_DEFAULTS.items():
-        conn.execute(
-            "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO NOTHING",
-            (k, v),
-        )
-    conn.commit()
-    conn.close()
-    WIKI_DIR.mkdir(parents=True, exist_ok=True)
-    LINT_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def require_auth(request: Request) -> None:
-    token = request.cookies.get("ms_token")
-    if not token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    try:
-        payload = serializer.loads(token)
-        if payload.get("ok") is not True:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-    except BadSignature as exc:
-        raise HTTPException(status_code=401, detail="Unauthorized") from exc
-
-
-def is_api_key_valid(request: Request) -> bool:
-    expected = settings.api_key.strip()
-    if not expected:
-        return False
-    header_key = request.headers.get("x-api-key", "").strip()
-    auth_header = request.headers.get("authorization", "").strip()
-    bearer_key = ""
-    if auth_header.lower().startswith("bearer "):
-        bearer_key = auth_header[7:].strip()
-    return header_key == expected or bearer_key == expected
-
-
-def require_any_auth(request: Request) -> None:
-    if is_api_key_valid(request):
-        return
-    require_auth(request)
-
-
-def load_sources() -> list[Source]:
-    src_file = Path(settings.sources_file)
-    if not src_file.exists():
-        return []
-    raw = yaml.safe_load(src_file.read_text(encoding="utf-8")) or {}
-    result: list[Source] = []
-    for item in raw.get("sources", []):
-        result.append(
-            Source(
-                id=item["id"],
-                path=item["path"],
-                include=item.get("include", ["**/*.md"]),
-            )
-        )
-    return result
-
-
-def resolve_source_root(source: Source) -> Path:
-    p = Path(source.path)
-    if p.exists():
-        return p
-    fallback = Path("/sources") / source.id
-    if fallback.exists():
-        return fallback
-    return p
-
-
-def language_from_suffix(path: Path) -> str:
-    suffix = path.suffix.lower()
-    if suffix == ".md":
-        return "markdown"
-    if suffix == ".py":
-        return "python"
-    if suffix == ".java":
-        return "java"
-    return suffix.lstrip(".") or "text"
-
-
-def read_text_safely(path: Path) -> str:
-    raw = path.read_bytes()
-    for enc in ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gb18030", "gbk"):
-        try:
-            text = raw.decode(enc)
-            # Heuristic: when UTF-8 decode yields heavy mojibake chars, prefer GB encodings.
-            bad_ratio = text.count("�") / max(len(text), 1)
-            if enc.startswith("utf-8") and bad_ratio > 0.01:
-                continue
-            return text
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("utf-8", errors="replace")
-
-
-def collect_files(root: Path, includes: list[str]) -> list[Path]:
-    extension_patterns = [p for p in includes if p.startswith("**/*.")]
-    if extension_patterns and len(extension_patterns) == len(includes):
-        exts = {"." + p.split(".")[-1].lower() for p in extension_patterns}
-        skip_dirs = {
-            ".git",
-            "node_modules",
-            ".venv",
-            "venv",
-            ".idea",
-            ".vscode",
-            "dist",
-            "build",
-            "target",
-            "__pycache__",
-        }
-        files: list[Path] = []
-        for dir_path, dir_names, file_names in os.walk(root):
-            dir_names[:] = [d for d in dir_names if d not in skip_dirs]
-            base = Path(dir_path)
-            for name in file_names:
-                p = base / name
-                if p.suffix.lower() in exts:
-                    files.append(p)
-        return sorted(files)
-
-    files_set: set[Path] = set()
-    for pattern in includes:
-        for p in root.glob(pattern):
-            if p.is_file():
-                files_set.add(p)
-    return sorted(files_set)
-
-
-def upsert_document(conn: sqlite3.Connection, source_id: str, rel_path: str, content: str, mtime: float, sha1: str, lang: str) -> None:
-    title = Path(rel_path).name
-    now = time.time()
-    conn.execute(
-        """
-        INSERT INTO documents(source_id, rel_path, title, content, lang, mtime, sha1, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(source_id, rel_path) DO UPDATE SET
-            title=excluded.title,
-            content=excluded.content,
-            lang=excluded.lang,
-            mtime=excluded.mtime,
-            sha1=excluded.sha1,
-            updated_at=excluded.updated_at
-        """,
-        (source_id, rel_path, title, content, lang, mtime, sha1, now),
-    )
-    row = conn.execute(
-        "SELECT id FROM documents WHERE source_id = ? AND rel_path = ?",
-        (source_id, rel_path),
-    ).fetchone()
-    doc_id = row["id"]
-    conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
-    conn.execute(
-        "INSERT INTO documents_fts(rowid, title, content, rel_path, source_id) VALUES (?, ?, ?, ?, ?)",
-        (doc_id, title, content, rel_path, source_id),
-    )
-
-
-def remove_missing(conn: sqlite3.Connection, source_id: str, existing: set[str]) -> int:
-    rows = conn.execute("SELECT id, rel_path FROM documents WHERE source_id = ?", (source_id,)).fetchall()
-    removed = 0
-    for row in rows:
-        if row["rel_path"] not in existing:
-            conn.execute("DELETE FROM documents WHERE id = ?", (row["id"],))
-            conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (row["id"],))
-            removed += 1
-    return removed
-
-
-def read_settings(conn: sqlite3.Connection) -> dict[str, str]:
-    rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
-    data = {row["key"]: row["value"] for row in rows}
-    for k, v in SETTINGS_DEFAULTS.items():
-        data.setdefault(k, v)
-    return data
-
-
-def parse_bool(raw: str) -> bool:
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def build_auto_sync_meta(settings_map: dict[str, str]) -> dict[str, Any]:
-    enabled = parse_bool(settings_map.get("auto_sync_enabled", "false"))
-    interval = max(1, min(int(settings_map.get("auto_sync_interval_minutes", "60")), 24 * 60))
-    next_at = None
-    with SYNC_LOCK:
-        last_run = AUTO_SYNC_LAST_RUN
-        last_info = dict(AUTO_SYNC_INFO)
-    if enabled and last_run > 0:
-        next_at = last_run + interval * 60
-    return {
-        "auto_sync_enabled": enabled,
-        "auto_sync_interval_minutes": interval,
-        "next_auto_sync_at": next_at,
-        "last_auto_sync": last_info,
-    }
-
-
-def scheduler_loop() -> None:
-    global AUTO_SYNC_LAST_RUN
-    while True:
-        time.sleep(20)
-        try:
-            conn = get_db()
-            st = read_settings(conn)
-            conn.close()
-            enabled = parse_bool(st.get("auto_sync_enabled", "false"))
-            interval = int(st.get("auto_sync_interval_minutes", "60"))
-            interval = max(1, min(interval, 24 * 60))
-            if not enabled:
-                continue
-            now = time.time()
-            with SYNC_LOCK:
-                running = bool(SYNC_STATE["running"])
-            if running:
-                continue
-            if AUTO_SYNC_LAST_RUN <= 0:
-                AUTO_SYNC_LAST_RUN = now
-                continue
-            if now - AUTO_SYNC_LAST_RUN < interval * 60:
-                continue
-            AUTO_SYNC_LAST_RUN = now
-            with SYNC_LOCK:
-                AUTO_SYNC_INFO["status"] = "running"
-                AUTO_SYNC_INFO["started_at"] = now
-                AUTO_SYNC_INFO["finished_at"] = None
-                AUTO_SYNC_INFO["error"] = None
-            summary = run_sync_job()
-            with SYNC_LOCK:
-                AUTO_SYNC_INFO["status"] = "success" if not summary.get("error") else "failed"
-                AUTO_SYNC_INFO["finished_at"] = time.time()
-                AUTO_SYNC_INFO["indexed"] = summary.get("indexed", 0)
-                AUTO_SYNC_INFO["skipped"] = summary.get("skipped", 0)
-                AUTO_SYNC_INFO["deleted"] = summary.get("deleted", 0)
-                AUTO_SYNC_INFO["error"] = summary.get("error")
-        except Exception:
-            continue
-
-
-def index_single_source(conn: sqlite3.Connection, source: Source, rel_path_filter: str | None = None) -> dict[str, Any]:
-    root = resolve_source_root(source)
-    if not root.exists():
-        return {"source_id": source.id, "status": "missing", "indexed": 0, "deleted": 0, "scanned": 0}
-
-    files = collect_files(root, source.include)
-    existing: set[str] = set()
-    scanned = 0
-    indexed = 0
-    skipped = 0
-    for f in files:
-        rel_path = str(f.relative_to(root)).replace("\\", "/")
-        if rel_path_filter and rel_path != rel_path_filter:
-            continue
-        scanned += 1
-        existing.add(rel_path)
-        content = read_text_safely(f)
-        mtime = f.stat().st_mtime
-        sha1 = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
-        old = conn.execute(
-            "SELECT sha1 FROM documents WHERE source_id = ? AND rel_path = ?",
-            (source.id, rel_path),
-        ).fetchone()
-        if old and old["sha1"] == sha1:
-            skipped += 1
-            continue
-        upsert_document(conn, source.id, rel_path, content, mtime, sha1, language_from_suffix(f))
-        indexed += 1
-    deleted = 0 if rel_path_filter else remove_missing(conn, source.id, existing)
-    return {
-        "source_id": source.id,
-        "status": "ok",
-        "indexed": indexed,
-        "skipped": skipped,
-        "deleted": deleted,
-        "scanned": scanned,
-    }
-
-
-def build_query_context(citations: list[dict[str, Any]]) -> str:
-    if not citations:
-        return "No context found."
-    lines: list[str] = []
-    for i, c in enumerate(citations, start=1):
-        lines.append(f"[{i}] {c['source_id']}/{c['rel_path']}")
-        lines.append(c.get("content", "")[:4000])
-        lines.append("")
-    return "\n".join(lines)
-
-
-def snippet_from_content(content: str, query: str, window: int = 80) -> str:
-    if not content:
-        return ""
-    idx = content.find(query)
-    if idx < 0:
-        return content[: min(len(content), window * 2)]
-    start = max(0, idx - window)
-    end = min(len(content), idx + len(query) + window)
-    excerpt = content[start:end]
-    return excerpt.replace(query, f"<mark>{query}</mark>")
-
-
-def call_llm(question: str, citations: list[dict[str, Any]], model_override: str | None = None) -> tuple[str, str]:
-    model = (model_override or settings.llm_model).strip()
-    if not settings.llm_api_key.strip():
-        raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
-
-    prompt = (
-        "你是 mind-sync 的知识库助手。请只基于给定上下文回答，若证据不足必须明确说明。"
-        "请严格输出如下结构，并强制引用编号：\n"
-        "## 结论\n"
-        "...\n\n"
-        "## 依据\n"
-        "- [1] ...\n"
-        "- [2] ...\n\n"
-        "## 引用\n"
-        "- [1] source_id/rel_path\n"
-        "- [2] source_id/rel_path\n\n"
-        "## 不确定性\n"
-        "- ...\n\n"
-        f"问题：{question}\n\n"
-        "上下文：\n"
-        f"{build_query_context(citations)}"
-    )
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are a precise knowledge-base assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        "temperature": 0.2,
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.llm_api_key}",
-        "Content-Type": "application/json",
-    }
-    url = settings.llm_base_url.rstrip("/") + "/chat/completions"
-    try:
-        with httpx.Client(timeout=120) as client:
-            resp = client.post(url, headers=headers, json=payload)
-        if resp.status_code >= 400:
-            raise HTTPException(status_code=502, detail=f"LLM request failed: {resp.status_code} {resp.text}")
-        data = resp.json()
-        answer = data["choices"][0]["message"]["content"].strip()
-        return answer, model
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM call error: {exc}") from exc
+SCHEDULER = AutoSyncScheduler(
+    load_settings=load_settings_map,
+    is_sync_running=is_sync_running,
+    run_sync_job=lambda: run_sync_job("auto"),
+)
 
 
 @app.on_event("startup")
 def startup() -> None:
-    global SCHEDULER_STARTED, AUTO_SYNC_LAST_RUN
     init_db()
-    if not SCHEDULER_STARTED:
-        AUTO_SYNC_LAST_RUN = time.time()
-        threading.Thread(target=scheduler_loop, daemon=True).start()
-        SCHEDULER_STARTED = True
+    restore_last_sync_summary()
+    SCHEDULER.start()
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next: Any) -> Response:
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if settings.security_hsts_enabled:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 @app.get("/api/health")
@@ -505,17 +98,70 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/login")
-def login(payload: LoginRequest, response: Response) -> dict[str, bool]:
+def login(payload: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
+    account = (payload.username or "default").strip() or "default"
+    check_login_rate_limit(request, account)
     if payload.password != settings.auth_password:
+        mark_login_failure(request, account)
+        add_audit_event("login_failed", request, actor=account, detail="invalid password")
         raise HTTPException(status_code=401, detail="Invalid password")
-    token = serializer.dumps({"ok": True})
-    response.set_cookie("ms_token", token, httponly=True, samesite="lax")
+    clear_login_failures(request, account)
+    now = time.time()
+    ttl = max(60, int(settings.session_ttl_seconds))
+    token = serializer.dumps({"ok": True, "issued_at": now, "expires_at": now + ttl})
+    cookie_samesite = (settings.cookie_samesite or "lax").lower()
+    if cookie_samesite not in {"lax", "strict", "none"}:
+        cookie_samesite = "lax"
+    cookie_secure = bool(settings.cookie_secure or cookie_samesite == "none")
+    csrf_token = secrets.token_urlsafe(24)
+    response.set_cookie(
+        "ms_token",
+        token,
+        httponly=True,
+        secure=cookie_secure,
+        samesite=cookie_samesite,
+        max_age=max(60, int(settings.cookie_max_age_seconds)),
+    )
+    response.set_cookie(
+        "ms_csrf",
+        csrf_token,
+        httponly=False,
+        secure=cookie_secure,
+        samesite=cookie_samesite,
+        max_age=max(60, int(settings.cookie_max_age_seconds)),
+    )
+    add_audit_event("login_success", request, actor=account, detail="cookie session issued")
+    return {"ok": True, "csrf_header": settings.csrf_header_name, "csrf_token": csrf_token}
+
+
+@app.post("/api/logout")
+def logout(request: Request, response: Response, _: Any = Depends(require_auth)) -> dict[str, bool]:
+    enforce_csrf(request)
+    token = request.cookies.get("ms_token", "").strip()
+    if token:
+        revoke_session_token(token)
+    cookie_samesite = (settings.cookie_samesite or "lax").lower()
+    if cookie_samesite not in {"lax", "strict", "none"}:
+        cookie_samesite = "lax"
+    cookie_secure = bool(settings.cookie_secure or cookie_samesite == "none")
+    response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite)
+    response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite)
+    add_audit_event("logout", request, actor="cookie-user", detail="session revoked and cookies cleared")
     return {"ok": True}
 
 
 @app.get("/api/auth-mode")
-def auth_mode(_: Any = Depends(require_any_auth)) -> dict[str, bool]:
-    return {"cookie_enabled": True, "api_key_enabled": bool(settings.api_key.strip())}
+def auth_mode(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return {
+        "cookie_enabled": True,
+        "api_key_enabled": bool(parse_api_keys()),
+        "csrf_header": csrf_header_key(),
+    }
+
+
+@app.get("/api/audit-events")
+def audit_events(limit: int = 50, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return {"items": fetch_audit_events(limit)}
 
 
 @app.get("/api/sources")
@@ -523,7 +169,16 @@ def sources(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
     items = []
     for source in load_sources():
         root = resolve_source_root(source)
-        items.append({"id": source.id, "path": str(root), "include": source.include, "exists": root.exists()})
+        items.append(
+            {
+                "id": source.id,
+                "type": source.source_type,
+                "path": str(root),
+                "url": source.url,
+                "include": source.include,
+                "exists": root.exists(),
+            }
+        )
     return {"sources": items}
 
 
@@ -532,12 +187,11 @@ def get_settings(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
     conn = get_db()
     st = read_settings(conn)
     conn.close()
-    return build_auto_sync_meta(st)
+    return enrich_settings_response(st, SCHEDULER.build_meta(st))
 
 
 @app.post("/api/settings")
-def update_settings(payload: SettingsUpdateRequest, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
-    global AUTO_SYNC_LAST_RUN
+def update_settings(payload: SettingsUpdateRequest, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     conn = get_db()
     try:
         if payload.auto_sync_enabled is not None:
@@ -551,120 +205,113 @@ def update_settings(payload: SettingsUpdateRequest, _: Any = Depends(require_any
                 "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 ("auto_sync_interval_minutes", str(val)),
             )
+        if payload.sync_preset is not None:
+            preset = (payload.sync_preset or "all").strip() or "all"
+            if preset != "custom" and preset not in SYNC_PRESETS:
+                preset = "all"
+            conn.execute(
+                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("sync_preset", preset),
+            )
+        if payload.sync_source_ids is not None:
+            import json
+
+            ids = [str(x).strip() for x in payload.sync_source_ids if str(x).strip()]
+            conn.execute(
+                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("sync_source_ids", json.dumps(ids, ensure_ascii=False)),
+            )
         conn.commit()
         st = read_settings(conn)
     finally:
         conn.close()
-    AUTO_SYNC_LAST_RUN = time.time()
-    data = build_auto_sync_meta(st)
+    SCHEDULER.reset_last_run_now()
+    data = enrich_settings_response(st, SCHEDULER.build_meta(st))
     data["ok"] = True
+    add_audit_event(
+        "settings_updated",
+        request,
+        actor="cookie-user",
+        detail=f"auto_sync={payload.auto_sync_enabled}, preset={payload.sync_preset}",
+    )
     return data
 
 
-def run_sync_job() -> dict[str, Any]:
-    with SYNC_LOCK:
-        SYNC_STATE["running"] = True
-        SYNC_STATE["started_at"] = time.time()
-        SYNC_STATE["finished_at"] = None
-        SYNC_STATE["indexed"] = 0
-        SYNC_STATE["skipped"] = 0
-        SYNC_STATE["deleted"] = 0
-        SYNC_STATE["sources"] = []
-        SYNC_STATE["current_source"] = None
-        SYNC_STATE["processed_files"] = 0
-        SYNC_STATE["total_files"] = 0
-        SYNC_STATE["error"] = None
-
-    conn = None
-    indexed = 0
-    skipped = 0
-    deleted = 0
-    source_stats = []
+@app.get("/api/library")
+def library(
+    category: str | None = "source",
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    conn = get_db()
     try:
-        conn = get_db()
-        for source in load_sources():
-            root = resolve_source_root(source)
-            if not root.exists():
-                source_stats.append({"source_id": source.id, "status": "missing", "indexed": 0, "deleted": 0})
-                continue
-            files = collect_files(root, source.include)
-            with SYNC_LOCK:
-                SYNC_STATE["current_source"] = source.id
-                SYNC_STATE["processed_files"] = 0
-                SYNC_STATE["total_files"] = len(files)
-            existing: set[str] = set()
-            src_indexed = 0
-            for i, f in enumerate(files, start=1):
-                rel_path = str(f.relative_to(root)).replace("\\", "/")
-                existing.add(rel_path)
-                content = read_text_safely(f)
-                mtime = f.stat().st_mtime
-                sha1 = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
-                old = conn.execute(
-                    "SELECT sha1 FROM documents WHERE source_id = ? AND rel_path = ?",
-                    (source.id, rel_path),
-                ).fetchone()
-                if old and old["sha1"] == sha1:
-                    skipped += 1
-                    if i % 200 == 0:
-                        with SYNC_LOCK:
-                            SYNC_STATE["processed_files"] = i
-                    continue
-                upsert_document(conn, source.id, rel_path, content, mtime, sha1, language_from_suffix(f))
-                indexed += 1
-                src_indexed += 1
-                if i % 200 == 0:
-                    with SYNC_LOCK:
-                        SYNC_STATE["processed_files"] = i
-            with SYNC_LOCK:
-                SYNC_STATE["processed_files"] = len(files)
-            removed = remove_missing(conn, source.id, existing)
-            deleted += removed
-            source_stats.append({"source_id": source.id, "status": "ok", "indexed": src_indexed, "deleted": removed})
-            conn.commit()
-        with SYNC_LOCK:
-            SYNC_STATE["error"] = None
-        run_error = None
-    except Exception as exc:
-        if conn:
-            conn.rollback()
-        with SYNC_LOCK:
-            SYNC_STATE["error"] = str(exc)
-        run_error = str(exc)
+        return build_library_index(conn, category=category or "all")
     finally:
-        if conn:
-            conn.close()
-        with SYNC_LOCK:
-            SYNC_STATE["running"] = False
-            SYNC_STATE["finished_at"] = time.time()
-            SYNC_STATE["indexed"] = indexed
-            SYNC_STATE["skipped"] = skipped
-            SYNC_STATE["deleted"] = deleted
-            SYNC_STATE["sources"] = source_stats
-            SYNC_STATE["current_source"] = None
-    return {
-        "indexed": indexed,
-        "skipped": skipped,
-        "deleted": deleted,
-        "sources": source_stats,
-        "error": run_error,
-    }
+        conn.close()
 
 
 @app.post("/api/sync")
-def sync(background_tasks: BackgroundTasks, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def sync(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    payload: SyncRequest | None = None,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    body = payload or SyncRequest()
+    source_ids: list[str] | None = None
+    if body.preset and body.preset in SYNC_PRESETS:
+        source_ids = SYNC_PRESETS[body.preset].get("source_ids")
+    elif body.source_ids:
+        source_ids = [str(x).strip() for x in body.source_ids if str(x).strip()]
+    elif body.use_saved_defaults:
+        from .services.sync_settings import resolve_sync_source_ids
+
+        source_ids = resolve_sync_source_ids()
+
     with SYNC_LOCK:
         if SYNC_STATE["running"]:
+            add_audit_event("sync_requested", request, actor="cookie-user", detail="already running")
             return {"ok": True, "started": False, "message": "sync already running"}
         SYNC_STATE["running"] = True
-    background_tasks.add_task(run_sync_job)
-    return {"ok": True, "started": True}
+    background_tasks.add_task(lambda: run_sync_job("manual", source_ids))
+    detail = "sync started"
+    if source_ids:
+        detail += f" sources={','.join(source_ids)}"
+    add_audit_event("sync_requested", request, actor="cookie-user", detail=detail)
+    return {"ok": True, "started": True, "source_ids": source_ids}
 
 
 @app.get("/api/sync-status")
 def sync_status(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
-    with SYNC_LOCK:
-        return dict(SYNC_STATE)
+    return get_sync_status_payload()
+
+
+@app.get("/api/purpose")
+def get_purpose(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return purpose_status()
+
+
+@app.get("/api/categories")
+def categories(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    conn = get_db()
+    try:
+        return list_category_stats(conn)
+    finally:
+        conn.close()
+
+
+@app.get("/api/browse")
+def browse(
+    category: str | None = None,
+    topic: str | None = None,
+    limit: int = 50,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    conn = get_db()
+    try:
+        items = browse_documents(conn, category=category, topic=topic, limit=limit)
+    finally:
+        conn.close()
+    return {"items": items}
 
 
 @app.get("/api/search")
@@ -673,12 +320,18 @@ def search(
     limit: int = 30,
     source_id: str | None = None,
     file_type: str | None = None,
+    category: str | None = None,
+    topic: str | None = None,
+    path_prefix: str | None = None,
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
     if not q.strip():
         return {"items": []}
     q = q.strip()
     conn = get_db()
+    cat_clause, cat_args = category_sql_clause(category)
+    topic_clause, topic_args = topic_sql_clause(topic)
+    prefix_clause, prefix_args = path_prefix_sql_clause(path_prefix)
     fts_sql = """
         SELECT d.id, d.source_id, d.rel_path, d.lang,
                snippet(documents_fts, 1, '<mark>', '</mark>', '...', 30) AS snippet
@@ -693,35 +346,44 @@ def search(
     if file_type:
         fts_sql += " AND d.lang = ?"
         fts_args.append(file_type)
+    fts_sql += cat_clause + topic_clause + prefix_clause
+    fts_args.extend(cat_args)
+    fts_args.extend(topic_args)
+    fts_args.extend(prefix_args)
     fts_sql += " LIMIT ?"
     fts_args.append(limit)
     fts_rows = conn.execute(fts_sql, tuple(fts_args)).fetchall()
-    items = [dict(row) for row in fts_rows]
+    items = []
+    for row in fts_rows:
+        item = dict(row)
+        item["category"] = classify_document(row["source_id"], row["rel_path"])
+        items.append(item)
     existing_ids = {item["id"] for item in items}
 
-    # Fallback: FTS may miss mixed CJK+Latin tokens (e.g. "闭包closure").
-    # Use LIKE recall to补齐结果，再与FTS结果去重合并。
     if len(items) < limit:
-        like_rows = conn.execute(
-            """
+        like_sql = """
             SELECT id, source_id, rel_path, lang, content
-            FROM documents
+            FROM documents d
             WHERE (title LIKE ? OR rel_path LIKE ? OR content LIKE ?)
               AND (? IS NULL OR source_id = ?)
               AND (? IS NULL OR lang = ?)
-            LIMIT ?
-            """,
-            (
-                f"%{q}%",
-                f"%{q}%",
-                f"%{q}%",
-                source_id,
-                source_id,
-                file_type,
-                file_type,
-                limit * 5,
-            ),
-        ).fetchall()
+        """
+        like_args: list[Any] = [
+            f"%{q}%",
+            f"%{q}%",
+            f"%{q}%",
+            source_id,
+            source_id,
+            file_type,
+            file_type,
+        ]
+        like_sql += cat_clause + topic_clause + prefix_clause
+        like_args.extend(cat_args)
+        like_args.extend(topic_args)
+        like_args.extend(prefix_args)
+        like_sql += " LIMIT ?"
+        like_args.append(limit * 5)
+        like_rows = conn.execute(like_sql, tuple(like_args)).fetchall()
         for row in like_rows:
             row_id = row["id"]
             if row_id in existing_ids:
@@ -733,6 +395,7 @@ def search(
                     "rel_path": row["rel_path"],
                     "lang": row["lang"],
                     "snippet": snippet_from_content(row["content"], q),
+                    "category": classify_document(row["source_id"], row["rel_path"]),
                 }
             )
             existing_ids.add(row_id)
@@ -753,6 +416,74 @@ def get_document(doc_id: int, _: Any = Depends(require_any_auth)) -> dict[str, A
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
     return dict(row)
+
+
+@app.get("/api/document/{doc_id}/asset")
+def document_asset(
+    doc_id: int,
+    src: str,
+    _: Any = Depends(require_any_auth),
+) -> FileResponse:
+    conn = get_db()
+    row = conn.execute(
+        "SELECT source_id, rel_path FROM documents WHERE id = ?",
+        (doc_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="document not found")
+    if not src.strip():
+        raise HTTPException(status_code=400, detail="src is required")
+    try:
+        asset_path = resolve_document_asset(row["source_id"], row["rel_path"], src)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="external src not supported via this endpoint") from exc
+    return FileResponse(asset_path, media_type=guess_media_type(asset_path))
+
+
+@app.get("/api/wiki-asset")
+def wiki_asset(
+    path: str,
+    src: str,
+    _: Any = Depends(require_any_auth),
+) -> FileResponse:
+    if not src.strip():
+        raise HTTPException(status_code=400, detail="src is required")
+    try:
+        asset_path = resolve_wiki_asset(path, src)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="external src not supported via this endpoint") from exc
+    return FileResponse(asset_path, media_type=guess_media_type(asset_path))
+
+
+@app.get("/api/wiki-graph")
+def wiki_graph(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return analyze_wiki_graph(WIKI_DIR)
+
+
+def _read_wiki_page(path: str) -> dict[str, Any]:
+    rel = (path or "").strip().replace("\\", "/")
+    if not rel:
+        raise HTTPException(status_code=400, detail="path is required")
+    target = (WIKI_DIR / rel).resolve()
+    try:
+        target.relative_to(WIKI_DIR.resolve())
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid wiki path") from exc
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="wiki page not found")
+    content = read_text_safely(target)
+    return {"path": rel, "content": content}
+
+
+@app.get("/api/wiki-content")
+def wiki_content(path: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return _read_wiki_page(path)
+
+
+@app.get("/api/wiki-page")
+def wiki_page(path: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return _read_wiki_page(path)
 
 
 @app.post("/api/ingest")
@@ -810,51 +541,36 @@ def query(payload: QueryRequest, _: Any = Depends(require_any_auth)) -> dict[str
     conn.close()
 
     citations = [dict(row) for row in rows]
-    used_llm = False
-    model_used = (payload.model or settings.llm_model).strip()
-    if not citations:
-        answer = (
-            "## 结论\n"
-            "未检索到相关内容，请先同步或调整关键词。\n\n"
-            "## 依据\n"
-            "- 无可用证据。\n\n"
-            "## 引用\n"
-            "- (none)\n\n"
-            "## 不确定性\n"
-            "- 当前检索结果为空，无法形成可信结论。"
-        )
-    elif settings.llm_api_key.strip():
-        answer, model_used = call_llm(question, citations, payload.model)
-        used_llm = True
-    else:
-        lines = [
-            "## 结论",
-            "当前未配置 LLM_API_KEY，以下为检索摘要结论。",
-            "",
-            "## 依据",
-        ]
-        for i, c in enumerate(citations[:5], start=1):
-            lines.append(f"- [{i}] {c['snippet']}")
-        lines.append("")
-        lines.append("## 引用")
-        for i, c in enumerate(citations[:5], start=1):
-            lines.append(f"- [{i}] {c['source_id']}/{c['rel_path']}")
-        lines.append("")
-        lines.append("## 不确定性")
-        lines.append("- 未调用大模型进行深度归纳，结论为检索级摘要。")
-        answer = "\n".join(lines)
+    evidences = build_evidence_items(citations, question)
+    config = QueryEngineConfig(
+        llm_base_url=settings.llm_base_url,
+        llm_api_key=settings.llm_api_key,
+        llm_model=settings.llm_model,
+    )
+    answer, used_llm, model_used = generate_structured_answer(
+        question=question,
+        citations=citations,
+        config=config,
+        model_override=payload.model,
+        purpose_text=load_purpose_text(),
+    )
 
     saved_path = None
     if payload.save_to_wiki:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        fname = f"insight_{ts}.md"
-        target = WIKI_DIR / fname
-        ref_lines = "\n".join([f"- `{c['source_id']}/{c['rel_path']}`" for c in citations]) or "- (none)"
-        target.write_text(
-            f"# Query Insight\n\n## Question\n{question}\n\n## Model\n{model_used}\n\n## Answer\n{answer}\n\n## Citations\n{ref_lines}\n",
-            encoding="utf-8",
+        slug = hashlib.sha1(question.encode("utf-8", errors="ignore")).hexdigest()[:8]
+        queries_dir = WIKI_DIR / "queries"
+        queries_dir.mkdir(parents=True, exist_ok=True)
+        rel_name = f"queries/{ts}_{slug}.md"
+        target = WIKI_DIR / rel_name
+        ref_lines = "\n".join([f"- [{e['ref']}] `{e['source_id']}/{e['rel_path']}`" for e in evidences]) or "- (none)"
+        body = (
+            f"---\ntype: query\nderived: true\nquestion: {question}\nmodel: {model_used}\n"
+            f"created: {ts}\n---\n\n"
+            f"# Query: {question}\n\n## Answer\n{answer}\n\n## Citations\n{ref_lines}\n"
         )
-        saved_path = str(target)
+        target.write_text(body, encoding="utf-8")
+        saved_path = rel_name
 
     lite_citations = [
         {k: v for k, v in c.items() if k in {"id", "source_id", "rel_path", "title", "snippet"}}
@@ -864,6 +580,7 @@ def query(payload: QueryRequest, _: Any = Depends(require_any_auth)) -> dict[str
         "ok": True,
         "answer": answer,
         "citations": lite_citations,
+        "evidences": evidences,
         "saved_path": saved_path,
         "used_llm": used_llm,
         "model_used": model_used,
@@ -875,71 +592,4 @@ def lint(payload: LintRequest, _: Any = Depends(require_any_auth)) -> dict[str, 
     conn = get_db()
     rows = conn.execute("SELECT id, source_id, rel_path, title, content, updated_at FROM documents").fetchall()
     conn.close()
-
-    issues: list[dict[str, Any]] = []
-    stale_threshold = time.time() - payload.stale_days * 86400
-    title_count: dict[str, int] = {}
-    md_link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
-
-    for row in rows:
-        title = row["title"]
-        title_count[title] = title_count.get(title, 0) + 1
-        content = row["content"] or ""
-        if len(content.strip()) < 20:
-            issues.append(
-                {
-                    "type": "thin-content",
-                    "source_id": row["source_id"],
-                    "rel_path": row["rel_path"],
-                    "detail": "content too short (<20 chars)",
-                }
-            )
-        if row["updated_at"] < stale_threshold:
-            issues.append(
-                {
-                    "type": "stale-doc",
-                    "source_id": row["source_id"],
-                    "rel_path": row["rel_path"],
-                    "detail": f"not updated in {payload.stale_days}+ days",
-                }
-            )
-        for link in md_link_pattern.findall(content):
-            if link.startswith("http://") or link.startswith("https://") or link.startswith("#"):
-                continue
-            if link.startswith("mailto:"):
-                continue
-            if " " in link and not link.endswith(".md"):
-                continue
-
-    for row in rows:
-        if title_count.get(row["title"], 0) > 1:
-            issues.append(
-                {
-                    "type": "duplicate-title",
-                    "source_id": row["source_id"],
-                    "rel_path": row["rel_path"],
-                    "detail": f"title '{row['title']}' appears multiple times",
-                }
-            )
-
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    report_path = LINT_DIR / f"lint_{ts}.md"
-    report_lines = [
-        "# mind-sync lint report",
-        "",
-        f"- Generated at: {datetime.now(timezone.utc).isoformat()}",
-        f"- Total docs: {len(rows)}",
-        f"- Total issues: {len(issues)}",
-        "",
-        "## Issues",
-    ]
-    if not issues:
-        report_lines.append("- No issues found.")
-    else:
-        for item in issues:
-            report_lines.append(
-                f"- [{item['type']}] `{item['source_id']}/{item['rel_path']}` - {item['detail']}"
-            )
-    report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
-
-    return {"ok": True, "issue_count": len(issues), "issues": issues[:200], "report_path": str(report_path)}
+    return run_lint_report(rows=rows, stale_days=payload.stale_days, report_dir=LINT_DIR, wiki_dir=WIKI_DIR)

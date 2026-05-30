@@ -32,9 +32,18 @@ def list_sources() -> dict[str, Any]:
 
 
 @mcp.tool()
-def sync_sources() -> dict[str, Any]:
-    """Start background sync for all sources."""
-    return call_api("POST", "/api/sync")
+def list_library(category: str = "all") -> dict[str, Any]:
+    """Browse indexed documents as a hierarchical library (sources → languages → files)."""
+    return call_api("GET", "/api/library", params={"category": category})
+
+
+@mcp.tool()
+def sync_sources(use_saved_defaults: bool = True, preset: str | None = None) -> dict[str, Any]:
+    """Start background sync. Uses saved sync scope by default, or optional preset."""
+    body: dict[str, Any] = {"use_saved_defaults": use_saved_defaults}
+    if preset:
+        body["preset"] = preset
+    return call_api("POST", "/api/sync", body=body)
 
 
 @mcp.tool()
@@ -44,15 +53,61 @@ def sync_status() -> dict[str, Any]:
 
 
 @mcp.tool()
-def search_docs(query: str, limit: int = 20) -> dict[str, Any]:
-    """Search indexed markdown/code documents."""
-    return call_api("GET", "/api/search", params={"q": query, "limit": limit})
+def search_docs(
+    query: str,
+    limit: int = 20,
+    category: str | None = None,
+    topic: str | None = None,
+    source_id: str | None = None,
+) -> dict[str, Any]:
+    """Search indexed documents. Optional filters: category (source/summary/query), topic, source_id."""
+    params: dict[str, Any] = {"q": query, "limit": limit}
+    if category:
+        params["category"] = category
+    if topic:
+        params["topic"] = topic
+    if source_id:
+        params["source_id"] = source_id
+    return call_api("GET", "/api/search", params=params)
+
+
+@mcp.tool()
+def list_categories() -> dict[str, Any]:
+    """List wiki document categories and summary topics with counts."""
+    return call_api("GET", "/api/categories")
+
+
+@mcp.tool()
+def browse_docs(
+    category: str | None = None,
+    topic: str | None = None,
+    limit: int = 40,
+) -> dict[str, Any]:
+    """Browse documents by category/topic without full-text search."""
+    params: dict[str, Any] = {"limit": limit}
+    if category:
+        params["category"] = category
+    if topic:
+        params["topic"] = topic
+    return call_api("GET", "/api/browse", params=params)
+
+
+@mcp.tool()
+def get_purpose() -> dict[str, Any]:
+    """Read research direction from DATA_DIR/purpose.md."""
+    return call_api("GET", "/api/purpose")
 
 
 @mcp.tool()
 def get_document(doc_id: int) -> dict[str, Any]:
     """Read document content by numeric id."""
     return call_api("GET", f"/api/document/{doc_id}")
+
+
+@mcp.tool()
+def wiki_graph() -> dict[str, Any]:
+    """Analyze wiki markdown link graph and return hubs/orphans."""
+    return call_api("GET", "/api/wiki-graph")
 
 
 @mcp.tool()

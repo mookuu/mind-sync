@@ -1,0 +1,53 @@
+---
+description: mind-sync 个人知识库工作流 — 可信来源 → 摘要 → 带证据问答
+alwaysApply: false
+---
+
+# mind-sync 知识库工作流
+
+在 Cursor 中处理学习笔记、技术调研或 Harness 等内容时，优先使用 **mind-sync API / MCP**，而不是仅依赖对话记忆。
+
+## 数据流
+
+1. **sources（原始素材）**：各仓库 `.md/.py/.java`，由 `sources.yaml` 配置
+2. **wiki/summaries（学习摘要）**：人工或 AI 整理的可检索摘要，带 frontmatter
+3. **wiki/queries（问答沉淀）**：`POST /api/query` 且 `save_to_wiki=true` 时自动写入
+
+## 目录约定（容器内 `/data/wiki`）
+
+```
+/data/purpose.md              # 研究方向，问答时会注入 prompt
+/data/wiki/summaries/{topic}/ # 学习摘要，如 summaries/harness/*.md
+/data/wiki/queries/           # 问答沉淀（type: query, derived: true）
+```
+
+新建摘要请参考 `templates/wiki/summary-template.md`。
+
+## 推荐操作顺序
+
+1. 用户新增/修改笔记或摘要后 → 调用 `sync_sources` 或 Web「一键同步」
+2. 调研问题 → `query_wiki(question=..., save_to_wiki=true)` 获取答案 + evidences
+3. 浏览某主题 → `browse_docs(category="summary", topic="harness")`
+4. 全文检索 → `search_docs(q=..., category=..., topic=...)`
+5. 质量检查 → `lint_wiki()`（断链、孤儿页、过期摘要）
+
+## 证据与置信度
+
+`query_wiki` 返回的 `evidences` 含四档置信度：
+
+- **EXTRACTED** — 原文摘录
+- **INFERRED** — 合理推断
+- **AMBIGUOUS** — 待澄清
+- **UNVERIFIED** — 未验证
+
+回答用户时引用 `[ref]` 与 `source_id/rel_path`，不要编造未出现在证据中的内容。
+
+## MCP 环境变量
+
+```
+MINDSYNC_BASE_URL=http://localhost:8000
+MINDSYNC_API_KEY=<与 .env 中 API_KEY 一致>
+```
+
+项目内已配置 `.cursor/mcp.json`，步骤见 `docs/CURSOR_MCP_SETUP.md`。
+详细说明见 `docs/MIND_SYNC_WORKFLOW.md`。

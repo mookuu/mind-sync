@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mind-sync": {
+      "command": "python",
+      "args": ["apps/mcp/server.py"],
+      "env": {
+        "MINDSYNC_BASE_URL": "http://localhost:8000",
+        "MINDSYNC_API_KEY": "mind-sync-dev-key"
+      }
+    }
+  }
+}

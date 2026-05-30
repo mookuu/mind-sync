@@ -30,11 +30,15 @@
 - 支持接口：
   - `POST /api/sync`
   - `GET /api/sync-status`
-  - `GET /api/search?q=...`
+  - `GET /api/search?q=...&category=&topic=`
+  - `GET /api/categories`
+  - `GET /api/browse?category=&topic=`
+  - `GET /api/purpose`
   - `GET /api/document/{id}`
   - `POST /api/ingest`
   - `POST /api/query`
   - `POST /api/lint`
+  - `GET /api/audit-events?limit=50`（审计日志，需鉴权）
 
 示例（API Key）：
 
@@ -58,11 +62,16 @@ python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key sync
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key sync-status
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key query "PlanAndSolve 核心思想" --save
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key query "Django 路由机制" --model "deepseek-ai/DeepSeek-V4-Flash"
+python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key wiki-graph
 # Windows 终端乱码时，建议直接输出 UTF-8 文件
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key search "闭包" --output-file result.json
 ```
 
 ### 4) MCP（面向 Cursor / Codex / Claude Code）
+
+**Cursor 项目内已配置** `.cursor/mcp.json`（详见 `docs/CURSOR_MCP_SETUP.md`）。
+
+手动启动（调试）：
 
 ```bash
 pip install -r apps/mcp/requirements.txt
@@ -77,18 +86,106 @@ MCP 提供工具：
 - `list_sources`
 - `sync_sources`
 - `sync_status`
-- `search_docs`
+- `search_docs`（支持 `category` / `topic` / `source_id` 过滤）
+- `list_categories`
+- `browse_docs`
+- `get_purpose`
 - `get_document`
+- `wiki_graph`
 - `query_wiki`
 - `ingest_source`
 - `lint_wiki`
 
+## 知识库目录（wiki）
+
+数据卷 `./data` 映射容器内 `/data`：
+
+```
+data/
+  purpose.md                 # 研究方向（问答时注入 LLM）
+  wiki/
+    summaries/{topic}/*.md   # 学习摘要（如 harness/）
+    queries/*.md             # 问答沉淀（save_to_wiki）
+```
+
+- 摘要模板：`templates/wiki/summary-template.md`
+- 工作流详解：`docs/MIND_SYNC_WORKFLOW.md`
+- Cursor Rule：`.cursor/rules/mind-sync.mdc`
+
+首次启动 API 时会从 `apps/api/app/seed/` 复制示例摘要到 `data/wiki/summaries/`（如 `harness/pipeline-basics.md`），**仅当目标文件不存在时**写入。仓库根目录 `templates/wiki/examples/` 为同内容的文档副本。
+
+`sources.yaml` 已包含 `wiki` 源（`/data/wiki`），同步后摘要与 queries 均可被搜索与问答引用。
+
 ## 当前能力
 
-- 同步本地 3 个源仓库的 `.md/.py/.java`
+- 同步本地源仓库与 wiki 的 `.md/.py/.java`
 - 增量索引与全文搜索（SQLite FTS5）
+- **文档分类**：原始素材 / 学习摘要 / 问答沉淀；按主题浏览（`/api/categories`、`/api/browse`）
+- 搜索过滤（`source_id` / 文件类型 / `category` / `topic`）
 - 文档内容预览（Markdown 渲染）
-- Query/ingest/lint 的 API 能力
-- 搜索过滤（`source_id` / 文件类型）
+- Query/ingest/lint 的 API 能力；问答证据四档置信度（EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED）
+- 问答可选保存到 `wiki/queries/`（frontmatter 结构化）
+- `purpose.md` 研究方向预览（Web 设置页 + `/api/purpose`）
 - 自动定时同步（可在设置中开启，默认关闭）
 - 页面显式展示“下次自动同步时间 / 最近一次自动同步状态”
+- 设置页展示最近审计事件（登录/登出/同步/设置变更，只读）
+- 同步状态面板展示当前进度与最近一次同步汇总（新增/更新、跳过、删除；与审计 `sync_requested` / `sync_completed` 对应）
+- P2：证据对象化（`evidences`）、wiki 链接图分析（`/api/wiki-graph`）、source adapter 分层
+- 同步性能优化：先用 `mtime + size` 快速跳过未变文件，再按需计算 hash
+
+## API 模块结构（后端）
+
+`apps/api/app/main.py` 仅保留路由与装配；核心逻辑已拆分：
+
+- `config.py` — 环境配置
+- `db.py` — SQLite 连接与初始化
+- `models.py` — 请求模型
+- `services/auth.py` — 会话、CSRF、API Key、登录限速
+- `services/audit.py` — 审计日志
+- `services/sync_engine.py` — 同步状态与后台同步任务
+- `services/indexer.py` — 文件扫描、索引写入、来源解析
+
+## L1 安全强化（已支持）
+
+- 登录失败限速（按 IP + 用户名，窗口与次数可配；记录持久化到 SQLite，重启不丢）
+- 审计日志（登录/登出/同步/设置变更；`GET /api/audit-events`，保留天数可配 `AUDIT_RETENTION_DAYS`）
+- Session Cookie 安全属性可配（`HttpOnly` + `Secure` + `SameSite` + `max_age`）
+- Session 支持 TTL 过期控制（`SESSION_TTL_SECONDS`）
+- 支持服务端登出接口（`POST /api/logout`，会撤销当前会话 token）
+- CORS 白名单可配置（`CORS_ALLOW_ORIGINS`）
+- Cookie 鉴权写操作默认启用 CSRF 校验（请求头默认 `x-csrf-token`，可用 `CSRF_HEADER_NAME` 改名）
+- API Key 支持逗号分隔多值（便于平滑轮换）
+- 默认安全响应头（`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`）
+
+推荐在公网或隧道场景启用：
+
+- `COOKIE_SECURE=true`
+- `SECURITY_HSTS_ENABLED=true`（仅 HTTPS 场景）
+
+安全冒烟检查（登录/CSRF/登出/会话撤销）：
+
+```bash
+python scripts/smoke_auth.py --base-url http://localhost:8000 --password "<你的 AUTH_PASSWORD>"
+```
+
+> `smoke_auth.py` 已统一委托给 `smoke_all.py` 的 `auth` 模式，避免两套逻辑分叉。
+
+统一冒烟回归（登录/同步/搜索/文档预览/登出）：
+
+```bash
+python scripts/smoke_all.py --base-url http://localhost:8000 --password "<你的 AUTH_PASSWORD>"
+# 若只想跳过同步阶段（更快）
+python scripts/smoke_all.py --base-url http://localhost:8000 --password "<你的 AUTH_PASSWORD>" --skip-sync
+```
+
+登录限速 + 审计持久化检查（多次错误登录触发 429，并验证 audit-events）：
+
+```bash
+python scripts/smoke_auth_meta.py --base-url http://localhost:8000 --password "<你的 AUTH_PASSWORD>"
+```
+
+## 移动端与外网访问
+
+- Web 界面支持窄屏布局（搜索与筛选自动换行）
+- 外网 HTTPS 建议：反向代理 + `.env` 中 `COOKIE_SECURE=true`、`SECURITY_HSTS_ENABLED=true`
+- 详见 `docs/MIND_SYNC_WORKFLOW.md` 中的 Caddy 示例与 CORS 配置
