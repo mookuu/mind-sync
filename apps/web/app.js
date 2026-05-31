@@ -11,6 +11,7 @@ const askInput = document.getElementById("askQ");
 const askBtn = document.getElementById("askBtn");
 const saveInsight = document.getElementById("saveInsight");
 const askMeta = document.getElementById("askMeta");
+const askHint = document.getElementById("askHint");
 const askAnswer = document.getElementById("askAnswer");
 const evidenceList = document.getElementById("evidenceList");
 const settingsBtn = document.getElementById("settingsBtn");
@@ -25,7 +26,9 @@ const saveSettingsBtn = document.getElementById("saveSettingsBtn");
 const autoSyncEnabled = document.getElementById("autoSyncEnabled");
 const autoSyncInterval = document.getElementById("autoSyncInterval");
 const settingsStatus = document.getElementById("settingsStatus");
-const purposePreview = document.getElementById("purposePreview");
+const purposeEditor = document.getElementById("purposeEditor");
+const purposeStatus = document.getElementById("purposeStatus");
+const savePurposeBtn = document.getElementById("savePurposeBtn");
 const browseBtn = document.getElementById("browseBtn");
 const browseList = document.getElementById("browseList");
 const browseTitle = document.getElementById("browseTitle");
@@ -40,6 +43,9 @@ const nextAutoSyncText = document.getElementById("nextAutoSyncText");
 const lastAutoSyncText = document.getElementById("lastAutoSyncText");
 const syncProgressText = document.getElementById("syncProgressText");
 const lastSyncSummaryText = document.getElementById("lastSyncSummaryText");
+const runLintBtn = document.getElementById("runLintBtn");
+const lintStatus = document.getElementById("lintStatus");
+const lintSummary = document.getElementById("lintSummary");
 const results = document.getElementById("results");
 const docMeta = document.getElementById("docMeta");
 const docContent = document.getElementById("docContent");
@@ -157,9 +163,7 @@ async function bootstrapAuthState() {
       loadSyncStatus();
     }, 15000);
     if (graphTimer) clearInterval(graphTimer);
-    graphTimer = setInterval(() => {
-      loadWikiGraph();
-    }, 30000);
+    startGraphPolling();
     setStatus("已恢复登录状态");
   } catch (_) {
     clearClientSessionCookies();
@@ -444,6 +448,45 @@ function scrollToMatch(index) {
   marks[currentMatchIndex].scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
+function refreshGraphIfActive() {
+  const graphView = document.getElementById("view-graph");
+  if (graphView && graphView.classList.contains("active")) {
+    loadWikiGraph();
+  }
+}
+
+function startGraphPolling() {
+  if (graphTimer) clearInterval(graphTimer);
+  graphTimer = setInterval(refreshGraphIfActive, 60000);
+}
+
+async function runWikiLint() {
+  if (!isLoggedIn || !runLintBtn) return;
+  runLintBtn.disabled = true;
+  if (lintStatus) lintStatus.textContent = "Lint 运行中…";
+  if (lintSummary) {
+    lintSummary.classList.add("hidden");
+    lintSummary.textContent = "";
+  }
+  try {
+    const data = await api("/api/lint", { method: "POST", body: JSON.stringify({ stale_days: 180 }) });
+    const issues = data.issues || [];
+    const reportPath = data.report_path || data.path || "";
+    if (lintStatus) {
+      lintStatus.textContent = `Lint 完成：${issues.length} 个问题${reportPath ? ` · 报告 ${reportPath}` : ""}`;
+    }
+    if (lintSummary) {
+      const preview = issues.slice(0, 12).map((item) => `[${item.type}] ${item.source_id}/${item.rel_path} — ${item.detail}`).join("\n");
+      lintSummary.textContent = preview || "未发现问题。";
+      lintSummary.classList.remove("hidden");
+    }
+  } catch (e) {
+    if (lintStatus) lintStatus.textContent = `Lint 失败: ${e.message}`;
+  } finally {
+    runLintBtn.disabled = false;
+  }
+}
+
 function setGraphView(view) {
   currentGraphView = view;
   try {
@@ -567,17 +610,49 @@ async function loadCategoriesFilter() {
 }
 
 async function loadPurposePreview() {
-  if (!purposePreview) return;
+  if (!purposeEditor) return;
   try {
     const data = await api("/api/purpose");
     if (!data.exists) {
-      purposePreview.textContent = "未找到 purpose.md";
+      purposeEditor.value = "";
+      if (purposeStatus) purposeStatus.textContent = "未找到 purpose.md，保存后将创建";
       return;
     }
-    purposePreview.textContent = data.preview || "(空)";
+    purposeEditor.value = data.content || data.preview || "";
+    if (purposeStatus) purposeStatus.textContent = "";
   } catch (e) {
-    purposePreview.textContent = `加载失败: ${e.message}`;
+    if (purposeStatus) purposeStatus.textContent = `加载失败: ${e.message}`;
   }
+}
+
+async function savePurposeContent() {
+  if (!purposeEditor) return;
+  try {
+    if (purposeStatus) purposeStatus.textContent = "保存中…";
+    await api("/api/purpose", {
+      method: "POST",
+      body: JSON.stringify({ content: purposeEditor.value || "" }),
+    });
+    if (purposeStatus) purposeStatus.textContent = "已保存";
+  } catch (e) {
+    if (purposeStatus) purposeStatus.textContent = `保存失败: ${e.message}`;
+  }
+}
+
+function renderAskAnswer(markdownText) {
+  if (!askAnswer) return;
+  askAnswer.className = "doc-content doc-markdown ask-answer";
+  if (typeof parseMarkdown === "function") {
+    askAnswer.innerHTML = parseMarkdown(markdownText || "");
+    if (typeof fixMisclassifiedProseBlocks === "function") {
+      fixMisclassifiedProseBlocks(askAnswer);
+    }
+    if (typeof applyImageEnhanceState === "function") {
+      applyImageEnhanceState();
+    }
+    return;
+  }
+  askAnswer.innerHTML = renderSimpleMarkdown(markdownText || "");
 }
 
 async function loadBrowseList() {
@@ -707,6 +782,7 @@ const AUDIT_EVENT_LABELS = {
   login_success: "登录成功",
   logout: "退出登录",
   settings_updated: "设置变更",
+  purpose_updated: "研究方向更新",
   sync_requested: "同步请求",
   sync_completed: "同步完成",
 };
@@ -1197,9 +1273,7 @@ loginBtn.onclick = async () => {
       loadSyncStatus();
     }, 15000);
     if (graphTimer) clearInterval(graphTimer);
-    graphTimer = setInterval(() => {
-      loadWikiGraph();
-    }, 30000);
+    startGraphPolling();
   } catch (e) {
     setAuthUI(false);
     setStatus(`登录失败: ${e.message}`);
@@ -1275,7 +1349,7 @@ askBtn.onclick = async () => {
   const question = askInput.value.trim();
   if (!question) return;
   askMeta.textContent = "";
-  askAnswer.textContent = "";
+  renderAskAnswer("");
   renderEvidences([]);
   try {
     setStatus("问答中...");
@@ -1287,10 +1361,16 @@ askBtn.onclick = async () => {
         save_to_wiki: !!saveInsight.checked,
       }),
     });
+    const indexedNote = data.indexed && data.indexed.indexed ? " · 已索引" : "";
     askMeta.textContent = `模型: ${data.model_used} | LLM: ${data.used_llm ? "是" : "否"}${
-      data.saved_path ? ` | 已保存: ${data.saved_path}` : ""
+      data.saved_path ? ` | 已保存: ${data.saved_path}${indexedNote}` : ""
     }`;
-    askAnswer.innerHTML = renderSimpleMarkdown(data.answer || "");
+    if (askHint) {
+      askHint.textContent = data.llm_configured
+        ? "已配置 LLM_API_KEY，问答将优先使用大模型生成结构化答案。"
+        : "未配置 LLM_API_KEY：当前仅基于检索片段生成摘要，非完整 LLM 回答。";
+    }
+    renderAskAnswer(data.answer || "");
     renderEvidences(data.evidences || []);
     await loadWikiGraph();
     setStatus("问答完成");
@@ -1302,6 +1382,10 @@ askBtn.onclick = async () => {
 askInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") askBtn.onclick();
 });
+
+if (runLintBtn) {
+  runLintBtn.onclick = () => runWikiLint();
+}
 
 browseBtn.onclick = async () => {
   if (!isLoggedIn) return;

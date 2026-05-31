@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 CONFIDENCE_LEVELS = ("EXTRACTED", "INFERRED", "AMBIGUOUS", "UNVERIFIED")
@@ -19,10 +20,35 @@ def _score_to_level(score: float) -> str:
     return "UNVERIFIED"
 
 
+def question_tokens(question: str) -> list[str]:
+    q = (question or "").strip().lower()
+    if not q:
+        return []
+    tokens: list[str] = []
+    for part in re.split(r"[\s,，。；;！？!?、:：]+", q):
+        part = part.strip()
+        if len(part) >= 2:
+            tokens.append(part)
+    for seg in re.findall(r"[\u4e00-\u9fff]+", q):
+        if len(seg) >= 2:
+            tokens.append(seg)
+        if len(seg) >= 3:
+            for i in range(len(seg) - 1):
+                tokens.append(seg[i : i + 2])
+    seen: set[str] = set()
+    out: list[str] = []
+    for token in tokens:
+        if token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
 def build_evidence_items(citations: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
     evidences: list[dict[str, Any]] = []
     q = (question or "").strip().lower()
-    q_tokens = [t for t in q.split() if len(t) >= 2]
+    q_tokens = question_tokens(question)
     for idx, c in enumerate(citations, start=1):
         content = c.get("content") or ""
         snippet = c.get("snippet") or ""
@@ -32,7 +58,7 @@ def build_evidence_items(citations: list[dict[str, Any]], question: str) -> list
         confidence = 0.55
         if has_full_q:
             confidence = 0.88
-        elif token_hits >= max(1, len(q_tokens) // 2):
+        elif q_tokens and token_hits >= max(1, len(q_tokens) // 2):
             confidence = 0.78
         elif token_hits > 0:
             confidence = 0.65

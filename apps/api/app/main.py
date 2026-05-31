@@ -1,7 +1,8 @@
+from contextlib import asynccontextmanager
 import hashlib
+import logging
 import secrets
 import time
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
@@ -10,7 +11,15 @@ from fastapi.responses import FileResponse
 
 from .config import CORS_ALLOW_CREDENTIALS, CORS_ORIGINS, settings
 from .db import LINT_DIR, WIKI_DIR, get_db, init_db, load_settings_map, read_settings
-from .models import IngestRequest, LintRequest, LoginRequest, QueryRequest, SettingsUpdateRequest, SyncRequest
+from .models import (
+    IngestRequest,
+    LintRequest,
+    LoginRequest,
+    PurposeUpdateRequest,
+    QueryRequest,
+    SettingsUpdateRequest,
+    SyncRequest,
+)
 from .services.assets import guess_media_type, resolve_document_asset, resolve_wiki_asset
 from .services.audit import add_audit_event, fetch_audit_events
 from .services.auth import (
@@ -22,32 +31,25 @@ from .services.auth import (
     parse_api_keys,
     require_any_auth,
     require_auth,
+    resolve_actor,
     revoke_session_token,
     serializer,
 )
-from .services.categories import (
-    browse_documents,
-    category_sql_clause,
-    classify_document,
-    list_category_stats,
-    path_prefix_sql_clause,
-    topic_sql_clause,
-)
+from .services.categories import browse_documents, list_category_stats
 from .services.evidence import build_evidence_items
-from .services.indexer import (
-    index_single_source,
-    load_sources,
-    read_text_safely,
-    resolve_source_root,
-    snippet_from_content,
-)
+from .services.fts import search_documents, search_for_query
+from .services.indexer import index_single_source, load_sources, read_text_safely, resolve_source_root
 from .services.library import build_library_index
 from .services.link_graph import analyze_wiki_graph
 from .services.lint_engine import run_lint_report
+from .services.rate_limit import check_api_rate_limit
+from .services.source_health import collect_source_warnings, source_health_status
 from .services.sync_settings import SYNC_PRESETS, enrich_settings_response
-from .services.purpose import load_purpose_text, purpose_status
+from .services.purpose import load_purpose_text, purpose_status, save_purpose_text
 from .services.query_engine import QueryEngineConfig, generate_structured_answer
+from .services.security import log_security_warnings, log_source_warnings
 from .services.scheduler import AutoSyncScheduler
+from .services.wiki_query import save_query_page
 from .services.sync_engine import (
     SYNC_LOCK,
     SYNC_STATE,
@@ -57,15 +59,6 @@ from .services.sync_engine import (
     run_sync_job,
 )
 
-app = FastAPI(title="mind-sync API", version="0.1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=CORS_ALLOW_CREDENTIALS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 SCHEDULER = AutoSyncScheduler(
     load_settings=load_settings_map,
     is_sync_running=is_sync_running,
@@ -73,11 +66,26 @@ SCHEDULER = AutoSyncScheduler(
 )
 
 
-@app.on_event("startup")
-def startup() -> None:
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     init_db()
     restore_last_sync_summary()
+    log_security_warnings()
+    log_source_warnings()
     SCHEDULER.start()
+    yield
+    logger.info("mind-sync API shutting down")
+
+
+app = FastAPI(title="mind-sync API", version="0.1.0", lifespan=lifespan)
+logger = logging.getLogger("mind-sync")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=CORS_ALLOW_CREDENTIALS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
@@ -93,8 +101,12 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    warnings = collect_source_warnings()
+    return {
+        "status": source_health_status(warnings),
+        "source_warnings": warnings,
+    }
 
 
 @app.post("/api/login")
@@ -108,7 +120,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> dict[s
     clear_login_failures(request, account)
     now = time.time()
     ttl = max(60, int(settings.session_ttl_seconds))
-    token = serializer.dumps({"ok": True, "issued_at": now, "expires_at": now + ttl})
+    token = serializer.dumps({"ok": True, "account": account, "issued_at": now, "expires_at": now + ttl})
     cookie_samesite = (settings.cookie_samesite or "lax").lower()
     if cookie_samesite not in {"lax", "strict", "none"}:
         cookie_samesite = "lax"
@@ -146,7 +158,7 @@ def logout(request: Request, response: Response, _: Any = Depends(require_auth))
     cookie_secure = bool(settings.cookie_secure or cookie_samesite == "none")
     response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite)
     response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite)
-    add_audit_event("logout", request, actor="cookie-user", detail="session revoked and cookies cleared")
+    add_audit_event("logout", request, actor=resolve_actor(request), detail="session revoked and cookies cleared")
     return {"ok": True}
 
 
@@ -231,7 +243,7 @@ def update_settings(payload: SettingsUpdateRequest, request: Request, _: Any = D
     add_audit_event(
         "settings_updated",
         request,
-        actor="cookie-user",
+        actor=resolve_actor(request),
         detail=f"auto_sync={payload.auto_sync_enabled}, preset={payload.sync_preset}",
     )
     return data
@@ -256,6 +268,7 @@ def sync(
     payload: SyncRequest | None = None,
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
+    check_api_rate_limit(request, "sync")
     body = payload or SyncRequest()
     source_ids: list[str] | None = None
     if body.preset and body.preset in SYNC_PRESETS:
@@ -269,14 +282,14 @@ def sync(
 
     with SYNC_LOCK:
         if SYNC_STATE["running"]:
-            add_audit_event("sync_requested", request, actor="cookie-user", detail="already running")
+            add_audit_event("sync_requested", request, actor=resolve_actor(request), detail="already running")
             return {"ok": True, "started": False, "message": "sync already running"}
         SYNC_STATE["running"] = True
     background_tasks.add_task(lambda: run_sync_job("manual", source_ids))
     detail = "sync started"
     if source_ids:
         detail += f" sources={','.join(source_ids)}"
-    add_audit_event("sync_requested", request, actor="cookie-user", detail=detail)
+    add_audit_event("sync_requested", request, actor=resolve_actor(request), detail=detail)
     return {"ok": True, "started": True, "source_ids": source_ids}
 
 
@@ -288,6 +301,22 @@ def sync_status(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
 @app.get("/api/purpose")
 def get_purpose(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
     return purpose_status()
+
+
+@app.post("/api/purpose")
+def update_purpose(
+    payload: PurposeUpdateRequest,
+    request: Request,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    save_purpose_text(payload.content)
+    add_audit_event(
+        "purpose_updated",
+        request,
+        actor=resolve_actor(request),
+        detail=f"chars={len(payload.content or '')}",
+    )
+    return {"ok": True, **purpose_status()}
 
 
 @app.get("/api/categories")
@@ -329,79 +358,19 @@ def search(
         return {"items": []}
     q = q.strip()
     conn = get_db()
-    cat_clause, cat_args = category_sql_clause(category)
-    topic_clause, topic_args = topic_sql_clause(topic)
-    prefix_clause, prefix_args = path_prefix_sql_clause(path_prefix)
-    fts_sql = """
-        SELECT d.id, d.source_id, d.rel_path, d.lang,
-               snippet(documents_fts, 1, '<mark>', '</mark>', '...', 30) AS snippet
-        FROM documents_fts
-        JOIN documents d ON d.id = documents_fts.rowid
-        WHERE documents_fts MATCH ?
-    """
-    fts_args: list[Any] = [q]
-    if source_id:
-        fts_sql += " AND d.source_id = ?"
-        fts_args.append(source_id)
-    if file_type:
-        fts_sql += " AND d.lang = ?"
-        fts_args.append(file_type)
-    fts_sql += cat_clause + topic_clause + prefix_clause
-    fts_args.extend(cat_args)
-    fts_args.extend(topic_args)
-    fts_args.extend(prefix_args)
-    fts_sql += " LIMIT ?"
-    fts_args.append(limit)
-    fts_rows = conn.execute(fts_sql, tuple(fts_args)).fetchall()
-    items = []
-    for row in fts_rows:
-        item = dict(row)
-        item["category"] = classify_document(row["source_id"], row["rel_path"])
-        items.append(item)
-    existing_ids = {item["id"] for item in items}
-
-    if len(items) < limit:
-        like_sql = """
-            SELECT id, source_id, rel_path, lang, content
-            FROM documents d
-            WHERE (title LIKE ? OR rel_path LIKE ? OR content LIKE ?)
-              AND (? IS NULL OR source_id = ?)
-              AND (? IS NULL OR lang = ?)
-        """
-        like_args: list[Any] = [
-            f"%{q}%",
-            f"%{q}%",
-            f"%{q}%",
-            source_id,
-            source_id,
-            file_type,
-            file_type,
-        ]
-        like_sql += cat_clause + topic_clause + prefix_clause
-        like_args.extend(cat_args)
-        like_args.extend(topic_args)
-        like_args.extend(prefix_args)
-        like_sql += " LIMIT ?"
-        like_args.append(limit * 5)
-        like_rows = conn.execute(like_sql, tuple(like_args)).fetchall()
-        for row in like_rows:
-            row_id = row["id"]
-            if row_id in existing_ids:
-                continue
-            items.append(
-                {
-                    "id": row_id,
-                    "source_id": row["source_id"],
-                    "rel_path": row["rel_path"],
-                    "lang": row["lang"],
-                    "snippet": snippet_from_content(row["content"], q),
-                    "category": classify_document(row["source_id"], row["rel_path"]),
-                }
-            )
-            existing_ids.add(row_id)
-            if len(items) >= limit:
-                break
-    conn.close()
+    try:
+        items = search_documents(
+            conn,
+            q,
+            limit=limit,
+            source_id=source_id,
+            file_type=file_type,
+            category=category,
+            topic=topic,
+            path_prefix=path_prefix,
+        )
+    finally:
+        conn.close()
     return {"items": items}
 
 
@@ -483,6 +452,7 @@ def wiki_content(path: str, _: Any = Depends(require_any_auth)) -> dict[str, Any
 
 @app.get("/api/wiki-page")
 def wiki_page(path: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    """Deprecated alias of /api/wiki-content."""
     return _read_wiki_page(path)
 
 
@@ -521,26 +491,18 @@ def ingest(payload: IngestRequest, _: Any = Depends(require_any_auth)) -> dict[s
 
 
 @app.post("/api/query")
-def query(payload: QueryRequest, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    check_api_rate_limit(request, "query")
     question = payload.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="question is required")
 
     conn = get_db()
-    rows = conn.execute(
-        """
-        SELECT d.id, d.source_id, d.rel_path, d.title, d.content,
-               snippet(documents_fts, 1, '<mark>', '</mark>', '...', 45) AS snippet
-        FROM documents_fts
-        JOIN documents d ON d.id = documents_fts.rowid
-        WHERE documents_fts MATCH ?
-        LIMIT ?
-        """,
-        (question, payload.limit),
-    ).fetchall()
-    conn.close()
+    try:
+        citations = search_for_query(conn, question, limit=payload.limit)
+    finally:
+        conn.close()
 
-    citations = [dict(row) for row in rows]
     evidences = build_evidence_items(citations, question)
     config = QueryEngineConfig(
         llm_base_url=settings.llm_base_url,
@@ -556,21 +518,16 @@ def query(payload: QueryRequest, _: Any = Depends(require_any_auth)) -> dict[str
     )
 
     saved_path = None
+    index_stat = None
     if payload.save_to_wiki:
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        slug = hashlib.sha1(question.encode("utf-8", errors="ignore")).hexdigest()[:8]
-        queries_dir = WIKI_DIR / "queries"
-        queries_dir.mkdir(parents=True, exist_ok=True)
-        rel_name = f"queries/{ts}_{slug}.md"
-        target = WIKI_DIR / rel_name
-        ref_lines = "\n".join([f"- [{e['ref']}] `{e['source_id']}/{e['rel_path']}`" for e in evidences]) or "- (none)"
-        body = (
-            f"---\ntype: query\nderived: true\nquestion: {question}\nmodel: {model_used}\n"
-            f"created: {ts}\n---\n\n"
-            f"# Query: {question}\n\n## Answer\n{answer}\n\n## Citations\n{ref_lines}\n"
+        slug = hashlib.sha256(question.encode("utf-8", errors="ignore")).hexdigest()[:12]
+        saved_path, index_stat = save_query_page(
+            question=question,
+            answer=answer,
+            model_used=model_used,
+            evidences=evidences,
+            slug=slug,
         )
-        target.write_text(body, encoding="utf-8")
-        saved_path = rel_name
 
     lite_citations = [
         {k: v for k, v in c.items() if k in {"id", "source_id", "rel_path", "title", "snippet"}}
@@ -582,14 +539,30 @@ def query(payload: QueryRequest, _: Any = Depends(require_any_auth)) -> dict[str
         "citations": lite_citations,
         "evidences": evidences,
         "saved_path": saved_path,
+        "indexed": index_stat,
         "used_llm": used_llm,
         "model_used": model_used,
+        "llm_configured": bool((settings.llm_api_key or "").strip()),
     }
 
 
 @app.post("/api/lint")
-def lint(payload: LintRequest, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def lint(payload: LintRequest, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    check_api_rate_limit(request, "lint")
+    cap = max(1000, int(settings.lint_content_max_chars))
     conn = get_db()
-    rows = conn.execute("SELECT id, source_id, rel_path, title, content, updated_at FROM documents").fetchall()
+    rows = conn.execute(
+        "SELECT id, source_id, rel_path, title, "
+        "CASE WHEN length(content) > ? THEN substr(content, 1, ?) ELSE content END AS content, "
+        "updated_at FROM documents",
+        (cap, cap),
+    ).fetchall()
     conn.close()
-    return run_lint_report(rows=rows, stale_days=payload.stale_days, report_dir=LINT_DIR, wiki_dir=WIKI_DIR)
+    report = run_lint_report(rows=rows, stale_days=payload.stale_days, report_dir=LINT_DIR, wiki_dir=WIKI_DIR)
+    add_audit_event(
+        "lint_completed",
+        request,
+        actor=resolve_actor(request),
+        detail=f"issues={len(report.get('issues', []))}",
+    )
+    return report

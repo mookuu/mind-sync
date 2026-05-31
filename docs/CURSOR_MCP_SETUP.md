@@ -24,7 +24,8 @@
 - `sync_sources` / `sync_status` — 同步索引
 - `search_docs` — 全文搜索（可传 `category`、`topic`）
 - `browse_docs` — 分类浏览
-- `list_categories` / `get_purpose` — 元信息
+- `list_categories` / `get_purpose` / `update_purpose` — 研究方向读写
+- `audit_events` — 最近审计事件（登录/同步/设置）
 - `query_wiki` — 问答（`save_to_wiki=true` 写入 queries）
 - `wiki_graph` / `lint_wiki` — 图谱与质量检查
 

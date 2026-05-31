@@ -17,9 +17,9 @@ services:
       - ./data:/data
       - ./sources.yaml:/workspace/sources.yaml:ro
       - ./apps/api/app:/app/app
-      - C:/Workspace/10.program/90.ai/knowledge_engineering:/sources/knowledge_engineering:ro
-      - C:/Workspace/10.program/10.language/JavaBasic:/sources/JavaBasic:ro
-      - C:/Workspace/10.program/10.language/PythonBasic:/sources/PythonBasic:ro
+      - ${SOURCE_KNOWLEDGE_ENGINEERING:-./sources/knowledge_engineering}:/sources/knowledge_engineering:ro
+      - ${SOURCE_JAVA_BASIC:-./sources/JavaBasic}:/sources/JavaBasic:ro
+      - ${SOURCE_PYTHON_BASIC:-./sources/PythonBasic}:/sources/PythonBasic:ro
     ports:
       - "8000:8000"
     healthcheck:
@@ -37,3 +37,9 @@ services:
         condition: service_healthy
     ports:
       - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

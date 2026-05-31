@@ -64,8 +64,15 @@ def init_db() -> None:
             detail TEXT NOT NULL,
             created_at REAL NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS api_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity TEXT NOT NULL,
+            bucket TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
         """
     )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_key_time ON api_usage(identity, bucket, created_at)")
     try:
         conn.execute("ALTER TABLE documents ADD COLUMN size INTEGER NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:

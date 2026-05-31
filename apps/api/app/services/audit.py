@@ -12,8 +12,10 @@ def cleanup_auth_meta(conn: sqlite3.Connection) -> None:
     now = time.time()
     window = max(10, int(settings.login_rate_limit_window_seconds))
     retain_days = max(1, int(settings.audit_retention_days))
+    api_window = max(60, int(settings.api_rate_limit_window_seconds))
     conn.execute("DELETE FROM login_failures WHERE failed_at < ?", (now - window * 5,))
     conn.execute("DELETE FROM audit_events WHERE created_at < ?", (now - retain_days * 86400,))
+    conn.execute("DELETE FROM api_usage WHERE created_at < ?", (now - api_window * 2,))
 
 
 def add_audit_event_meta(event_type: str, actor: str, ip: str, detail: str) -> None:

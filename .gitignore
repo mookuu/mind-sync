@@ -6,4 +6,5 @@ node_modules/
 *.log
 apps/api/.venv/
 data/
+sources/
 wiki_graph.json

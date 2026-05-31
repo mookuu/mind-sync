@@ -183,6 +183,9 @@ def index_single_source(conn: sqlite3.Connection, source: Source, rel_path_filte
         stat = f.stat()
         mtime = stat.st_mtime
         size = int(stat.st_size)
+        if size > int(settings.max_index_file_bytes):
+            skipped += 1
+            continue
         old = conn.execute(
             "SELECT mtime, size, sha1 FROM documents WHERE source_id = ? AND rel_path = ?",
             (source.id, rel_path),

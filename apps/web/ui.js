@@ -120,6 +120,21 @@ function bindTreeToggle(toggleBtn, bodyEl) {
   };
 }
 
+function treeFileIcon(name) {
+  const ext = (String(name || "").split(".").pop() || "").toLowerCase();
+  const icons = {
+    md: "📄",
+    py: "🐍",
+    java: "☕",
+    js: "📜",
+    ts: "📘",
+    json: "📋",
+    yaml: "⚙",
+    yml: "⚙",
+  };
+  return icons[ext] || "📄";
+}
+
 function renderTreeNodes(container, nodes, depth, sourceId, langId) {
   for (const node of nodes || []) {
     if (node.type === "dir") {
@@ -132,7 +147,7 @@ function renderTreeNodes(container, nodes, depth, sourceId, langId) {
       dirBtn.dataset.sourceId = sourceId;
       dirBtn.dataset.langId = langId;
       dirBtn.dataset.path = node.path || node.name;
-      dirBtn.innerHTML = `<span class="chevron">▸</span><span class="tree-icon">📁</span><span>${node.name}</span>`;
+      dirBtn.innerHTML = `<span class="chevron">▸</span><span class="tree-dir-icon">📁</span><span>${node.name}</span>`;
       const dirBody = document.createElement("div");
       dirBody.className = "tree-dir-body hidden";
       dirBody.dataset.path = node.path || node.name;
@@ -146,7 +161,7 @@ function renderTreeNodes(container, nodes, depth, sourceId, langId) {
       btn.type = "button";
       btn.className = "tree-item tree-file";
       btn.style.paddingLeft = `${depth * 12 + 20}px`;
-      btn.textContent = node.name;
+      btn.innerHTML = `<span class="tree-file-icon">${treeFileIcon(node.name)}</span><span>${node.name}</span>`;
       btn.title = node.path;
       btn.dataset.path = node.path;
       btn.dataset.docId = String(node.doc_id);
@@ -198,6 +213,12 @@ function revealLibraryDocument(sourceId, relPath, lang) {
       const secBtn = section.querySelector(".lib-section-head");
       const secBody = section.querySelector(".lib-section-body");
       if (secBtn && secBody) setTreeExpanded(secBtn, secBody, true);
+    }
+    const flatLang = fileBtnPreview.closest(".lib-section")?.querySelector(
+      `.lib-lang-head[data-source-id="${cssEscape(sourceId)}"][data-lang-id="${cssEscape(langId)}"]`
+    );
+    if (flatLang) {
+      setTreeExpanded(flatLang, flatLang.nextElementSibling, true);
     }
   }
 
@@ -252,44 +273,55 @@ async function loadLibrary() {
       const secBtn = document.createElement("button");
       secBtn.type = "button";
       secBtn.className = "lib-section-head";
-      secBtn.innerHTML = `<span class="chevron">▸</span> ${section.label} (${section.sources?.reduce((n, s) => n + (s.count || 0), 0) || 0})`;
+      secBtn.innerHTML = `<span class="chevron">▸</span> ${section.label} (${section.count ?? section.sources?.reduce((n, s) => n + (s.count || 0), 0) ?? 0})`;
       const secBody = document.createElement("div");
       secBody.className = "lib-section-body hidden";
       bindTreeToggle(secBtn, secBody);
 
-      for (const source of section.sources || []) {
-        const srcWrap = document.createElement("div");
-        srcWrap.className = "lib-source";
-        srcWrap.dataset.sourceId = source.id;
-        const srcBtn = document.createElement("button");
-        srcBtn.type = "button";
-        srcBtn.className = "lib-source-head";
-        srcBtn.dataset.sourceId = source.id;
-        srcBtn.innerHTML = `<span class="chevron">▸</span> ${source.label} <span class="subtle">(${source.count})</span>`;
-        const srcBody = document.createElement("div");
-        srcBody.className = "lib-source-body hidden";
-        bindTreeToggle(srcBtn, srcBody);
+      const renderLangGroup = (container, sourceId, lang) => {
+        const langWrap = document.createElement("div");
+        langWrap.className = "lib-lang";
+        const langBtn = document.createElement("button");
+        langBtn.type = "button";
+        langBtn.className = "lib-lang-head";
+        langBtn.dataset.sourceId = sourceId;
+        langBtn.dataset.langId = lang.id;
+        langBtn.innerHTML = `<span class="chevron">▸</span> ${lang.label} <span class="subtle">(${lang.count})</span>`;
+        const langBody = document.createElement("div");
+        langBody.className = "lib-tree hidden";
+        bindTreeToggle(langBtn, langBody);
+        renderTreeNodes(langBody, lang.tree || [], 0, sourceId, lang.id);
+        langWrap.appendChild(langBtn);
+        langWrap.appendChild(langBody);
+        container.appendChild(langWrap);
+      };
 
-        for (const lang of source.languages || []) {
-          const langWrap = document.createElement("div");
-          langWrap.className = "lib-lang";
-          const langBtn = document.createElement("button");
-          langBtn.type = "button";
-          langBtn.className = "lib-lang-head";
-          langBtn.dataset.sourceId = source.id;
-          langBtn.dataset.langId = lang.id;
-          langBtn.innerHTML = `<span class="chevron">▸</span> ${lang.label} <span class="subtle">(${lang.count})</span>`;
-          const langBody = document.createElement("div");
-          langBody.className = "lib-tree hidden";
-          bindTreeToggle(langBtn, langBody);
-          renderTreeNodes(langBody, lang.tree || [], 0, source.id, lang.id);
-          langWrap.appendChild(langBtn);
-          langWrap.appendChild(langBody);
-          srcBody.appendChild(langWrap);
+      if (section.flat && section.languages) {
+        const sourceId = section.source_id || "wiki";
+        for (const lang of section.languages || []) {
+          renderLangGroup(secBody, sourceId, lang);
         }
-        srcWrap.appendChild(srcBtn);
-        srcWrap.appendChild(srcBody);
-        secBody.appendChild(srcWrap);
+      } else {
+        for (const source of section.sources || []) {
+          const srcWrap = document.createElement("div");
+          srcWrap.className = "lib-source";
+          srcWrap.dataset.sourceId = source.id;
+          const srcBtn = document.createElement("button");
+          srcBtn.type = "button";
+          srcBtn.className = "lib-source-head";
+          srcBtn.dataset.sourceId = source.id;
+          srcBtn.innerHTML = `<span class="chevron">▸</span> ${source.label} <span class="subtle">(${source.count})</span>`;
+          const srcBody = document.createElement("div");
+          srcBody.className = "lib-source-body hidden";
+          bindTreeToggle(srcBtn, srcBody);
+
+          for (const lang of source.languages || []) {
+            renderLangGroup(srcBody, source.id, lang);
+          }
+          srcWrap.appendChild(srcBtn);
+          srcWrap.appendChild(srcBody);
+          secBody.appendChild(srcWrap);
+        }
       }
       sec.appendChild(secBtn);
       sec.appendChild(secBody);
@@ -395,6 +427,13 @@ function patchAuthUI() {
       settingsStatus.textContent = `保存失败: ${e.message}`;
     }
   };
+
+  if (savePurposeBtn) {
+    savePurposeBtn.onclick = async () => {
+      if (!isLoggedIn) return;
+      await savePurposeContent();
+    };
+  }
 
   const globalSearch = document.getElementById("globalSearch");
   if (globalSearch) {

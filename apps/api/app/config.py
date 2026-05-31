@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 60 * 60 * 24 * 7
     login_rate_limit_window_seconds: int = 300
     login_rate_limit_max_attempts: int = 5
+    api_rate_limit_window_seconds: int = 3600
+    api_rate_limit_query_max: int = 30
+    api_rate_limit_sync_max: int = 10
+    api_rate_limit_lint_max: int = 20
+    max_index_file_bytes: int = 2_000_000
+    lint_content_max_chars: int = 500_000
     security_hsts_enabled: bool = False
     cors_allow_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
     csrf_header_name: str = "x-csrf-token"

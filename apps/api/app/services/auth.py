@@ -154,6 +154,33 @@ def require_any_auth(request: Request) -> None:
     enforce_csrf(request)
 
 
+def session_account(request: Request) -> str:
+    token = request.cookies.get("ms_token", "").strip()
+    if not token:
+        return ""
+    try:
+        payload = serializer.loads(token)
+        return (payload.get("account") or "").strip()
+    except BadSignature:
+        return ""
+
+
+def resolve_actor(request: Request) -> str:
+    if is_api_key_valid(request):
+        key = request.headers.get("x-api-key", "").strip()
+        if not key:
+            auth = request.headers.get("authorization", "").strip()
+            if auth.lower().startswith("bearer "):
+                key = auth[7:].strip()
+        if key:
+            return f"api-key:{key[:8]}…"
+        return "api-key"
+    account = session_account(request)
+    if account:
+        return account
+    return "cookie-user"
+
+
 def revoke_session_token(token: str) -> None:
     try:
         payload = serializer.loads(token)

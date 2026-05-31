@@ -99,6 +99,18 @@ def get_purpose() -> dict[str, Any]:
 
 
 @mcp.tool()
+def update_purpose(content: str) -> dict[str, Any]:
+    """Update research direction in DATA_DIR/purpose.md."""
+    return call_api("POST", "/api/purpose", body={"content": content})
+
+
+@mcp.tool()
+def audit_events(limit: int = 50) -> dict[str, Any]:
+    """List recent audit events (login, sync, settings changes)."""
+    return call_api("GET", "/api/audit-events", params={"limit": limit})
+
+
+@mcp.tool()
 def get_document(doc_id: int) -> dict[str, Any]:
     """Read document content by numeric id."""
     return call_api("GET", f"/api/document/{doc_id}")

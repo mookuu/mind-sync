@@ -44,3 +44,7 @@ class SyncRequest(BaseModel):
     use_saved_defaults: bool = True
     source_ids: list[str] | None = None
     preset: str | None = None
+
+
+class PurposeUpdateRequest(BaseModel):
+    content: str = ""

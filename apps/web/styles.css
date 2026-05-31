@@ -494,6 +494,7 @@ html[data-auth="guest"] #loginScreen {
 }
 
 .doc-content.doc-markdown pre.md-text-block,
+.doc-content.doc-markdown pre.md-monospace-block,
 .doc-content.doc-markdown .md-prose-box {
   margin: 10px 0;
   padding: 12px 14px;
@@ -506,6 +507,17 @@ html[data-auth="guest"] #loginScreen {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+  position: relative;
+}
+
+.doc-content.doc-markdown pre.md-text-block[data-lang]::before {
+  content: attr(data-lang);
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+  text-transform: lowercase;
 }
 
 .doc-content.doc-markdown pre.md-text-block code {
@@ -516,13 +528,51 @@ html[data-auth="guest"] #loginScreen {
   padding: 0;
 }
 
+.doc-content.doc-markdown pre.md-monospace-block {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  word-break: normal;
+  color: var(--fg-muted);
+  background: var(--bg-default);
+}
+
+.doc-content.doc-markdown pre.md-monospace-block code {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+.doc-content.doc-markdown .task-item,
+.doc-content.doc-markdown li.task-list-item {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.doc-content.doc-markdown .task-item input,
+.doc-content.doc-markdown li.task-list-item input {
+  margin-top: 3px;
+  accent-color: var(--accent-emphasis);
+}
+
+.doc-content.doc-markdown del {
+  color: var(--fg-muted);
+  text-decoration: line-through;
+}
+
 .doc-content.doc-markdown ul,
 .doc-content.doc-markdown ol {
   margin: 0.5em 0;
   padding-left: 1.4em;
 }
 
-.doc-content.doc-markdown pre:not(.code-block):not(.md-text-block) {
+.doc-content.doc-markdown pre:not(.code-block):not(.md-text-block):not(.md-monospace-block) {
   margin: 12px 0;
   padding: 16px;
   overflow: auto;
@@ -532,7 +582,7 @@ html[data-auth="guest"] #loginScreen {
   color: var(--fg-default);
 }
 
-.doc-content.doc-markdown pre:not(.code-block):not(.md-text-block) code {
+.doc-content.doc-markdown pre:not(.code-block):not(.md-text-block):not(.md-monospace-block) code {
   font-family: var(--font-mono);
   font-size: 13px;
   color: inherit;
@@ -552,6 +602,20 @@ html[data-auth="guest"] #loginScreen {
   border-radius: 2px;
 }
 
+.doc-content.doc-markdown .md-table-wrap {
+  overflow-x: auto;
+  margin: 12px 0;
+  max-width: 100%;
+}
+
+.doc-content.doc-markdown .md-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 13px;
+  word-break: normal;
+}
+
 .doc-content.doc-markdown table {
   width: 100%;
   border-collapse: collapse;
@@ -563,11 +627,33 @@ html[data-auth="guest"] #loginScreen {
 .doc-content.doc-markdown td {
   border: 1px solid var(--border-default);
   padding: 6px 10px;
-  text-align: left;
 }
 
 .doc-content.doc-markdown th {
   background: var(--bg-muted);
+  text-align: left;
+}
+
+.doc-content.doc-markdown td {
+  text-align: left;
+}
+
+.doc-content.doc-markdown th[style*="text-align:center"],
+.doc-content.doc-markdown td[style*="text-align:center"],
+.doc-content.doc-markdown th[align="center"],
+.doc-content.doc-markdown td[align="center"] {
+  text-align: center;
+}
+
+.doc-content.doc-markdown th[style*="text-align:right"],
+.doc-content.doc-markdown td[style*="text-align:right"],
+.doc-content.doc-markdown th[align="right"],
+.doc-content.doc-markdown td[align="right"] {
+  text-align: right;
+}
+
+.doc-content.doc-markdown .md-table-wrap code.inline-code {
+  white-space: nowrap;
 }
 
 .doc-content.doc-markdown hr {
@@ -602,15 +688,43 @@ html[data-auth="guest"] #loginScreen {
   user-select: none;
 }
 
+.lint-summary {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-default);
+  background: var(--bg-default);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow: auto;
+}
+
 .doc-content.doc-markdown .md-figure {
   display: block;
   max-width: 100%;
   margin: 14px 0;
   padding: 16px;
-  background: #f6f8fa;
-  border: 1px solid #d0d7de;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+}
+
+.doc-content.doc-markdown .md-figure-caption {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.lib-tree .tree-dir-icon,
+.lib-tree .tree-file-icon {
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
 }
 
 .doc-content.doc-markdown .md-figure img,
@@ -628,13 +742,6 @@ html[data-auth="guest"] #loginScreen {
 .doc-content.doc-markdown.doc-image-enhanced .md-figure img,
 .doc-content.doc-markdown.doc-image-enhanced .md-image {
   filter: invert(1) hue-rotate(180deg) contrast(1.12) brightness(1.08);
-}
-
-.doc-content.doc-markdown .md-figure-caption {
-  margin-top: 10px;
-  text-align: center;
-  font-size: 12px;
-  color: #57606a;
 }
 
 .doc-content.doc-markdown img.md-image-error {
@@ -1017,15 +1124,30 @@ select:focus {
   color: var(--danger-fg);
 }
 
-.purpose-preview {
+.purpose-editor {
+  width: 100%;
+  min-height: 220px;
   padding: 12px;
-  border: 1px solid var(--border-default);
   border-radius: var(--radius);
+  border: 1px solid var(--border-default);
   background: var(--bg-default);
-  white-space: pre-wrap;
-  max-height: 280px;
-  overflow: auto;
+  color: var(--fg-default);
+  font-family: var(--font-mono);
   font-size: 13px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.ask-answer {
+  margin: 12px 0 16px;
+  padding: 16px;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+
+.ask-answer:empty {
+  display: none;
 }
 
 .status-msg {

@@ -1,6 +1,9 @@
+import logging
 import threading
 import time
 from typing import Any, Callable
+
+logger = logging.getLogger("mind-sync.scheduler")
 
 
 class AutoSyncScheduler:
@@ -91,5 +94,10 @@ class AutoSyncScheduler:
                     self._last_info["skipped"] = summary.get("skipped", 0)
                     self._last_info["deleted"] = summary.get("deleted", 0)
                     self._last_info["error"] = summary.get("error")
-            except Exception:
+            except Exception as exc:
+                logger.exception("auto sync scheduler loop failed: %s", exc)
+                with self._lock:
+                    self._last_info["status"] = "failed"
+                    self._last_info["finished_at"] = time.time()
+                    self._last_info["error"] = str(exc)
                 continue

@@ -1,5 +1,8 @@
+# 复制为 sources.yaml 并按环境修改 path。
+# Docker 推荐使用 /sources/<id>，由 docker-compose 卷挂载。
+# 本机直跑 API 时可改为绝对路径，例如 D:/notes/knowledge_engineering
+
 sources:
-  # Docker 容器内路径；本地开发见 sources.example.yaml 与 docs/DEPLOYMENT.md
   - id: knowledge_engineering
     type: local
     path: "/sources/knowledge_engineering"
@@ -27,3 +30,9 @@ sources:
     path: "/data/wiki"
     include:
       - "**/*.md"
+
+  # 占位：远程源尚未实现
+  # - id: example_github
+  #   type: github
+  #   url: "https://github.com/org/repo"
+  #   include: ["**/*.md"]

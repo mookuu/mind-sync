@@ -128,6 +128,60 @@ def main() -> int:
         )
     )
 
+    sub.add_parser("categories", help="list categories and topics").set_defaults(
+        func=lambda a: request_api(a.base_url, a.api_key, "GET", "/api/categories")
+    )
+
+    browse_p = sub.add_parser("browse", help="browse docs by category/topic")
+    browse_p.add_argument("--category", default=None)
+    browse_p.add_argument("--topic", default=None)
+    browse_p.add_argument("--limit", type=int, default=40)
+    browse_p.set_defaults(
+        func=lambda a: request_api(
+            a.base_url,
+            a.api_key,
+            "GET",
+            "/api/browse",
+            params={"category": a.category, "topic": a.topic, "limit": a.limit},
+        )
+    )
+
+    library_p = sub.add_parser("library", help="library tree index")
+    library_p.add_argument("--category", default="all")
+    library_p.set_defaults(
+        func=lambda a: request_api(
+            a.base_url, a.api_key, "GET", "/api/library", params={"category": a.category}
+        )
+    )
+
+    purpose_p = sub.add_parser("purpose", help="get or set purpose.md")
+    purpose_p.add_argument("action", choices=["get", "set"], default="get", nargs="?")
+    purpose_p.add_argument("--content", default=None, help="content for set action")
+    purpose_p.add_argument("--content-file", default=None, help="UTF-8 file for set action")
+
+    def purpose_cmd(a):
+        if (a.action or "get") == "set":
+            content = a.content
+            if a.content_file:
+                with open(a.content_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+            if content is None:
+                raise RuntimeError("set requires --content or --content-file")
+            return request_api(
+                a.base_url, a.api_key, "POST", "/api/purpose", body={"content": content}
+            )
+        return request_api(a.base_url, a.api_key, "GET", "/api/purpose")
+
+    purpose_p.set_defaults(func=purpose_cmd)
+
+    audit_p = sub.add_parser("audit-events", help="list audit events")
+    audit_p.add_argument("--limit", type=int, default=30)
+    audit_p.set_defaults(
+        func=lambda a: request_api(
+            a.base_url, a.api_key, "GET", "/api/audit-events", params={"limit": a.limit}
+        )
+    )
+
     args = parser.parse_args()
     try:
         result = args.func(args)

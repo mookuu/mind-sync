@@ -1,11 +1,10 @@
 FROM node:20-alpine AS vendor
 WORKDIR /build
-COPY package.json ./
+COPY package.json md-bundle-entry.js ./
 RUN npm install --no-audit --no-fund \
   && mkdir -p vendor \
-  && cp node_modules/marked/marked.min.js vendor/ \
-  && cp node_modules/highlight.js/styles/github-dark.min.css vendor/github-dark.min.css \
-  && wget -qO vendor/highlight.min.js https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js
+  && npm run build:vendor \
+  && cp node_modules/highlight.js/styles/github-dark.min.css vendor/github-dark.min.css
 
 FROM nginx:1.27-alpine
 

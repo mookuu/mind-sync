@@ -34,6 +34,7 @@
   - `GET /api/categories`
   - `GET /api/browse?category=&topic=`
   - `GET /api/purpose`
+  - `POST /api/purpose`
   - `GET /api/document/{id}`
   - `POST /api/ingest`
   - `POST /api/query`
@@ -63,6 +64,11 @@ python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key sync-status
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key query "PlanAndSolve 核心思想" --save
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key query "Django 路由机制" --model "deepseek-ai/DeepSeek-V4-Flash"
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key wiki-graph
+python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key categories
+python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key browse --category summary
+python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key library
+python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key purpose get
+python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key audit-events --limit 10
 # Windows 终端乱码时，建议直接输出 UTF-8 文件
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key search "闭包" --output-file result.json
 ```
@@ -84,12 +90,15 @@ MCP 提供工具：
 
 - `health`
 - `list_sources`
+- `list_library`
 - `sync_sources`
 - `sync_status`
 - `search_docs`（支持 `category` / `topic` / `source_id` 过滤）
 - `list_categories`
 - `browse_docs`
 - `get_purpose`
+- `update_purpose`
+- `audit_events`
 - `get_document`
 - `wiki_graph`
 - `query_wiki`
@@ -122,10 +131,11 @@ data/
 - 增量索引与全文搜索（SQLite FTS5）
 - **文档分类**：原始素材 / 学习摘要 / 问答沉淀；按主题浏览（`/api/categories`、`/api/browse`）
 - 搜索过滤（`source_id` / 文件类型 / `category` / `topic`）
-- 文档内容预览（Markdown 渲染）
+- 文档内容预览（Markdown 渲染，markdown-it 14 内置 GFM 表格/删除线 + task-lists 插件）
 - Query/ingest/lint 的 API 能力；问答证据四档置信度（EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED）
-- 问答可选保存到 `wiki/queries/`（frontmatter 结构化）
-- `purpose.md` 研究方向预览（Web 设置页 + `/api/purpose`）
+- 问答可选保存到 `wiki/queries/`（frontmatter 结构化），**保存后自动索引**
+- `purpose.md` 研究方向可在 Web 设置页编辑（`/api/purpose` POST）
+- 部署与路径迁移见 `docs/DEPLOYMENT.md`；来源示例见 `sources.example.yaml`
 - 自动定时同步（可在设置中开启，默认关闭）
 - 页面显式展示“下次自动同步时间 / 最近一次自动同步状态”
 - 设置页展示最近审计事件（登录/登出/同步/设置变更，只读）
@@ -148,6 +158,7 @@ data/
 ## L1 安全强化（已支持）
 
 - 登录失败限速（按 IP + 用户名，窗口与次数可配；记录持久化到 SQLite，重启不丢）
+- 问答/同步/Lint API 限速（`API_RATE_LIMIT_*`，默认 30/10/20 次/小时）
 - 审计日志（登录/登出/同步/设置变更；`GET /api/audit-events`，保留天数可配 `AUDIT_RETENTION_DAYS`）
 - Session Cookie 安全属性可配（`HttpOnly` + `Secure` + `SameSite` + `max_age`）
 - Session 支持 TTL 过期控制（`SESSION_TTL_SECONDS`）

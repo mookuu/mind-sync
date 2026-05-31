@@ -149,8 +149,9 @@
               <input id="saveInsight" type="checkbox" />
               保存到 wiki/queries
             </label>
+            <p id="askHint" class="subtle">未配置 LLM_API_KEY 时将仅返回检索摘要，不会调用大模型。</p>
             <p id="askMeta" class="subtle"></p>
-            <pre id="askAnswer" class="answer-box"></pre>
+            <div id="askAnswer" class="doc-content doc-markdown ask-answer"></div>
             <h3 class="section-label">证据列表</h3>
             <ul id="evidenceList" class="result-list"></ul>
           </section>
@@ -196,6 +197,11 @@
               <p id="nextAutoSyncText">下次自动同步：--</p>
               <p id="lastAutoSyncText">最近自动同步：--</p>
               <p id="syncScopeText" class="subtle">同步范围：--</p>
+              <div class="btn-row">
+                <button id="runLintBtn" type="button" class="btn btn-sm">运行 Wiki Lint</button>
+              </div>
+              <p id="lintStatus" class="subtle"></p>
+              <pre id="lintSummary" class="lint-summary hidden"></pre>
             </div>
           </section>
         </main>
@@ -234,13 +240,17 @@
             </section>
             <section id="settingsTab-sources" class="settings-pane hidden">
               <h4>已配置来源</h4>
-              <p class="subtle">来自 sources.yaml，需在服务器上编辑后重启 API。</p>
+              <p class="subtle">来自 sources.yaml，需在服务器上编辑后<strong>重启 API 容器</strong>生效（Web 此处只读）。首次部署请确认 docker-compose 中 SOURCE_* 路径非空。</p>
               <ul id="sourcesList" class="sources-list"></ul>
             </section>
             <section id="settingsTab-purpose" class="settings-pane hidden">
               <h4>purpose.md</h4>
-              <p class="subtle">问答时会注入 LLM，文件位于 data/purpose.md</p>
-              <pre id="purposePreview" class="purpose-preview"></pre>
+              <p class="subtle">问答时会注入 LLM，保存后立即生效</p>
+              <textarea id="purposeEditor" class="purpose-editor" rows="12" placeholder="描述你的研究方向与优先关注主题…"></textarea>
+              <div class="btn-row">
+                <button id="savePurposeBtn" type="button" class="btn btn-primary">保存 purpose</button>
+              </div>
+              <p id="purposeStatus" class="status-msg"></p>
             </section>
             <section id="settingsTab-audit" class="settings-pane hidden">
               <div class="row-between">
@@ -269,7 +279,7 @@
     <div id="loginModal" class="hidden"></div>
 
     <script src="/vendor/highlight.min.js"></script>
-    <script src="/vendor/marked.min.js"></script>
+    <script src="/vendor/markdown-it.bundle.js"></script>
     <script src="/app.js"></script>
     <script src="/preview.js"></script>
     <script src="/ui.js"></script>
