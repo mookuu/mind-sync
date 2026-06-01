@@ -7,4 +7,6 @@ node_modules/
 apps/api/.venv/
 data/
 sources/
+.pytest-data/
+.ci-data/
 wiki_graph.json

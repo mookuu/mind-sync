@@ -3,10 +3,10 @@ from pathlib import Path
 
 from .config import settings
 
-DB_PATH = Path(settings.data_dir) / "mind_sync.db"
-Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
-WIKI_DIR = Path(settings.data_dir) / "wiki"
-LINT_DIR = Path(settings.data_dir) / "lint-reports"
+DATA_DIR = Path(settings.data_dir)
+DB_PATH = DATA_DIR / "mind_sync.db"
+WIKI_DIR = DATA_DIR / "wiki"
+LINT_DIR = DATA_DIR / "lint-reports"
 SEED_DIR = Path(__file__).resolve().parent / "seed"
 SETTINGS_DEFAULTS = {
     "auto_sync_enabled": "false",
@@ -16,7 +16,13 @@ SETTINGS_DEFAULTS = {
 }
 
 
+def ensure_data_dir() -> Path:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return DATA_DIR
+
+
 def get_db() -> sqlite3.Connection:
+    ensure_data_dir()
     conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
@@ -26,6 +32,7 @@ def get_db() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    ensure_data_dir()
     conn = get_db()
     conn.executescript(
         """
