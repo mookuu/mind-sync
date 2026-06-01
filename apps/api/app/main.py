@@ -24,6 +24,7 @@ from .models import (
 )
 from .services.assets import guess_media_type, resolve_document_asset, resolve_wiki_asset
 from .services.audit import add_audit_event, fetch_audit_events
+from .services.wiki_util import safe_wiki_path
 from .services.auth import (
     check_login_rate_limit,
     clear_login_failures,
@@ -449,16 +450,9 @@ def wiki_graph(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
 
 
 def _read_wiki_page(path: str) -> dict[str, Any]:
+    """Read a wiki page by relative path. Deprecated alias kept for backward compat."""
+    target = safe_wiki_path(path, WIKI_DIR)
     rel = (path or "").strip().replace("\\", "/")
-    if not rel:
-        raise HTTPException(status_code=400, detail="path is required")
-    target = (WIKI_DIR / rel).resolve()
-    try:
-        target.relative_to(WIKI_DIR.resolve())
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="invalid wiki path") from exc
-    if not target.exists() or not target.is_file():
-        raise HTTPException(status_code=404, detail="wiki page not found")
     content = read_text_safely(target)
     return {"path": rel, "content": content}
 
@@ -481,16 +475,7 @@ def update_wiki_content(
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
     enforce_csrf(request)
-    rel = (payload.path or "").strip().replace("\\", "/")
-    if not rel or ".." in rel.split("/"):
-        raise HTTPException(status_code=400, detail="invalid wiki path")
-    if not rel.lower().endswith(".md"):
-        raise HTTPException(status_code=400, detail="only .md wiki pages are supported")
-    target = (WIKI_DIR / rel).resolve()
-    try:
-        target.relative_to(WIKI_DIR.resolve())
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="invalid wiki path") from exc
+    target = safe_wiki_path(payload.path, WIKI_DIR, must_exist=False)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(payload.content or "", encoding="utf-8")
     stat: dict[str, Any] = {}

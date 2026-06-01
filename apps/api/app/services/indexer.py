@@ -2,6 +2,7 @@ import hashlib
 import os
 import sqlite3
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,18 @@ from .source_adapters import resolve_source_root as adapter_resolve_source_root
 from .source_adapters.base import SourceSpec
 
 
-def load_sources() -> list[Source]:
+_SOURCES_CACHE_TIME = 0.0
+_SOURCES_CACHE_TTL = 30  # seconds
+
+
+def _reset_sources_cache() -> None:
+    """Clear the cached sources list. Called after sources.yaml could have changed."""
+    load_sources.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def _load_sources_cached(cache_key: float) -> list[Source]:
+    """Internal: read and parse sources.yaml. The cache_key is a coarse timestamp bucket."""
     src_file = Path(settings.sources_file)
     if not src_file.exists():
         return []
@@ -32,6 +44,11 @@ def load_sources() -> list[Source]:
             )
         )
     return result
+
+
+def load_sources() -> list[Source]:
+    bucket = int(time.time() / _SOURCES_CACHE_TTL)
+    return _load_sources_cached(bucket)
 
 
 def resolve_source_root(source: Source) -> Path:
@@ -64,17 +81,24 @@ def language_from_suffix(path: Path) -> str:
 
 
 def read_text_safely(path: Path) -> str:
-    raw = path.read_bytes()
+    enc = _detect_encoding(str(path))
+    return path.read_bytes().decode(enc, errors="replace")
+
+
+@lru_cache(maxsize=256)
+def _detect_encoding(path_key: str) -> str:
+    """Detect encoding for a file, caching the result by path."""
+    raw = Path(path_key).read_bytes()
     for enc in ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "gb18030", "gbk"):
         try:
             text = raw.decode(enc)
-            bad_ratio = text.count("�") / max(len(text), 1)
+            bad_ratio = text.count(chr(0xfffd)) / max(len(text), 1)
             if enc.startswith("utf-8") and bad_ratio > 0.01:
                 continue
-            return text
+            return enc
         except UnicodeDecodeError:
             continue
-    return raw.decode("utf-8", errors="replace")
+    return "utf-8"
 
 
 def collect_files(root: Path, includes: list[str]) -> list[Path]:

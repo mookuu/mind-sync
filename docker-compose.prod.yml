@@ -1,0 +1,49 @@
+﻿services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: mind-sync-api:latest
+    container_name: mind-sync-api
+    env_file:
+      - .env
+    environment:
+      - DATA_DIR=${DATA_DIR:-/data}
+      - SOURCES_FILE=${SOURCES_FILE:-/workspace/sources.yaml}
+    volumes:
+      - prod_data:/data
+      - ./sources.yaml:/workspace/sources.yaml:ro
+      - ${SOURCE_KNOWLEDGE_ENGINEERING:-./sources/knowledge_engineering}:/sources/knowledge_engineering:ro
+      - ${SOURCE_JAVA_BASIC:-./sources/JavaBasic}:/sources/JavaBasic:ro
+      - ${SOURCE_PYTHON_BASIC:-./sources/PythonBasic}:/sources/PythonBasic:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    image: mind-sync-web:latest
+    container_name: mind-sync-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  prod_data:

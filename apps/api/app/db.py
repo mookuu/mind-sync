@@ -3,6 +3,8 @@ from pathlib import Path
 
 from .config import settings
 
+SCHEMA_VERSION = 1  # Increment when adding migrations in _run_migrations()
+
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "mind_sync.db"
 WIKI_DIR = DATA_DIR / "wiki"
@@ -29,6 +31,28 @@ def get_db() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA busy_timeout=30000;")
     return conn
+
+
+def _get_schema_version(conn: sqlite3.Connection) -> int:
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", ("_schema_version",)
+    ).fetchone()
+    return int(row["value"]) if row else 0
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Run incremental schema migrations based on version."""
+    version = _get_schema_version(conn)
+    if version < 1:
+        # V1: add size column to documents (existing databases)
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN size INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", str(SCHEMA_VERSION)),
+        )
 
 
 def init_db() -> None:
@@ -80,10 +104,6 @@ def init_db() -> None:
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_key_time ON api_usage(identity, bucket, created_at)")
-    try:
-        conn.execute("ALTER TABLE documents ADD COLUMN size INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
     conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(title, content, rel_path, source_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_login_failures_key_time ON login_failures(ip, account, failed_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_time ON audit_events(created_at)")
@@ -92,6 +112,8 @@ def init_db() -> None:
             "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO NOTHING",
             (k, v),
         )
+    # Schema migration: track version and apply upgrades
+    _run_migrations(conn)
     conn.commit()
     conn.close()
     WIKI_DIR.mkdir(parents=True, exist_ok=True)

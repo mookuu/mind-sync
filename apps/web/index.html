@@ -34,8 +34,21 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/vendor/github-dark.min.css" />
     <link rel="stylesheet" href="/styles.css" />
-  </head>
+    <noscript>
+    <style>
+      .app-root, .login-screen { display: none !important; }
+      .noscript-fallback { display: flex !important; }
+    </style>
+  </noscript>
+</head>
   <body>
+    <div class="noscript-fallback" style="display:none;min-height:100vh;place-items:center;background:#0d1117;color:#e6edf3;font-family:sans-serif;padding:24px;text-align:center">
+      <div>
+        <h1 style="margin:0 0 8px;font-size:1.2rem">mind-sync</h1>
+        <p style="color:#8b949e">本应用需要 JavaScript 才能正常运行。</p>
+        <p style="color:#6e7681;font-size:13px">请在浏览器设置中启用 JavaScript 后刷新页面。</p>
+      </div>
+    </div>
     <div id="loginScreen" class="login-screen">
       <div class="login-card">
         <div class="login-logo">
