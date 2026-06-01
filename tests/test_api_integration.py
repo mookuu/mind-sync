@@ -28,14 +28,14 @@ def test_search_requires_auth(client):
 
 
 def test_search_with_api_key(client):
-    key = parse_api_keys()[0]
+    key = next(iter(parse_api_keys()))
     resp = client.get("/api/search", params={"q": "test"}, headers={"x-api-key": key})
     assert resp.status_code == 200
     assert "items" in resp.json()
 
 
 def test_classify_suggest(client):
-    key = parse_api_keys()[0]
+    key = next(iter(parse_api_keys()))
     resp = client.get("/api/classify-suggest", params={"q": "Python 装饰器"}, headers={"x-api-key": key})
     assert resp.status_code == 200
     body = resp.json()
