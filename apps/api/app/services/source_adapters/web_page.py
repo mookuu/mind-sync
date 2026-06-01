@@ -1,14 +1,17 @@
 from pathlib import Path
 
+from ...db import DATA_DIR
 from .base import SourceAdapter, SourceSpec
 
 
 class WebPageAdapter(SourceAdapter):
-    """
-    Placeholder for future web-page ingestion adapter.
-    Current strategy: treat pre-downloaded files under /sources/<id>.
-    """
+    """Cached snapshot lives under DATA_DIR/web-cache/<id>/."""
 
     def resolve_root(self, source: SourceSpec) -> Path:
-        return Path("/sources") / source.id
-
+        cache = DATA_DIR / "web-cache" / source.id
+        if cache.is_dir():
+            return cache
+        fallback = Path("/sources") / source.id
+        if fallback.exists():
+            return fallback
+        return cache

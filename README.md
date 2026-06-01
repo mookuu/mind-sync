@@ -11,6 +11,33 @@
    - Web: `http://localhost:8080`
    - API: `http://localhost:8000/docs`
 
+## 本地 Python 依赖（非 Docker 跑 API / CLI / MCP 时）
+
+| 文件 | 用途 |
+|------|------|
+| `requirements.txt` | API 运行时（FastAPI、索引、同步） |
+| `requirements-tools.txt` | CLI + MCP（仅 `requests` / `mcp`） |
+| `requirements-dev.txt` | 开发/CI（pytest、pip-audit，可选） |
+
+推荐 **Python 3.12**（与 Docker/CI 一致）。在 3.14 上若 `pip` 长时间无输出，多半在编译 `pydantic-core`，可先：
+
+```bash
+pip install --only-binary=:all: pydantic-core
+pip install -r requirements.txt
+```
+
+Windows 一键安装（API + 可选工具）：
+
+```powershell
+.\scripts\install-deps.ps1 -Tools
+```
+
+安装后自检（不跑 pytest）：
+
+```bash
+python scripts/check_test_env.py
+```
+
 ## 访问方式（3种并存）
 
 ### 1) Web（面向人）
@@ -40,6 +67,9 @@
   - `POST /api/query`
   - `POST /api/lint`
   - `GET /api/audit-events?limit=50`（审计日志，需鉴权）
+  - `GET /api/vault-status`、`POST /api/vault-sync`（Vault Git，需 `VAULT_GIT_URL`）
+  - `PUT /api/wiki-content`（编辑 wiki Markdown）
+  - `GET /api/classify-suggest?q=...`（归档路径建议）
 
 示例（API Key）：
 
@@ -57,7 +87,8 @@ curl -X POST "http://localhost:8000/api/query" \
 ### 3) CLI（面向终端工作流）
 
 ```bash
-pip install -r apps/cli/requirements.txt
+pip install -r requirements-tools.txt
+# 或仅 CLI：pip install -r apps/cli/requirements.txt
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key search "django middleware"
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key sync
 python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key sync-status
@@ -80,7 +111,8 @@ python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key search "闭包" --o
 手动启动（调试）：
 
 ```bash
-pip install -r apps/mcp/requirements.txt
+pip install -r requirements-tools.txt
+# 或仅 MCP：pip install -r apps/mcp/requirements.txt
 set MINDSYNC_BASE_URL=http://localhost:8000
 set MINDSYNC_API_KEY=mind-sync-dev-key
 python apps/mcp/server.py
@@ -99,6 +131,8 @@ MCP 提供工具：
 - `get_purpose`
 - `update_purpose`
 - `audit_events`
+- `vault_sync`
+- `update_wiki_page`
 - `get_document`
 - `wiki_graph`
 - `query_wiki`
@@ -128,13 +162,19 @@ data/
 ## 当前能力
 
 - 同步本地源仓库与 wiki 的 `.md/.py/.java`
-- 增量索引与全文搜索（SQLite FTS5）
+- **GitHub 源**：`type: github` 时自动 shallow clone/pull 到 `data/repos/<id>`（`GITHUB_TOKEN`）
+- **Vault Git**：`VAULT_GIT_URL` 跨设备同步 `wiki/` + `purpose.md`（设置 → Vault / 一键同步）
+- **Web 源**：`type: web` 抓取 URL 快照到 `data/web-cache/<id>/`
+- 增量索引与全文搜索（SQLite FTS5）；搜索支持 `sort=mtime_desc` 与浏览器搜索历史
 - **文档分类**：原始素材 / 学习摘要 / 问答沉淀；按主题浏览（`/api/categories`、`/api/browse`）
 - 搜索过滤（`source_id` / 文件类型 / `category` / `topic`）
 - 文档内容预览（Markdown 渲染，markdown-it 14 内置 GFM 表格/删除线 + task-lists 插件）
 - Query/ingest/lint 的 API 能力；问答证据四档置信度（EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED）
 - 问答可选保存到 `wiki/queries/`（frontmatter 结构化），**保存后自动索引**
 - `purpose.md` 研究方向可在 Web 设置页编辑（`/api/purpose` POST）
+- Wiki 页面 Web 内编辑（`PUT /api/wiki-content`）与 MCP `update_wiki_page`
+- 无 `LLM_API_KEY` 时问答降级为检索摘要；可配置 `OLLAMA_BASE_URL` 使用本地模型
+- `/api/classify-suggest` 启发式归档路径建议（无需 LLM）
 - 部署与路径迁移见 `docs/DEPLOYMENT.md`；来源示例见 `sources.example.yaml`
 - 自动定时同步（可在设置中开启，默认关闭）
 - 页面显式展示“下次自动同步时间 / 最近一次自动同步状态”

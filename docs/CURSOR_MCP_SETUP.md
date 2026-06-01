@@ -5,10 +5,11 @@
 项目已包含 `.cursor/mcp.json`。在 Cursor 中打开本仓库后：
 
 1. 确保 API 已启动：`docker compose up -d api`（或本地 `uvicorn`）
-2. 安装 MCP 依赖（本机 Python）：
+2. 安装 MCP 依赖（本机 Python 3.12 推荐）：
    ```bash
-   pip install -r apps/mcp/requirements.txt
+   pip install -r requirements-tools.txt
    ```
+   或仅 MCP：`pip install -r apps/mcp/requirements.txt`
 3. 打开 **Cursor Settings → MCP**，确认 `mind-sync` 服务器已加载且为绿色
 4. 若 API Key 不是默认值，修改 `.cursor/mcp.json` 中 `MINDSYNC_API_KEY`，与 `.env` 的 `API_KEY` 保持一致
 
@@ -26,6 +27,8 @@
 - `browse_docs` — 分类浏览
 - `list_categories` / `get_purpose` / `update_purpose` — 研究方向读写
 - `audit_events` — 最近审计事件（登录/同步/设置）
+- `vault_sync` — Vault Git 拉取/推送（需配置 `VAULT_GIT_URL`）
+- `update_wiki_page` — 更新 `wiki/` 下 Markdown
 - `query_wiki` — 问答（`save_to_wiki=true` 写入 queries）
 - `wiki_graph` / `lint_wiki` — 图谱与质量检查
 

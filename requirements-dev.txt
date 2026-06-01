@@ -1,2 +1,7 @@
+# 开发与 CI 专用（运行 API 不需要；本地暂不跑测试可跳过本文件）
+# 安装顺序建议：
+#   pip install -r requirements.txt
+#   pip install -r requirements-dev.txt
+-r requirements.txt
 pytest==8.3.4
 pip-audit==2.10.0

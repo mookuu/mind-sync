@@ -49,6 +49,21 @@ def search_for_query(conn: sqlite3.Connection, question: str, limit: int = 8) ->
     return _like_fallback(conn, question, limit=limit)
 
 
+def _sort_items(items: list[dict[str, Any]], sort: str, conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    if sort != "mtime_desc" or not items:
+        return items
+    ids = [int(i["id"]) for i in items if i.get("id") is not None]
+    if not ids:
+        return items
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT id, mtime FROM documents WHERE id IN ({placeholders})",
+        tuple(ids),
+    ).fetchall()
+    mtime_map = {int(r["id"]): float(r["mtime"]) for r in rows}
+    return sorted(items, key=lambda x: mtime_map.get(int(x["id"]), 0), reverse=True)
+
+
 def search_documents(
     conn: sqlite3.Connection,
     q: str,
@@ -59,6 +74,7 @@ def search_documents(
     category: str | None = None,
     topic: str | None = None,
     path_prefix: str | None = None,
+    sort: str = "relevance",
 ) -> list[dict[str, Any]]:
     cat_clause, cat_args = category_sql_clause(category)
     topic_clause, topic_args = topic_sql_clause(topic)
@@ -90,7 +106,7 @@ def search_documents(
         existing_ids.add(int(row["id"]))
 
     if len(items) >= limit:
-        return items[:limit]
+        return _sort_items(items[:limit], sort, conn)
 
     like_sql = """
         SELECT id, source_id, rel_path, lang, content, title
@@ -132,7 +148,7 @@ def search_documents(
         existing_ids.add(row_id)
         if len(items) >= limit:
             break
-    return items
+    return _sort_items(items[:limit], sort, conn)
 
 
 def _like_fallback(conn: sqlite3.Connection, question: str, limit: int) -> list[dict[str, Any]]:

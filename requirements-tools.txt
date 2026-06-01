@@ -1,0 +1,4 @@
+# 本机 CLI / Cursor MCP（调用已运行的 API，无需重复安装 fastapi）
+# 安装：pip install -r requirements-tools.txt
+-r apps/cli/requirements.txt
+-r apps/mcp/requirements.txt

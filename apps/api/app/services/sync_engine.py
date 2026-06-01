@@ -16,6 +16,8 @@ from .indexer import (
     update_document_metadata,
     upsert_document,
 )
+from .source_sync import sync_all_sources
+from .vault_git import pull_vault, push_vault, write_sources_manifest
 
 SYNC_LOCK = threading.Lock()
 SYNC_STATE: dict[str, Any] = {
@@ -121,7 +123,13 @@ def get_sync_status_payload() -> dict[str, Any]:
     return data
 
 
-def run_sync_job(trigger: str = "manual", source_ids: list[str] | None = None) -> dict[str, Any]:
+def run_sync_job(
+    trigger: str = "manual",
+    source_ids: list[str] | None = None,
+    *,
+    vault_pull: bool = True,
+    vault_push: bool = False,
+) -> dict[str, Any]:
     if source_ids is None and trigger in ("manual", "auto"):
         from .sync_settings import resolve_sync_source_ids
 
@@ -146,13 +154,18 @@ def run_sync_job(trigger: str = "manual", source_ids: list[str] | None = None) -
     skipped = 0
     deleted = 0
     source_stats = []
+    repo_sync: list[dict[str, Any]] = []
+    vault_meta: dict[str, Any] = {}
     run_error = None
     try:
+        if vault_pull:
+            vault_meta["pull"] = pull_vault()
         conn = get_db()
         all_sources = load_sources()
         if source_ids:
             allowed = set(source_ids)
             all_sources = [s for s in all_sources if s.id in allowed]
+        repo_sync = sync_all_sources(all_sources)
         for source in all_sources:
             root = resolve_source_root(source)
             if not root.exists():
@@ -198,6 +211,9 @@ def run_sync_job(trigger: str = "manual", source_ids: list[str] | None = None) -
             deleted += removed
             source_stats.append({"source_id": source.id, "status": "ok", "indexed": src_indexed, "deleted": removed})
             conn.commit()
+        write_sources_manifest(source_stats)
+        if vault_push:
+            vault_meta["push"] = push_vault()
         with SYNC_LOCK:
             SYNC_STATE["error"] = None
     except Exception as exc:
@@ -222,6 +238,8 @@ def run_sync_job(trigger: str = "manual", source_ids: list[str] | None = None) -
         "skipped": skipped,
         "deleted": deleted,
         "sources": source_stats,
+        "repo_sync": repo_sync,
+        "vault": vault_meta,
         "error": run_error,
     }
     finalize_sync_run(trigger, started_at, result)

@@ -113,7 +113,12 @@
           <section id="view-search" class="view hidden">
             <div class="view-header"><h2>全文搜索</h2></div>
             <div class="filter-bar">
-              <input id="q" type="text" placeholder="搜索 Markdown/代码…" />
+              <input id="q" type="text" placeholder="搜索 Markdown/代码…" list="searchHistoryList" />
+              <datalist id="searchHistoryList"></datalist>
+              <select id="searchSort" title="排序">
+                <option value="relevance">相关度</option>
+                <option value="mtime_desc">最近修改</option>
+              </select>
               <select id="categoryFilter">
                 <option value="">全部分类</option>
                 <option value="source">原始素材</option>
@@ -216,6 +221,7 @@
             <h3>设置</h3>
             <button type="button" class="settings-tab active" data-settings-tab="sync">同步</button>
             <button type="button" class="settings-tab" data-settings-tab="sources">来源</button>
+            <button type="button" class="settings-tab" data-settings-tab="vault">Vault</button>
             <button type="button" class="settings-tab" data-settings-tab="purpose">研究方向</button>
             <button type="button" class="settings-tab" data-settings-tab="audit">审计日志</button>
           </nav>
@@ -228,8 +234,12 @@
               </label>
               <label class="field-label">间隔（分钟）</label>
               <input id="autoSyncInterval" type="number" min="1" max="1440" value="60" />
+              <label class="checkbox-row mt">
+                <input id="vaultPushOnSync" type="checkbox" />
+                同步结束后推送 Vault 到 Git（需配置 VAULT_GIT_URL）
+              </label>
               <h4 class="mt">默认同步范围</h4>
-              <p class="subtle">一键同步时使用以下范围；可在「来源」页查看路径。</p>
+              <p class="subtle">一键同步时会先拉取 Vault（若已配置），再更新 GitHub 源与索引。</p>
               <div id="syncPresetList" class="preset-list"></div>
               <div id="syncCustomSources" class="source-checkboxes hidden"></div>
               <div class="btn-row">
@@ -242,6 +252,15 @@
               <h4>已配置来源</h4>
               <p class="subtle">来自 sources.yaml，需在服务器上编辑后<strong>重启 API 容器</strong>生效（Web 此处只读）。首次部署请确认 docker-compose 中 SOURCE_* 路径非空。</p>
               <ul id="sourcesList" class="sources-list"></ul>
+            </section>
+            <section id="settingsTab-vault" class="settings-pane hidden">
+              <h4>Vault Git（跨设备）</h4>
+              <p id="vaultStatusText" class="subtle">加载中…</p>
+              <div class="btn-row">
+                <button id="vaultPullBtn" type="button" class="btn btn-sm">从远程拉取</button>
+                <button id="vaultPushBtn" type="button" class="btn btn-sm btn-primary">推送到远程</button>
+              </div>
+              <p id="vaultActionStatus" class="status-msg"></p>
             </section>
             <section id="settingsTab-purpose" class="settings-pane hidden">
               <h4>purpose.md</h4>
@@ -280,6 +299,9 @@
 
     <script src="/vendor/highlight.min.js"></script>
     <script src="/vendor/markdown-it.bundle.js"></script>
+    <script src="/api-client.js"></script>
+    <script src="/search-history.js"></script>
+    <script src="/wiki-editor.js"></script>
     <script src="/app.js"></script>
     <script src="/preview.js"></script>
     <script src="/ui.js"></script>

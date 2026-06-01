@@ -53,9 +53,9 @@ CORS_ALLOW_ORIGINS=https://your-domain.example
 ## 安全自检
 
 ```bash
-pip install -r apps/api/requirements.txt
+pip install -r requirements.txt
 python scripts/smoke_auth.py --base-url http://localhost:8000 --password "<AUTH_PASSWORD>"
-pytest -q
+# 可选：pip install -r requirements-dev.txt && pytest -q
 ```
 
 API 启动时若仍使用默认 `AUTH_PASSWORD` / `API_KEY`，日志会输出 `SECURITY:` 警告。

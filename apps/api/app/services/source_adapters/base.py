@@ -9,6 +9,8 @@ class SourceSpec:
     path: str | None
     url: str | None
     include: list[str]
+    branch: str = "main"
+    paths: list[str] | None = None
 
 
 class SourceAdapter:

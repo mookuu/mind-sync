@@ -27,6 +27,8 @@ def load_sources() -> list[Source]:
                 path=item.get("path"),
                 url=item.get("url"),
                 include=item.get("include", ["**/*.md"]),
+                branch=item.get("branch", "main"),
+                paths=item.get("paths"),
             )
         )
     return result
@@ -39,6 +41,8 @@ def resolve_source_root(source: Source) -> Path:
         path=source.path,
         url=source.url,
         include=source.include,
+        branch=source.branch,
+        paths=source.paths,
     )
     p = adapter_resolve_source_root(spec)
     if p.exists():

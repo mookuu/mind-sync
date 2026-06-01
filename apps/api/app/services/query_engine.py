@@ -10,6 +10,7 @@ class QueryEngineConfig:
     llm_base_url: str
     llm_api_key: str
     llm_model: str
+    ollama_base_url: str = ""
 
 
 def _build_query_context(citations: list[dict[str, Any]]) -> str:
@@ -108,6 +109,19 @@ def generate_structured_answer(
     if config.llm_api_key.strip():
         answer, model_used = _call_llm(question, citations, config, purpose_text, model_override)
         return answer, True, model_used
+
+    ollama_url = (config.ollama_base_url or "").strip()
+    if ollama_url:
+        ollama_config = QueryEngineConfig(
+            llm_base_url=ollama_url.rstrip("/") + "/v1",
+            llm_api_key="ollama",
+            llm_model=model_used,
+        )
+        try:
+            answer, model_used = _call_llm(question, citations, ollama_config, purpose_text, model_override)
+            return answer, True, model_used
+        except HTTPException:
+            pass
 
     lines = [
         "## 结论",

@@ -111,6 +111,18 @@ def audit_events(limit: int = 50) -> dict[str, Any]:
 
 
 @mcp.tool()
+def vault_sync(pull: bool = True, push: bool = False, message: str | None = None) -> dict[str, Any]:
+    """Pull/push wiki + purpose via VAULT_GIT_URL."""
+    return call_api("POST", "/api/vault-sync", body={"pull": pull, "push": push, "message": message})
+
+
+@mcp.tool()
+def update_wiki_page(path: str, content: str) -> dict[str, Any]:
+    """Update a wiki markdown page under data/wiki."""
+    return call_api("PUT", "/api/wiki-content", body={"path": path, "content": content})
+
+
+@mcp.tool()
 def get_document(doc_id: int) -> dict[str, Any]:
     """Read document content by numeric id."""
     return call_api("GET", f"/api/document/{doc_id}")

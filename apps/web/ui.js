@@ -33,6 +33,7 @@ function bindSettingsTabs() {
         pane.classList.toggle("hidden", pane.id !== `settingsTab-${id}`);
       });
       if (id === "sources") loadSourcesSettingsList();
+      if (id === "vault") loadVaultStatus();
       if (id === "purpose") loadPurposePreview();
       if (id === "audit") loadAuditEvents();
     };
@@ -83,6 +84,27 @@ function getCustomSourceSelection() {
   const box = document.getElementById("syncCustomSources");
   if (!box) return [];
   return [...box.querySelectorAll("input[type=checkbox]:checked")].map((el) => el.value);
+}
+
+async function loadVaultStatus() {
+  const el = document.getElementById("vaultStatusText");
+  const action = document.getElementById("vaultActionStatus");
+  if (!el) return;
+  try {
+    const data = await api("/api/vault-status");
+    if (!data.configured) {
+      el.textContent = "未配置 VAULT_GIT_URL。在 .env 中设置后重启 API，可将 wiki 与 purpose 同步到私有 Git 仓。";
+      document.getElementById("vaultPullBtn")?.setAttribute("disabled", "true");
+      document.getElementById("vaultPushBtn")?.setAttribute("disabled", "true");
+      return;
+    }
+    document.getElementById("vaultPullBtn")?.removeAttribute("disabled");
+    document.getElementById("vaultPushBtn")?.removeAttribute("disabled");
+    el.textContent = `已配置：${data.url || ""}（分支 ${data.branch || "main"}）· 本地 ${data.has_clone ? "已克隆" : "未克隆"}`;
+    if (action && !action.textContent) action.textContent = "";
+  } catch (e) {
+    el.textContent = `加载失败: ${e.message}`;
+  }
 }
 
 async function loadSourcesSettingsList() {
@@ -446,11 +468,55 @@ function patchAuthUI() {
     });
   }
 
+  const vaultPullBtn = document.getElementById("vaultPullBtn");
+  const vaultPushBtn = document.getElementById("vaultPushBtn");
+  if (vaultPullBtn) {
+    vaultPullBtn.onclick = async () => {
+      if (!isLoggedIn) return;
+      const st = document.getElementById("vaultActionStatus");
+      try {
+        if (st) st.textContent = "拉取中…";
+        const data = await api("/api/vault-sync", {
+          method: "POST",
+          body: JSON.stringify({ pull: true, push: false }),
+        });
+        if (st) st.textContent = data.pull?.skipped ? "未配置远程" : "拉取完成";
+        await loadVaultStatus();
+      } catch (e) {
+        if (st) st.textContent = `拉取失败: ${e.message}`;
+      }
+    };
+  }
+  if (vaultPushBtn) {
+    vaultPushBtn.onclick = async () => {
+      if (!isLoggedIn) return;
+      const st = document.getElementById("vaultActionStatus");
+      try {
+        if (st) st.textContent = "推送中…";
+        const data = await api("/api/vault-sync", {
+          method: "POST",
+          body: JSON.stringify({ pull: false, push: true }),
+        });
+        if (st) st.textContent = data.push?.skipped ? "未配置远程" : "推送完成";
+      } catch (e) {
+        if (st) st.textContent = `推送失败: ${e.message}`;
+      }
+    };
+  }
+
   syncBtn.onclick = async () => {
     if (!isLoggedIn) return;
     try {
       setStatus("同步中…");
-      await api("/api/sync", { method: "POST", body: JSON.stringify({ use_saved_defaults: true }) });
+      const vaultPushOnSync = document.getElementById("vaultPushOnSync")?.checked;
+      await api("/api/sync", {
+        method: "POST",
+        body: JSON.stringify({
+          use_saved_defaults: true,
+          vault_pull: true,
+          vault_push: !!vaultPushOnSync,
+        }),
+      });
       switchView("sync");
       const deadline = Date.now() + 15 * 60 * 1000;
       while (Date.now() < deadline) {

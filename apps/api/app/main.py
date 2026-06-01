@@ -19,6 +19,8 @@ from .models import (
     QueryRequest,
     SettingsUpdateRequest,
     SyncRequest,
+    VaultSyncRequest,
+    WikiWriteRequest,
 )
 from .services.assets import guess_media_type, resolve_document_asset, resolve_wiki_asset
 from .services.audit import add_audit_event, fetch_audit_events
@@ -47,7 +49,9 @@ from .services.source_health import collect_source_warnings, source_health_statu
 from .services.sync_settings import SYNC_PRESETS, enrich_settings_response
 from .services.purpose import load_purpose_text, purpose_status, save_purpose_text
 from .services.query_engine import QueryEngineConfig, generate_structured_answer
-from .services.security import log_security_warnings, log_source_warnings
+from .services.security import collect_security_warnings, log_security_warnings, log_source_warnings
+from .services.vault_git import pull_vault, push_vault, vault_status
+from .services.classify import suggest_wiki_path
 from .services.scheduler import AutoSyncScheduler
 from .services.wiki_query import save_query_page
 from .services.sync_engine import (
@@ -103,9 +107,12 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     warnings = collect_source_warnings()
+    sec = collect_security_warnings()
     return {
         "status": source_health_status(warnings),
         "source_warnings": warnings,
+        "security_warnings": sec,
+        "vault": vault_status(),
     }
 
 
@@ -187,6 +194,8 @@ def sources(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
                 "type": source.source_type,
                 "path": str(root),
                 "url": source.url,
+                "branch": source.branch,
+                "paths": source.paths,
                 "include": source.include,
                 "exists": root.exists(),
             }
@@ -285,7 +294,14 @@ def sync(
             add_audit_event("sync_requested", request, actor=resolve_actor(request), detail="already running")
             return {"ok": True, "started": False, "message": "sync already running"}
         SYNC_STATE["running"] = True
-    background_tasks.add_task(lambda: run_sync_job("manual", source_ids))
+    background_tasks.add_task(
+        lambda: run_sync_job(
+            "manual",
+            source_ids,
+            vault_pull=body.vault_pull,
+            vault_push=body.vault_push,
+        )
+    )
     detail = "sync started"
     if source_ids:
         detail += f" sources={','.join(source_ids)}"
@@ -352,6 +368,7 @@ def search(
     category: str | None = None,
     topic: str | None = None,
     path_prefix: str | None = None,
+    sort: str = "relevance",
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
     if not q.strip():
@@ -368,6 +385,7 @@ def search(
             category=category,
             topic=topic,
             path_prefix=path_prefix,
+            sort=sort,
         )
     finally:
         conn.close()
@@ -456,6 +474,79 @@ def wiki_page(path: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     return _read_wiki_page(path)
 
 
+@app.put("/api/wiki-content")
+def update_wiki_content(
+    payload: WikiWriteRequest,
+    request: Request,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    enforce_csrf(request)
+    rel = (payload.path or "").strip().replace("\\", "/")
+    if not rel or ".." in rel.split("/"):
+        raise HTTPException(status_code=400, detail="invalid wiki path")
+    if not rel.lower().endswith(".md"):
+        raise HTTPException(status_code=400, detail="only .md wiki pages are supported")
+    target = (WIKI_DIR / rel).resolve()
+    try:
+        target.relative_to(WIKI_DIR.resolve())
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid wiki path") from exc
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(payload.content or "", encoding="utf-8")
+    stat: dict[str, Any] = {}
+    conn = get_db()
+    try:
+        wiki_sources = [s for s in load_sources() if s.id == "wiki"]
+        wiki_source = wiki_sources[0] if wiki_sources else None
+        if wiki_source is None:
+            from .models import Source
+
+            wiki_source = Source(
+                id="wiki",
+                source_type="local",
+                path=str(WIKI_DIR),
+                include=["**/*.md"],
+            )
+        stat = index_single_source(conn, wiki_source, rel)
+        conn.commit()
+    finally:
+        conn.close()
+    add_audit_event(
+        "wiki_updated",
+        request,
+        actor=resolve_actor(request),
+        detail=f"path={rel} chars={len(payload.content or '')}",
+    )
+    return {"ok": True, "path": rel, "indexed": stat}
+
+
+@app.post("/api/vault-sync")
+def vault_sync(
+    payload: VaultSyncRequest,
+    request: Request,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    enforce_csrf(request)
+    check_api_rate_limit(request, "sync")
+    out: dict[str, Any] = {"ok": True}
+    if payload.pull:
+        out["pull"] = pull_vault()
+    if payload.push:
+        out["push"] = push_vault(payload.message)
+    add_audit_event("vault_sync", request, actor=resolve_actor(request), detail=str(out)[:300])
+    return out
+
+
+@app.get("/api/vault-status")
+def get_vault_status(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return vault_status()
+
+
+@app.get("/api/classify-suggest")
+def classify_suggest(q: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return suggest_wiki_path(q)
+
+
 @app.post("/api/ingest")
 def ingest(payload: IngestRequest, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     conn = get_db()
@@ -508,6 +599,7 @@ def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_
         llm_base_url=settings.llm_base_url,
         llm_api_key=settings.llm_api_key,
         llm_model=settings.llm_model,
+        ollama_base_url=settings.ollama_base_url,
     )
     answer, used_llm, model_used = generate_structured_answer(
         question=question,

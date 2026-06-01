@@ -1,7 +1,13 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     auth_password: str = "changeme"
     secret_key: str = "replace-with-random-secret"
     api_key: str = "mind-sync-dev-key"
@@ -26,6 +32,10 @@ class Settings(BaseSettings):
     cors_allow_origins: str = "http://localhost:8080,http://127.0.0.1:8080"
     csrf_header_name: str = "x-csrf-token"
     audit_retention_days: int = 30
+    github_token: str = ""
+    vault_git_url: str = ""
+    vault_git_branch: str = "main"
+    ollama_base_url: str = ""
 
 
 settings = Settings()

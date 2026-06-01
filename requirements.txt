@@ -1,0 +1,4 @@
+# mind-sync API 运行时依赖（与 Docker / CI 一致）
+# Python 3.12 推荐；3.14 请先装齐 wheel，避免长时间编译 pydantic-core：
+#   pip install --only-binary=:all: pydantic-core -r requirements.txt
+-r apps/api/requirements.txt

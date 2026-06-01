@@ -34,3 +34,14 @@ jobs:
           npm install --no-audit --no-fund
           npm run build:vendor
           npm run test:markdown
+      - name: Smoke API (uvicorn)
+        env:
+          AUTH_PASSWORD: ci-smoke-pass
+          API_KEY: ci-smoke-api-key
+          SECRET_KEY: ci-smoke-secret-key-not-default
+        run: |
+          uvicorn app.main:app --app-dir apps/api --host 127.0.0.1 --port 8000 &
+          PID=$!
+          sleep 5
+          python scripts/smoke_all.py --base-url http://127.0.0.1:8000 --password ci-smoke-pass --skip-sync
+          kill $PID

@@ -31,8 +31,16 @@ sources:
     include:
       - "**/*.md"
 
-  # 占位：远程源尚未实现
+  # GitHub 源：同步时 shallow clone 到 data/repos/<id>（需 GITHUB_TOKEN 访问私有仓）
   # - id: example_github
   #   type: github
-  #   url: "https://github.com/org/repo"
+  #   url: "https://github.com/you/your-notes.git"
+  #   branch: main
+  #   paths: ["docs/", "notes/"]
+  #   include: ["**/*.md", "**/*.py"]
+
+  # Web 源：抓取 URL 快照到 data/web-cache/<id>/index.md
+  # - id: example_web
+  #   type: web
+  #   url: "https://example.com/docs"
   #   include: ["**/*.md"]

@@ -10,6 +10,8 @@ class Source:
     path: str | None
     url: str | None
     include: list[str]
+    branch: str = "main"
+    paths: list[str] | None = None
 
 
 class LoginRequest(BaseModel):
@@ -44,6 +46,19 @@ class SyncRequest(BaseModel):
     use_saved_defaults: bool = True
     source_ids: list[str] | None = None
     preset: str | None = None
+    vault_pull: bool = True
+    vault_push: bool = False
+
+
+class VaultSyncRequest(BaseModel):
+    pull: bool = True
+    push: bool = False
+    message: str | None = None
+
+
+class WikiWriteRequest(BaseModel):
+    path: str
+    content: str
 
 
 class PurposeUpdateRequest(BaseModel):

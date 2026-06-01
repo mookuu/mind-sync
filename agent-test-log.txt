@@ -1,0 +1,147 @@
+=== STEP 1: pip install ===
+Collecting fastapi==0.115.6 (from -r apps/api/requirements.txt (line 1))
+  Using cached fastapi-0.115.6-py3-none-any.whl.metadata (27 kB)
+Collecting uvicorn==0.34.0 (from uvicorn[standard]==0.34.0->-r apps/api/requirements.txt (line 2))
+  Using cached uvicorn-0.34.0-py3-none-any.whl.metadata (6.5 kB)
+Collecting pydantic==2.10.4 (from -r apps/api/requirements.txt (line 3))
+  Using cached pydantic-2.10.4-py3-none-any.whl.metadata (29 kB)
+Collecting pydantic-settings==2.7.0 (from -r apps/api/requirements.txt (line 4))
+  Using cached pydantic_settings-2.7.0-py3-none-any.whl.metadata (3.5 kB)
+Collecting python-multipart==0.0.20 (from -r apps/api/requirements.txt (line 5))
+  Using cached python_multipart-0.0.20-py3-none-any.whl.metadata (1.8 kB)
+Collecting itsdangerous==2.2.0 (from -r apps/api/requirements.txt (line 6))
+  Using cached itsdangerous-2.2.0-py3-none-any.whl.metadata (1.9 kB)
+Collecting pyyaml==6.0.2 (from -r apps/api/requirements.txt (line 7))
+  Using cached pyyaml-6.0.2.tar.gz (130 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: httpx==0.28.1 in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from -r apps/api/requirements.txt (line 8)) (0.28.1)
+Collecting pytest==8.3.4 (from -r requirements-dev.txt (line 1))
+  Using cached pytest-8.3.4-py3-none-any.whl.metadata (7.5 kB)
+Collecting starlette<0.42.0,>=0.40.0 (from fastapi==0.115.6->-r apps/api/requirements.txt (line 1))
+  Using cached starlette-0.41.3-py3-none-any.whl.metadata (6.0 kB)
+Requirement already satisfied: typing-extensions>=4.8.0 in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from fastapi==0.115.6->-r apps/api/requirements.txt (line 1)) (4.15.0)
+Requirement already satisfied: annotated-types>=0.6.0 in C:\Users\moku\AppData\Roaming\Python\Python314\site-packages (from pydantic==2.10.4->-r apps/api/requirements.txt (line 3)) (0.7.0)
+Collecting pydantic-core==2.27.2 (from pydantic==2.10.4->-r apps/api/requirements.txt (line 3))
+  Using cached pydantic_core-2.27.2.tar.gz (413 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Installing backend dependencies: started
+  Installing backend dependencies: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: click>=7.0 in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from uvicorn==0.34.0->uvicorn[standard]==0.34.0->-r apps/api/requirements.txt (line 2)) (8.3.2)
+Requirement already satisfied: h11>=0.8 in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from uvicorn==0.34.0->uvicorn[standard]==0.34.0->-r apps/api/requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: python-dotenv>=0.21.0 in C:\Users\moku\AppData\Roaming\Python\Python314\site-packages (from pydantic-settings==2.7.0->-r apps/api/requirements.txt (line 4)) (1.2.2)
+Requirement already satisfied: anyio in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from httpx==0.28.1->-r apps/api/requirements.txt (line 8)) (4.13.0)
+Requirement already satisfied: certifi in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from httpx==0.28.1->-r apps/api/requirements.txt (line 8)) (2026.2.25)
+Requirement already satisfied: httpcore==1.* in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from httpx==0.28.1->-r apps/api/requirements.txt (line 8)) (1.0.9)
+Requirement already satisfied: idna in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from httpx==0.28.1->-r apps/api/requirements.txt (line 8)) (3.11)
+Requirement already satisfied: colorama in C:\Users\moku\AppData\Roaming\Python\Python314\site-packages (from pytest==8.3.4->-r requirements-dev.txt (line 1)) (0.4.6)
+Requirement already satisfied: iniconfig in C:\Users\moku\AppData\Roaming\Python\Python314\site-packages (from pytest==8.3.4->-r requirements-dev.txt (line 1)) (2.3.0)
+Requirement already satisfied: packaging in C:\Users\moku\AppData\Roaming\Python\Python314\site-packages (from pytest==8.3.4->-r requirements-dev.txt (line 1)) (26.0)
+Requirement already satisfied: pluggy<2,>=1.5 in C:\Users\moku\AppData\Roaming\Python\Python314\site-packages (from pytest==8.3.4->-r requirements-dev.txt (line 1)) (1.6.0)
+Collecting httptools>=0.6.3 (from uvicorn[standard]==0.34.0->-r apps/api/requirements.txt (line 2))
+  Using cached httptools-0.8.0-cp314-cp314-win_amd64.whl.metadata (3.7 kB)
+Requirement already satisfied: watchfiles>=0.13 in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from uvicorn[standard]==0.34.0->-r apps/api/requirements.txt (line 2)) (1.2.0)
+Requirement already satisfied: websockets>=10.4 in C:\Users\moku\AppData\Local\Programs\Python\Python314\Lib\site-packages (from uvicorn[standard]==0.34.0->-r apps/api/requirements.txt (line 2)) (16.0)
+Using cached fastapi-0.115.6-py3-none-any.whl (94 kB)
+Using cached pydantic-2.10.4-py3-none-any.whl (431 kB)
+Using cached uvicorn-0.34.0-py3-none-any.whl (62 kB)
+Using cached pydantic_settings-2.7.0-py3-none-any.whl (29 kB)
+Using cached python_multipart-0.0.20-py3-none-any.whl (24 kB)
+Using cached itsdangerous-2.2.0-py3-none-any.whl (16 kB)
+Using cached pytest-8.3.4-py3-none-any.whl (343 kB)
+Using cached starlette-0.41.3-py3-none-any.whl (73 kB)
+Using cached httptools-0.8.0-cp314-cp314-win_amd64.whl (92 kB)
+Building wheels for collected packages: pyyaml, pydantic-core
+  Building wheel for pyyaml (pyproject.toml): started
+  Building wheel for pyyaml (pyproject.toml): finished with status 'done'
+  Created wheel for pyyaml: filename=pyyaml-6.0.2-cp314-cp314-win_amd64.whl size=45184 sha256=ce3becd11afcff163c9a370a3ddd149ebe7bdf8871ab0e63700843810234b11e
+  Stored in directory: c:\users\moku\appdata\local\pip\cache\wheels\16\d3\3b\1f603c475e2c00f8749b9c112c874a87093b6fc1ef4a11ce07
+  Building wheel for pydantic-core (pyproject.toml): started
+  Building wheel for pydantic-core (pyproject.toml): finished with status 'error'
+  error: subprocess-exited-with-error
+  
+  Building wheel for pydantic-core (pyproject.toml) did not run successfully.
+  exit code: 1
+  
+  [61 lines of output]
+  Python reports SOABI: cp314-win_amd64
+  Computed rustc target triple: x86_64-pc-windows-msvc
+  Installation directory: C:\Users\moku\AppData\Local\puccinialin\puccinialin\Cache
+  Rustup already downloaded
+  Installing rust to C:\Users\moku\AppData\Local\puccinialin\puccinialin\Cache\rustup
+  warn: It looks like you have an existing rustup settings file at:
+  warn: C:\Users\moku\AppData\Local\puccinialin\puccinialin\Cache\rustup\settings.toml
+  warn: Rustup will install the default toolchain as specified in the settings file,
+  warn: instead of the one inferred from the default host triple.
+  warn: installing msvc toolchain without its prerequisites
+  info: profile set to minimal
+  info: setting default host triple to x86_64-pc-windows-msvc
+  warn: Updating existing toolchain, profile choice will be ignored
+  info: syncing channel updates for stable-x86_64-pc-windows-msvc
+  info: default toolchain set to stable-x86_64-pc-windows-msvc
+  Checking if cargo is installed
+  cargo 1.96.0 (30a34c682 2026-05-25)
+  Rust not found, installing into a temporary directory
+  Running `maturin pep517 build-wheel -i C:\Users\moku\AppData\Local\Programs\Python\Python314\python.exe --compatibility off`
+  📦 Including license file `LICENSE`
+  🍹 Building a mixed python/rust project
+  🐍 Found CPython 3.14 at C:\Users\moku\AppData\Local\Programs\Python\Python314\python.exe
+  🔗 Found pyo3 bindings
+  📡 Using build options features, bindings from pyproject.toml
+     Compiling proc-macro2 v1.0.86
+     Compiling unicode-ident v1.0.12
+     Compiling target-lexicon v0.12.14
+     Compiling cc v1.0.101
+     Compiling once_cell v1.19.0
+     Compiling autocfg v1.3.0
+     Compiling stable_deref_trait v1.2.0
+     Compiling heck v0.5.0
+     Compiling writeable v0.5.5
+     Compiling version_check v0.9.5
+  error: linking with `link.exe` failed: exit code: 1
+    |
+    = note: "link.exe" "/NOLOGO" "C:\\Users\\moku\\AppData\\Local\\Temp\\pip-install-02wifcpm\\pydantic-core_3cd5ea6c3e4e408bbfcdcc238b93f7d5\\target\\release\\build\\proc-macro2-c890f0c6e5ddaa0e\\rustc6TcOzm\\symbols.o" "<2 object files omitted>" "<sysroot>\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib/{libstd-*,libpanic_unwind-*,libcfg_if-*,libwindows_link-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libunwind-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "kernel32.lib" "kernel32.lib" "kernel32.lib" "ntdll.lib" "userenv.lib" "ws2_32.lib" "dbghelp.lib" "/defaultlib:msvcrt" "/NXCOMPAT" "/OUT:C:\\Users\\moku\\AppData\\Local\\Temp\\pip-install-02wifcpm\\pydantic-core_3cd5ea6c3e4e408bbfcdcc238b93f7d5\\target\\release\\build\\proc-macro2-c890f0c6e5ddaa0e\\build_script_build-c890f0c6e5ddaa0e.exe" "/OPT:REF,NOICF" "/DEBUG" "/PDBALTPATH:%_PDB%" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\intrinsic.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\liballoc.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libcore.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libstd.natvis"
+    = note: some arguments are omitted. use `--verbose` to show all linker arguments
+    = note: link: extra operand 'C:\\Users\\moku\\AppData\\Local\\Temp\\pip-install-02wifcpm\\pydantic-core_3cd5ea6c3e4e408bbfcdcc238b93f7d5\\target\\release\\build\\proc-macro2-c890f0c6e5ddaa0e\\build_script_build-c890f0c6e5ddaa0e.build_script_build.7beaa315ee54f637-cgu.0.rcgu.o'
+            Try 'link --help' for more information.
+  
+  
+  note: `link.exe` returned an unexpected error
+  
+  note: in the Visual Studio installer, ensure the "C++ build tools" workload is selected
+  
+  error: could not compile `proc-macro2` (build script) due to 1 previous error
+  warning: build failed, waiting for other jobs to finish...
+  error: linking with `link.exe` failed: exit code: 1
+    |
+    = note: "link.exe" "/NOLOGO" "C:\\Users\\moku\\AppData\\Local\\Temp\\pip-install-02wifcpm\\pydantic-core_3cd5ea6c3e4e408bbfcdcc238b93f7d5\\target\\release\\build\\target-lexicon-785c88ca0f08b34d\\rustcS2D1uc\\symbols.o" "<3 object files omitted>" "<sysroot>\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib/{libstd-*,libpanic_unwind-*,libcfg_if-*,libwindows_link-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libunwind-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "kernel32.lib" "kernel32.lib" "kernel32.lib" "ntdll.lib" "userenv.lib" "ws2_32.lib" "dbghelp.lib" "/defaultlib:msvcrt" "/NXCOMPAT" "/OUT:C:\\Users\\moku\\AppData\\Local\\Temp\\pip-install-02wifcpm\\pydantic-core_3cd5ea6c3e4e408bbfcdcc238b93f7d5\\target\\release\\build\\target-lexicon-785c88ca0f08b34d\\build_script_build-785c88ca0f08b34d.exe" "/OPT:REF,NOICF" "/DEBUG" "/PDBALTPATH:%_PDB%" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\intrinsic.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\liballoc.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libcore.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libstd.natvis"
+    = note: some arguments are omitted. use `--verbose` to show all linker arguments
+    = note: link: extra operand 'C:\\Users\\moku\\AppData\\Local\\Temp\\pip-install-02wifcpm\\pydantic-core_3cd5ea6c3e4e408bbfcdcc238b93f7d5\\target\\release\\build\\target-lexicon-785c88ca0f08b34d\\build_script_build-785c88ca0f08b34d.build_script_build.7a8244f6690cc2a3-cgu.0.rcgu.o'
+            Try 'link --help' for more information.
+  
+  
+  error: could not compile `target-lexicon` (build script) due to 1 previous error
+  💥 maturin failed
+    Caused by: Failed to build a native library through cargo
+    Caused by: Cargo build finished with "exit code: 101": `"cargo" "rustc" "--profile" "release" "--features" "pyo3/extension-module" "--message-format" "json-render-diagnostics" "--manifest-path" "C:\\Users\\moku\\AppData\\Local\\Temp\\pip-install-02wifcpm\\pydantic-core_3cd5ea6c3e4e408bbfcdcc238b93f7d5\\Cargo.toml" "--lib" "--crate-type" "cdylib"`
+  Error: command ['maturin', 'pep517', 'build-wheel', '-i', 'C:\\Users\\moku\\AppData\\Local\\Programs\\Python\\Python314\\python.exe', '--compatibility', 'off'] returned non-zero exit status 1
+  [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for pydantic-core
+Successfully built pyyaml
+Failed to build pydantic-core
+error: failed-wheel-build-for-install
+
+Failed to build installable wheels for some pyproject.toml based projects
+
+pydantic-core

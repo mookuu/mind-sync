@@ -1,2 +1,4 @@
+# mind-sync MCP 服务（Cursor / Codex 等）
+# 需 API 已启动；环境变量见 docs/CURSOR_MCP_SETUP.md
 mcp==1.9.1
-requests==2.32.3
+requests==2.32.4

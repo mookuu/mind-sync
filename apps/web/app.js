@@ -94,6 +94,7 @@ function setStatus(text) {
 }
 
 function readCookie(name) {
+  if (window.MindSyncApi?.readCookie) return window.MindSyncApi.readCookie(name);
   const raw = document.cookie || "";
   const parts = raw.split(";").map((p) => p.trim());
   const prefix = `${name}=`;
@@ -150,7 +151,9 @@ async function bootstrapAuthState() {
     const auth = await api("/api/auth-mode");
     if (auth && typeof auth.csrf_header === "string" && auth.csrf_header.trim()) {
       CSRF_HEADER_NAME = auth.csrf_header.trim().toLowerCase();
+      window.MindSyncApi?.setCsrfHeaderName?.(CSRF_HEADER_NAME);
     }
+    window.MindSyncSearch?.renderDatalist?.(document.getElementById("searchHistoryList"));
     setAuthUI(true);
     await loadSourcesFilter();
     await loadCategoriesFilter();
@@ -524,6 +527,7 @@ async function openWikiNode(path) {
   } else {
     docContent.innerHTML = renderSimpleMarkdown(data.content || "");
   }
+  window.MindSyncWikiEditor?.setWikiContext?.(data.path);
   if (typeof switchView === "function") switchView("library");
   docNav.classList.add("hidden");
   matchCount.textContent = "0 / 0";
@@ -531,23 +535,25 @@ async function openWikiNode(path) {
 }
 
 async function api(path, options = {}) {
-  const method = String(options.method || "GET").toUpperCase();
-  const headers = {
-    "Content-Type": "application/json",
-    ...(options.headers || {}),
-  };
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-    const csrfToken = readCookie("ms_csrf");
-    if (csrfToken) {
-      headers[CSRF_HEADER_NAME] = csrfToken;
+  if (window.MindSyncApi?.api) {
+    try {
+      return await window.MindSyncApi.api(path, options);
+    } catch (e) {
+      if (e.status === 401 && path !== "/api/login") {
+        clearClientSessionCookies();
+        setAuthUI(false);
+        setStatus("登录已失效，请重新登录");
+      }
+      throw e;
     }
   }
-  const res = await fetch(path, {
-    ...options,
-    method,
-    headers,
-    credentials: "include",
-  });
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const csrfToken = readCookie("ms_csrf");
+    if (csrfToken) headers[CSRF_HEADER_NAME] = csrfToken;
+  }
+  const res = await fetch(path, { ...options, method, headers, credentials: "include" });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && path !== "/api/login") {
@@ -1284,9 +1290,11 @@ searchBtn.onclick = async () => {
   const q = qInput.value.trim();
   if (!q) return;
   currentSearchTerm = q;
+  window.MindSyncSearch?.recordSearch?.(q);
   results.innerHTML = "";
   docMeta.textContent = "";
   docContent.textContent = "";
+  window.MindSyncWikiEditor?.setWikiContext?.(null);
   docNav.classList.add("hidden");
   matchCount.textContent = "0 / 0";
   currentMatchIndex = -1;
@@ -1296,6 +1304,8 @@ searchBtn.onclick = async () => {
     if (typeFilter.value) params.set("file_type", typeFilter.value);
     if (categoryFilter.value) params.set("category", categoryFilter.value);
     if (topicFilter.value) params.set("topic", topicFilter.value);
+    const sort = window.MindSyncSearch?.getSort?.() || "relevance";
+    if (sort && sort !== "relevance") params.set("sort", sort);
     const data = await api(`/api/search?${params.toString()}`);
     for (const item of data.items) {
       const li = document.createElement("li");

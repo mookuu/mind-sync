@@ -10,3 +10,9 @@ sources/
 .pytest-data/
 .ci-data/
 wiki_graph.json
+
+# Python version
+.python-version
+
+# Virtual environment
+.venv/
