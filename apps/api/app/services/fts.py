@@ -2,10 +2,52 @@ import re
 import sqlite3
 from typing import Any
 
+from ..config import settings
 from .categories import category_sql_clause, classify_document, path_prefix_sql_clause, topic_sql_clause
 from .indexer import snippet_from_content
 
 _TOKEN_SPLIT = re.compile(r"\s+")
+_DEFAULT_WEIGHTS = {"source": 1.0, "summary": 1.2, "query": 1.1}
+
+
+def parse_category_weights() -> dict[str, float]:
+    raw = (settings.search_category_weights or "").strip()
+    if not raw:
+        return dict(_DEFAULT_WEIGHTS)
+    weights = dict(_DEFAULT_WEIGHTS)
+    for part in raw.split(","):
+        chunk = part.strip()
+        if not chunk or "=" not in chunk:
+            continue
+        key, val = chunk.split("=", 1)
+        cat = key.strip().lower()
+        try:
+            weights[cat] = max(0.1, float(val.strip()))
+        except ValueError:
+            continue
+    return weights
+
+
+def _weights_active(weights: dict[str, float]) -> bool:
+    return any(abs(weights.get(k, 1.0) - 1.0) > 1e-9 for k in _DEFAULT_WEIGHTS)
+
+
+def _rank_with_weights(items: list[dict[str, Any]], weights: dict[str, float]) -> list[dict[str, Any]]:
+    """Lower effective rank is better (SQLite bm25: smaller = better match)."""
+    for item in items:
+        rank = float(item.get("rank_score", 0))
+        cat = item.get("category") or classify_document(item.get("source_id", ""), item.get("rel_path", ""))
+        weight = weights.get(cat, 1.0)
+        item["rank_score"] = rank / weight
+    return sorted(items, key=lambda x: float(x.get("rank_score", 0)))
+
+
+def _fts_fetch_limit(limit: int, sort: str, weights: dict[str, float]) -> int:
+    if sort == "mtime_desc":
+        return limit
+    if _weights_active(weights):
+        return min(max(limit * 3, limit), 200)
+    return limit
 
 
 def escape_fts_phrase(text: str) -> str:
@@ -24,12 +66,18 @@ def build_fts_match_query(raw: str) -> str:
     return " OR ".join(parts)
 
 
-def _fts_rows(conn: sqlite3.Connection, fts_query: str, sql_suffix: str, args: tuple[Any, ...]) -> list[sqlite3.Row]:
+def _fts_rows(
+    conn: sqlite3.Connection,
+    fts_query: str,
+    sql_suffix: str,
+    args: tuple[Any, ...],
+) -> list[sqlite3.Row]:
     if not fts_query:
         return []
     sql = f"""
         SELECT d.id, d.source_id, d.rel_path, d.title, d.content, d.lang,
-               snippet(documents_fts, 1, '<mark>', '</mark>', '...', 45) AS snippet
+               snippet(documents_fts, 1, '<mark>', '</mark>', '...', 45) AS snippet,
+               bm25(documents_fts) AS rank_score
         FROM documents_fts
         JOIN documents d ON d.id = documents_fts.rowid
         WHERE documents_fts MATCH ?
@@ -42,10 +90,22 @@ def _fts_rows(conn: sqlite3.Connection, fts_query: str, sql_suffix: str, args: t
 
 
 def search_for_query(conn: sqlite3.Connection, question: str, limit: int = 8) -> list[dict[str, Any]]:
+    weights = parse_category_weights()
+    fetch_limit = _fts_fetch_limit(limit, "relevance", weights)
     fts_query = build_fts_match_query(question)
-    rows = _fts_rows(conn, fts_query, "LIMIT ?", (limit,))
+    rows = _fts_rows(
+        conn,
+        fts_query,
+        "ORDER BY bm25(documents_fts) LIMIT ?",
+        (fetch_limit,),
+    )
     if rows:
-        return [dict(row) for row in rows]
+        items = [dict(row) for row in rows]
+        for item in items:
+            item["category"] = classify_document(item["source_id"], item["rel_path"])
+        if _weights_active(weights):
+            items = _rank_with_weights(items, weights)
+        return items[:limit]
     return _like_fallback(conn, question, limit=limit)
 
 
@@ -76,6 +136,7 @@ def search_documents(
     path_prefix: str | None = None,
     sort: str = "relevance",
 ) -> list[dict[str, Any]]:
+    weights = parse_category_weights()
     cat_clause, cat_args = category_sql_clause(category)
     topic_clause, topic_args = topic_sql_clause(topic)
     prefix_clause, prefix_args = path_prefix_sql_clause(path_prefix)
@@ -93,7 +154,12 @@ def search_documents(
     filter_args.extend(prefix_args)
 
     fts_query = build_fts_match_query(q)
-    fts_rows = _fts_rows(conn, fts_query, filter_sql + " LIMIT ?", tuple(filter_args) + (limit,))
+    fetch_limit = _fts_fetch_limit(limit, sort, weights)
+    if sort == "mtime_desc":
+        fts_suffix = filter_sql + " LIMIT ?"
+    else:
+        fts_suffix = filter_sql + " ORDER BY bm25(documents_fts) LIMIT ?"
+    fts_rows = _fts_rows(conn, fts_query, fts_suffix, tuple(filter_args) + (fetch_limit,))
 
     items: list[dict[str, Any]] = []
     existing_ids: set[int] = set()
@@ -105,8 +171,14 @@ def search_documents(
         items.append(item)
         existing_ids.add(int(row["id"]))
 
+    if sort != "mtime_desc" and _weights_active(weights):
+        items = _rank_with_weights(items, weights)
+
     if len(items) >= limit:
-        return _sort_items(items[:limit], sort, conn)
+        trimmed = items[:limit]
+        for item in trimmed:
+            item.pop("rank_score", None)
+        return _sort_items(trimmed, sort, conn)
 
     like_sql = """
         SELECT id, source_id, rel_path, lang, content, title
@@ -148,7 +220,10 @@ def search_documents(
         existing_ids.add(row_id)
         if len(items) >= limit:
             break
-    return _sort_items(items[:limit], sort, conn)
+    out = _sort_items(items[:limit], sort, conn)
+    for item in out:
+        item.pop("rank_score", None)
+    return out
 
 
 def _like_fallback(conn: sqlite3.Connection, question: str, limit: int) -> list[dict[str, Any]]:

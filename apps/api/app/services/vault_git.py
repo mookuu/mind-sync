@@ -45,6 +45,10 @@ def pull_vault() -> dict[str, Any]:
     vault_purpose = work / "purpose.md"
     if vault_wiki.is_dir():
         if WIKI_DIR.exists():
+            logger.warning(
+                "vault pull replaces local wiki at %s — ensure backup if needed",
+                WIKI_DIR,
+            )
             shutil.rmtree(WIKI_DIR)
         copy_tree(vault_wiki, WIKI_DIR)
     if vault_purpose.is_file():

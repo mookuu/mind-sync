@@ -1,15 +1,26 @@
+# Docker 容器内路径；本地开发见 sources.example.yaml 与 docs/DEPLOYMENT.md
+# order：默认同步顺序；Web 设置可覆盖 sync_source_order
+
 sources:
-  # Docker 容器内路径；本地开发见 sources.example.yaml 与 docs/DEPLOYMENT.md
   - id: knowledge_engineering
     type: local
+    order: 10
     path: "/sources/knowledge_engineering"
     include:
       - "**/*.md"
       - "**/*.py"
       - "**/*.java"
 
+  - id: obsidian
+    type: local
+    order: 20
+    path: "/sources/obsidian"
+    include:
+      - "**/*.md"
+
   - id: JavaBasic
     type: local
+    order: 30
     path: "/sources/JavaBasic"
     include:
       - "**/*.md"
@@ -17,13 +28,45 @@ sources:
 
   - id: PythonBasic
     type: local
+    order: 40
     path: "/sources/PythonBasic"
     include:
       - "**/*.md"
       - "**/*.py"
 
+  # 同源：优先 GitHub pull，失败回退 local
+  - id: PythonBasic
+    type: github
+    order: 45
+    path: "/sources/PythonBasic"
+    url: "https://github.com/you/PythonBasic.git"
+    branch: main
+    include:
+      - "**/*.md"
+      - "**/*.py"
+
+  - id: example_github
+    type: github
+    order: 50
+    path: "/sources/example_github"
+    url: "https://github.com/you/your-notes.git"
+    branch: main
+    include:
+      - "**/*.md"
+      - "**/*.py"
+
+  - id: example_web
+    type: web
+    order: 60
+    url: "https://example.com"
+    fetch_confirmed: true
+    path: "/sources/web_snapshots/example_web"
+    include:
+      - "**/*.md"
+
   - id: wiki
     type: local
+    order: 100
     path: "/data/wiki"
     include:
       - "**/*.md"

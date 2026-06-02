@@ -7,6 +7,7 @@ services:
     environment:
       - DATA_DIR=${DATA_DIR:-/data}
       - SOURCES_FILE=${SOURCES_FILE:-/workspace/sources.yaml}
+      # 以下亦可通过 env_file: .env 传入（AUTH_USERS、WEB_FETCH_* 等）
       - AUTH_PASSWORD=${AUTH_PASSWORD}
       - SECRET_KEY=${SECRET_KEY}
       - API_KEY=${API_KEY}
@@ -24,6 +25,9 @@ services:
       - ${SOURCE_KNOWLEDGE_ENGINEERING:-./sources/knowledge_engineering}:/sources/knowledge_engineering:ro
       - ${SOURCE_JAVA_BASIC:-./sources/JavaBasic}:/sources/JavaBasic:ro
       - ${SOURCE_PYTHON_BASIC:-./sources/PythonBasic}:/sources/PythonBasic:ro
+      - ${SOURCE_OBSIDIAN:-./sources/obsidian}:/sources/obsidian:ro
+      - ${SOURCE_WEB_SNAPSHOTS:-./sources/web_snapshots}:/sources/web_snapshots
+      - ${SOURCE_EXAMPLE_GITHUB:-./sources/example_github}:/sources/example_github
     ports:
       - "8000:8000"
     healthcheck:

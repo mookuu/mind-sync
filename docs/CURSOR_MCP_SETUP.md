@@ -1,5 +1,7 @@
 # Cursor MCP 配置（mind-sync）
 
+文档索引：[docs/README.md](./README.md) · 工作流：[MIND_SYNC_WORKFLOW.md](./MIND_SYNC_WORKFLOW.md)
+
 ## 一键启用（推荐）
 
 项目已包含 `.cursor/mcp.json`。在 Cursor 中打开本仓库后：
@@ -22,7 +24,19 @@
 
 ## 可用工具
 
-- `sync_sources` / `sync_status` — 同步索引
+- `sync_sources` / `sync_status` — 增量同步与进度
+- `rebuild_index` — 全量重建索引
+- `ingest_source` — 仅增量索引
+
+## Cursor Skills
+
+项目内 Skills（与 MCP 配合）：
+
+- `.cursor/skills/mind-sync-ingest/` — 素材 → 摘要
+- `.cursor/skills/mind-sync-query/` — 带证据问答
+- `.cursor/skills/mind-sync-lint/` — wiki 质检
+
+Rule：`.cursor/rules/mind-sync.mdc`
 - `search_docs` — 全文搜索（可传 `category`、`topic`）
 - `browse_docs` — 分类浏览
 - `list_categories` / `get_purpose` / `update_purpose` — 研究方向读写

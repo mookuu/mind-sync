@@ -11,6 +11,7 @@ class SourceSpec:
     include: list[str]
     branch: str = "main"
     paths: list[str] | None = None
+    order: int | None = None
 
 
 class SourceAdapter:

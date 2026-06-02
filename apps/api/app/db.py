@@ -15,6 +15,7 @@ SETTINGS_DEFAULTS = {
     "auto_sync_interval_minutes": "60",
     "sync_preset": "all",
     "sync_source_ids": "[]",
+    "sync_source_order": "[]",
 }
 
 
@@ -138,6 +139,11 @@ def init_db() -> None:
             "模板见项目 `templates/wiki/summary-template.md`。\n",
             encoding="utf-8",
         )
+    schema_dest = WIKI_DIR / "SCHEMA.md"
+    if not schema_dest.exists():
+        schema_seed = SEED_DIR / "wiki" / "SCHEMA.md"
+        if schema_seed.exists():
+            schema_dest.write_text(schema_seed.read_text(encoding="utf-8"), encoding="utf-8")
     _seed_wiki_examples()
 
 

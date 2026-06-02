@@ -2,6 +2,14 @@
 (function () {
   let currentWikiPath = null;
 
+  function canEditWiki() {
+    return window.MindSyncAuth?.canWrite !== false;
+  }
+
+  function refreshEditBar() {
+    setWikiContext(currentWikiPath);
+  }
+
   function ensureToolbar() {
     let bar = document.getElementById("wikiEditBar");
     if (bar) return bar;
@@ -38,7 +46,10 @@
     }
     bar.classList.remove("hidden");
     if (pathEl) pathEl.textContent = `wiki / ${currentWikiPath}`;
-    if (editBtn) editBtn.classList.remove("hidden");
+    if (editBtn) {
+      if (canEditWiki()) editBtn.classList.remove("hidden");
+      else editBtn.classList.add("hidden");
+    }
     document.getElementById("wikiSaveBtn")?.classList.add("hidden");
     document.getElementById("wikiCancelBtn")?.classList.add("hidden");
   }
@@ -64,6 +75,7 @@
   function bind() {
     ensureToolbar();
     document.getElementById("wikiEditBtn")?.addEventListener("click", async () => {
+      if (!canEditWiki()) return;
       const api = window.MindSyncApi?.api || window.api;
       const docContent = document.getElementById("docContent");
       if (!api || !currentWikiPath || !docContent) return;
@@ -101,7 +113,7 @@
     });
   }
 
-  window.MindSyncWikiEditor = { setWikiContext, bind };
+  window.MindSyncWikiEditor = { setWikiContext, bind, refreshEditBar };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", bind);
   } else {

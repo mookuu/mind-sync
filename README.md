@@ -2,10 +2,24 @@
 
 本机 Docker 的个人学习知识库（Web + API + CLI + MCP）。
 
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| [docs/README.md](docs/README.md) | **文档索引**（建议从这里进） |
+| [docs/MIND_SYNC_WORKFLOW.md](docs/MIND_SYNC_WORKFLOW.md) | 日常使用：同步、问答、lint、Obsidian |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构与模块 |
+| [docs/SOURCES.md](docs/SOURCES.md) | `sources.yaml` 配置参考 |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker、备份、HTTPS |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 本地开发与测试 |
+| [docs/CURSOR_MCP_SETUP.md](docs/CURSOR_MCP_SETUP.md) | Cursor MCP / Skills |
+| [SECURITY.md](SECURITY.md) | 鉴权、RBAC、安全清单 |
+
 ## 启动
 
 1. 复制环境变量文件：`cp .env.example .env`
-2. 修改 `.env` 中密码和密钥（尤其是 `AUTH_PASSWORD`、`API_KEY`、`LLM_API_KEY`）
+2. 修改 `.env` 中密码和密钥（尤其是 `AUTH_PASSWORD`、`API_KEY`、`LLM_API_KEY`）  
+   多用户时配置 `AUTH_USERS`（如 `admin:强密码:admin,reader:密码:viewer`），详见 `docs/MIND_SYNC_WORKFLOW.md` 权限一节
 3. 启动：`docker compose up --build -d`
 4. 打开：
    - Web: `http://localhost:8080`
@@ -55,7 +69,8 @@ python scripts/check_test_env.py
   - `LLM_API_KEY`
   - `LLM_MODEL`
 - 支持接口：
-  - `POST /api/sync`
+  - `POST /api/sync` — 增量同步（拉远程 + 增量索引）
+  - `POST /api/rebuild-index` — 真全量重建（清空所选源索引 + 强制重扫，不拉远程）
   - `GET /api/sync-status`
   - `GET /api/search?q=...&category=&topic=`
   - `GET /api/categories`
@@ -63,7 +78,7 @@ python scripts/check_test_env.py
   - `GET /api/purpose`
   - `POST /api/purpose`
   - `GET /api/document/{id}`
-  - `POST /api/ingest`
+  - `POST /api/ingest` — 仅增量索引（不拉远程）
   - `POST /api/query`
   - `POST /api/lint`
   - `GET /api/audit-events?limit=50`（审计日志，需鉴权）
@@ -123,7 +138,8 @@ MCP 提供工具：
 - `health`
 - `list_sources`
 - `list_library`
-- `sync_sources`
+- `sync_sources` — 增量同步（远程 + 索引）
+- `rebuild_index` — 全量重建索引
 - `sync_status`
 - `search_docs`（支持 `category` / `topic` / `source_id` 过滤）
 - `list_categories`
@@ -136,7 +152,7 @@ MCP 提供工具：
 - `get_document`
 - `wiki_graph`
 - `query_wiki`
-- `ingest_source`
+- `ingest_source` — 仅增量索引
 - `lint_wiki`
 
 ## 知识库目录（wiki）
@@ -147,6 +163,9 @@ MCP 提供工具：
 data/
   purpose.md                 # 研究方向（问答时注入 LLM）
   wiki/
+    SCHEMA.md                  # Agent 维护规范
+    index.md                   # 自动目录（sync/query/lint 后更新）
+    log.md                     # 事件日志
     summaries/{topic}/*.md   # 学习摘要（如 harness/）
     queries/*.md             # 问答沉淀（save_to_wiki）
 ```
@@ -154,6 +173,7 @@ data/
 - 摘要模板：`templates/wiki/summary-template.md`
 - 工作流详解：`docs/MIND_SYNC_WORKFLOW.md`
 - Cursor Rule：`.cursor/rules/mind-sync.mdc`
+- Cursor Skills：`.cursor/skills/mind-sync-{ingest,query,lint}/`
 
 首次启动 API 时会从 `apps/api/app/seed/` 复制示例摘要到 `data/wiki/summaries/`（如 `harness/pipeline-basics.md`），**仅当目标文件不存在时**写入。仓库根目录 `templates/wiki/examples/` 为同内容的文档副本。
 
@@ -162,10 +182,11 @@ data/
 ## 当前能力
 
 - 同步本地源仓库与 wiki 的 `.md/.py/.java`
-- **GitHub 源**：`type: github` 时自动 shallow clone/pull 到 `data/repos/<id>`（`GITHUB_TOKEN`）
+- **GitHub 源**：`type: github` 时 shallow clone/pull 到 `path`（默认 `/sources/<id>`，与 local 源同布局；`GITHUB_TOKEN`）
 - **Vault Git**：`VAULT_GIT_URL` 跨设备同步 `wiki/` + `purpose.md`（设置 → Vault / 一键同步）
-- **Web 源**：`type: web` 抓取 URL 快照到 `data/web-cache/<id>/`
-- 增量索引与全文搜索（SQLite FTS5）；搜索支持 `sort=mtime_desc` 与浏览器搜索历史
+- **Web 源**：`type: web` 抓取 URL → Markdown；支持 robots / UA / 域名限速（见 `docs/SOURCES.md`）
+- **Obsidian 剪藏**：`type: local` 的 `obsidian` 源，挂载 `/sources/obsidian` 供 Web Clipper 导出
+- 增量索引与全文搜索（SQLite FTS5，默认 **bm25** 相关度排序）；可选 `sort=mtime_desc`
 - **文档分类**：原始素材 / 学习摘要 / 问答沉淀；按主题浏览（`/api/categories`、`/api/browse`）
 - 搜索过滤（`source_id` / 文件类型 / `category` / `topic`）
 - 文档内容预览（Markdown 渲染，markdown-it 14 内置 GFM 表格/删除线 + task-lists 插件）
@@ -181,19 +202,19 @@ data/
 - 设置页展示最近审计事件（登录/登出/同步/设置变更，只读）
 - 同步状态面板展示当前进度与最近一次同步汇总（新增/更新、跳过、删除；与审计 `sync_requested` / `sync_completed` 对应）
 - P2：证据对象化（`evidences`）、wiki 链接图分析（`/api/wiki-graph`）、source adapter 分层
+- **RBAC**：admin 可同步/编辑 wiki；viewer 只读（`AUTH_USERS`）
 - 同步性能优化：先用 `mtime + size` 快速跳过未变文件，再按需计算 hash
+
+更多能力说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## API 模块结构（后端）
 
-`apps/api/app/main.py` 仅保留路由与装配；核心逻辑已拆分：
+`apps/api/app/main.py` 仅保留路由与装配；模块索引见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#后端目录appsapiapp)。
 
-- `config.py` — 环境配置
-- `db.py` — SQLite 连接与初始化
-- `models.py` — 请求模型
-- `services/auth.py` — 会话、CSRF、API Key、登录限速
-- `services/audit.py` — 审计日志
-- `services/sync_engine.py` — 同步状态与后台同步任务
-- `services/indexer.py` — 文件扫描、索引写入、来源解析
+## 安全与合规
+
+- 登录/API 限速、CSRF、审计、RBAC：见 [SECURITY.md](SECURITY.md)
+- Web 源抓取合规（robots、allowlist）：见 [docs/MIND_SYNC_WORKFLOW.md](docs/MIND_SYNC_WORKFLOW.md#web-源抓取合规)
 
 ## L1 安全强化（已支持）
 

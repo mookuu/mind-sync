@@ -7,6 +7,7 @@ from itsdangerous import BadSignature, URLSafeSerializer
 from ..config import settings
 from ..db import get_db
 from .audit import cleanup_auth_meta
+from .permissions import Role, can_write
 
 serializer = URLSafeSerializer(settings.secret_key, salt="mind-sync")
 
@@ -141,6 +142,8 @@ def csrf_cookie_token(request: Request) -> str:
 def enforce_csrf(request: Request) -> None:
     if request.method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
         return
+    if is_api_key_valid(request):
+        return
     expected = csrf_cookie_token(request)
     provided = request.headers.get(csrf_header_key(), "").strip()
     if not expected or not provided or expected != provided:
@@ -152,6 +155,28 @@ def require_any_auth(request: Request) -> None:
         return
     require_auth(request)
     enforce_csrf(request)
+
+
+def resolve_role(request: Request) -> str:
+    if is_api_key_valid(request):
+        return Role.ADMIN.value
+    token = request.cookies.get("ms_token", "").strip()
+    if not token:
+        return Role.VIEWER.value
+    try:
+        payload = serializer.loads(token)
+        role = (payload.get("role") or Role.ADMIN.value).strip().lower()
+        if role not in {Role.ADMIN.value, Role.VIEWER.value}:
+            return Role.ADMIN.value
+        return role
+    except BadSignature:
+        return Role.VIEWER.value
+
+
+def require_admin(request: Request) -> None:
+    require_any_auth(request)
+    if not can_write(resolve_role(request)):
+        raise HTTPException(status_code=403, detail="Admin permission required")
 
 
 def session_account(request: Request) -> str:

@@ -17,6 +17,7 @@ from .models import (
     LoginRequest,
     PurposeUpdateRequest,
     QueryRequest,
+    RebuildRequest,
     SettingsUpdateRequest,
     SyncRequest,
     VaultSyncRequest,
@@ -25,6 +26,7 @@ from .models import (
 from .services.assets import guess_media_type, resolve_document_asset, resolve_wiki_asset
 from .services.audit import add_audit_event, fetch_audit_events
 from .services.wiki_util import safe_wiki_path
+from .services.wiki_source import assert_wiki_writable, get_wiki_source_or_fallback
 from .services.auth import (
     check_login_rate_limit,
     clear_login_failures,
@@ -32,29 +34,36 @@ from .services.auth import (
     enforce_csrf,
     mark_login_failure,
     parse_api_keys,
+    require_admin,
     require_any_auth,
     require_auth,
     resolve_actor,
+    resolve_role,
     revoke_session_token,
     serializer,
 )
+from .services.permissions import authenticate, can_write
 from .services.categories import browse_documents, list_category_stats
 from .services.evidence import build_evidence_items
 from .services.fts import search_documents, search_for_query
-from .services.indexer import index_single_source, load_sources, read_text_safely, resolve_source_root
+from .services.indexer import index_single_source, load_sources, read_text_safely, reload_sources_config, resolve_source_root
+from .services.source_sync_key import is_known_sync_key, source_display_label, source_sync_key
 from .services.library import build_library_index
 from .services.link_graph import analyze_wiki_graph
 from .services.lint_engine import run_lint_report
 from .services.rate_limit import check_api_rate_limit
 from .services.source_health import collect_source_warnings, source_health_status
-from .services.sync_settings import SYNC_PRESETS, enrich_settings_response
+from .services.source_pairing import resolve_ingest_sources
+from .services.sync_settings import SYNC_PRESETS, enrich_settings_response, load_ordered_sources
 from .services.purpose import load_purpose_text, purpose_status, save_purpose_text
 from .services.query_engine import QueryEngineConfig, generate_structured_answer
 from .services.security import collect_security_warnings, log_security_warnings, log_source_warnings
 from .services.vault_git import pull_vault, push_vault, vault_status
+from .services.web_fetch_policy import web_fetch_policy_summary
 from .services.classify import suggest_wiki_path
 from .services.scheduler import AutoSyncScheduler
-from .services.wiki_query import save_query_page
+from .services.wiki_query import save_query_page_with_nav
+from .services.rebuild_engine import run_rebuild_job
 from .services.sync_engine import (
     SYNC_LOCK,
     SYNC_STATE,
@@ -114,6 +123,7 @@ def health() -> dict[str, Any]:
         "source_warnings": warnings,
         "security_warnings": sec,
         "vault": vault_status(),
+        "web_fetch": web_fetch_policy_summary(),
     }
 
 
@@ -121,14 +131,23 @@ def health() -> dict[str, Any]:
 def login(payload: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
     account = (payload.username or "default").strip() or "default"
     check_login_rate_limit(request, account)
-    if payload.password != settings.auth_password:
+    user = authenticate(account, payload.password)
+    if user is None:
         mark_login_failure(request, account)
-        add_audit_event("login_failed", request, actor=account, detail="invalid password")
-        raise HTTPException(status_code=401, detail="Invalid password")
+        add_audit_event("login_failed", request, actor=account, detail="invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid username or password")
     clear_login_failures(request, account)
     now = time.time()
     ttl = max(60, int(settings.session_ttl_seconds))
-    token = serializer.dumps({"ok": True, "account": account, "issued_at": now, "expires_at": now + ttl})
+    token = serializer.dumps(
+        {
+            "ok": True,
+            "account": user.username,
+            "role": user.role.value,
+            "issued_at": now,
+            "expires_at": now + ttl,
+        }
+    )
     cookie_samesite = (settings.cookie_samesite or "lax").lower()
     if cookie_samesite not in {"lax", "strict", "none"}:
         cookie_samesite = "lax"
@@ -150,8 +169,20 @@ def login(payload: LoginRequest, request: Request, response: Response) -> dict[s
         samesite=cookie_samesite,
         max_age=max(60, int(settings.cookie_max_age_seconds)),
     )
-    add_audit_event("login_success", request, actor=account, detail="cookie session issued")
-    return {"ok": True, "csrf_header": settings.csrf_header_name, "csrf_token": csrf_token}
+    add_audit_event(
+        "login_success",
+        request,
+        actor=user.username,
+        detail=f"cookie session issued role={user.role.value}",
+    )
+    return {
+        "ok": True,
+        "username": user.username,
+        "role": user.role.value,
+        "can_write": can_write(user.role),
+        "csrf_header": settings.csrf_header_name,
+        "csrf_token": csrf_token,
+    }
 
 
 @app.post("/api/logout")
@@ -171,11 +202,17 @@ def logout(request: Request, response: Response, _: Any = Depends(require_auth))
 
 
 @app.get("/api/auth-mode")
-def auth_mode(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def auth_mode(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    role = resolve_role(request)
+    from .services.auth import session_account
+
     return {
         "cookie_enabled": True,
         "api_key_enabled": bool(parse_api_keys()),
         "csrf_header": csrf_header_key(),
+        "role": role,
+        "can_write": can_write(role),
+        "username": session_account(request) or None,
     }
 
 
@@ -186,22 +223,52 @@ def audit_events(limit: int = 50, _: Any = Depends(require_any_auth)) -> dict[st
 
 @app.get("/api/sources")
 def sources(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    return _build_sources_response()
+
+
+def _build_sources_response() -> dict[str, Any]:
+    settings_map = load_settings_map()
     items = []
-    for source in load_sources():
+    for source in load_ordered_sources(settings_map):
         root = resolve_source_root(source)
         items.append(
             {
                 "id": source.id,
+                "sync_key": source_sync_key(source),
+                "label": source_display_label(source),
                 "type": source.source_type,
                 "path": str(root),
                 "url": source.url,
                 "branch": source.branch,
                 "paths": source.paths,
                 "include": source.include,
+                "order": source.order,
                 "exists": root.exists(),
+                "fetch_confirmed": source.fetch_confirmed,
+                "respect_robots": source.respect_robots,
             }
         )
-    return {"sources": items}
+    return {"sources": items, "web_fetch_policy": web_fetch_policy_summary()}
+
+
+@app.post("/api/admin/sources/reload")
+def admin_reload_sources(request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    from pathlib import Path
+
+    src_file = Path(settings.sources_file)
+    if not src_file.is_file():
+        raise HTTPException(status_code=404, detail=f"sources file not found: {src_file}")
+    reload_sources_config()
+    payload = _build_sources_response()
+    payload["ok"] = True
+    payload["count"] = len(payload["sources"])
+    add_audit_event(
+        "sources_reloaded",
+        request,
+        actor=resolve_actor(request),
+        detail=f"count={payload['count']} file={src_file}",
+    )
+    return payload
 
 
 @app.get("/api/settings")
@@ -213,7 +280,11 @@ def get_settings(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
 
 
 @app.post("/api/settings")
-def update_settings(payload: SettingsUpdateRequest, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def update_settings(
+    payload: SettingsUpdateRequest,
+    request: Request,
+    _: Any = Depends(require_admin),
+) -> dict[str, Any]:
     conn = get_db()
     try:
         if payload.auto_sync_enabled is not None:
@@ -238,10 +309,24 @@ def update_settings(payload: SettingsUpdateRequest, request: Request, _: Any = D
         if payload.sync_source_ids is not None:
             import json
 
-            ids = [str(x).strip() for x in payload.sync_source_ids if str(x).strip()]
+            all_src = load_sources()
+            ids = [str(x).strip() for x in payload.sync_source_ids if str(x).strip() and is_known_sync_key(str(x).strip(), all_src)]
             conn.execute(
                 "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 ("sync_source_ids", json.dumps(ids, ensure_ascii=False)),
+            )
+        if payload.sync_source_order is not None:
+            import json
+
+            all_src = load_sources()
+            order_ids = [
+                str(x).strip()
+                for x in payload.sync_source_order
+                if str(x).strip() and is_known_sync_key(str(x).strip(), all_src)
+            ]
+            conn.execute(
+                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("sync_source_order", json.dumps(order_ids, ensure_ascii=False)),
             )
         conn.commit()
         st = read_settings(conn)
@@ -276,7 +361,7 @@ def sync(
     background_tasks: BackgroundTasks,
     request: Request,
     payload: SyncRequest | None = None,
-    _: Any = Depends(require_any_auth),
+    _: Any = Depends(require_admin),
 ) -> dict[str, Any]:
     check_api_rate_limit(request, "sync")
     body = payload or SyncRequest()
@@ -307,7 +392,40 @@ def sync(
     if source_ids:
         detail += f" sources={','.join(source_ids)}"
     add_audit_event("sync_requested", request, actor=resolve_actor(request), detail=detail)
-    return {"ok": True, "started": True, "source_ids": source_ids}
+    return {"ok": True, "started": True, "mode": "sync", "source_ids": source_ids}
+
+
+@app.post("/api/rebuild-index")
+def rebuild_index(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    payload: RebuildRequest | None = None,
+    _: Any = Depends(require_admin),
+) -> dict[str, Any]:
+    """Full index rebuild: clear selected sources in SQLite, then re-scan every file."""
+    check_api_rate_limit(request, "sync")
+    body = payload or RebuildRequest()
+    source_ids: list[str] | None = None
+    if body.preset and body.preset in SYNC_PRESETS:
+        source_ids = SYNC_PRESETS[body.preset].get("source_ids")
+    elif body.source_ids:
+        source_ids = [str(x).strip() for x in body.source_ids if str(x).strip()]
+    elif body.use_saved_defaults:
+        from .services.sync_settings import resolve_sync_source_ids
+
+        source_ids = resolve_sync_source_ids()
+
+    with SYNC_LOCK:
+        if SYNC_STATE["running"]:
+            add_audit_event("rebuild_requested", request, actor=resolve_actor(request), detail="already running")
+            return {"ok": True, "started": False, "mode": "rebuild", "message": "index job already running"}
+        SYNC_STATE["running"] = True
+    background_tasks.add_task(lambda: run_rebuild_job("manual", source_ids))
+    detail = "rebuild started"
+    if source_ids:
+        detail += f" sources={','.join(source_ids)}"
+    add_audit_event("rebuild_requested", request, actor=resolve_actor(request), detail=detail)
+    return {"ok": True, "started": True, "mode": "rebuild", "source_ids": source_ids}
 
 
 @app.get("/api/sync-status")
@@ -324,7 +442,7 @@ def get_purpose(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
 def update_purpose(
     payload: PurposeUpdateRequest,
     request: Request,
-    _: Any = Depends(require_any_auth),
+    _: Any = Depends(require_admin),
 ) -> dict[str, Any]:
     save_purpose_text(payload.content)
     add_audit_event(
@@ -472,26 +590,18 @@ def wiki_page(path: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
 def update_wiki_content(
     payload: WikiWriteRequest,
     request: Request,
-    _: Any = Depends(require_any_auth),
+    _: Any = Depends(require_admin),
 ) -> dict[str, Any]:
     enforce_csrf(request)
-    target = safe_wiki_path(payload.path, WIKI_DIR, must_exist=False)
+    rel = (payload.path or "").strip().replace("\\", "/")
+    assert_wiki_writable(rel)
+    target = safe_wiki_path(rel, WIKI_DIR, must_exist=False)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(payload.content or "", encoding="utf-8")
     stat: dict[str, Any] = {}
     conn = get_db()
     try:
-        wiki_sources = [s for s in load_sources() if s.id == "wiki"]
-        wiki_source = wiki_sources[0] if wiki_sources else None
-        if wiki_source is None:
-            from .models import Source
-
-            wiki_source = Source(
-                id="wiki",
-                source_type="local",
-                path=str(WIKI_DIR),
-                include=["**/*.md"],
-            )
+        wiki_source = get_wiki_source_or_fallback()
         stat = index_single_source(conn, wiki_source, rel)
         conn.commit()
     finally:
@@ -509,7 +619,7 @@ def update_wiki_content(
 def vault_sync(
     payload: VaultSyncRequest,
     request: Request,
-    _: Any = Depends(require_any_auth),
+    _: Any = Depends(require_admin),
 ) -> dict[str, Any]:
     enforce_csrf(request)
     check_api_rate_limit(request, "sync")
@@ -533,16 +643,27 @@ def classify_suggest(q: str, _: Any = Depends(require_any_auth)) -> dict[str, An
 
 
 @app.post("/api/ingest")
-def ingest(payload: IngestRequest, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def ingest(payload: IngestRequest, _: Any = Depends(require_admin)) -> dict[str, Any]:
     conn = get_db()
     try:
-        sources_all = load_sources()
-        if payload.source_id:
-            sources_to_ingest = [s for s in sources_all if s.id == payload.source_id]
-            if not sources_to_ingest:
-                raise HTTPException(status_code=404, detail=f"source_id not found: {payload.source_id}")
-        else:
-            sources_to_ingest = sources_all
+        settings_map = load_settings_map()
+        sources_all = load_ordered_sources(settings_map)
+        sources_to_ingest, pairing_warnings = resolve_ingest_sources(
+            sources_all,
+            source_id_filter=(payload.source_id or "").strip() or None,
+        )
+        if payload.source_id and not sources_to_ingest:
+            from .services.source_pairing import build_sync_plan
+
+            plan = build_sync_plan(sources_all)
+            skipped_ids = {s.id for s in plan.skipped_locals}
+            sid = payload.source_id.strip()
+            if sid in skipped_ids:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"source '{sid}' is paired local; ingest the github entry instead",
+                )
+            raise HTTPException(status_code=404, detail=f"source_id not found: {payload.source_id}")
 
         source_stats = []
         total_indexed = 0
@@ -561,6 +682,7 @@ def ingest(payload: IngestRequest, _: Any = Depends(require_any_auth)) -> dict[s
             "skipped": total_skipped,
             "deleted": total_deleted,
             "sources": source_stats,
+            "warnings": pairing_warnings,
         }
     finally:
         conn.close()
@@ -568,6 +690,8 @@ def ingest(payload: IngestRequest, _: Any = Depends(require_any_auth)) -> dict[s
 
 @app.post("/api/query")
 def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    if payload.save_to_wiki:
+        require_admin(request)
     check_api_rate_limit(request, "query")
     question = payload.question.strip()
     if not question:
@@ -598,7 +722,7 @@ def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_
     index_stat = None
     if payload.save_to_wiki:
         slug = hashlib.sha256(question.encode("utf-8", errors="ignore")).hexdigest()[:12]
-        saved_path, index_stat = save_query_page(
+        saved_path, index_stat = save_query_page_with_nav(
             question=question,
             answer=answer,
             model_used=model_used,
@@ -624,18 +748,23 @@ def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_
 
 
 @app.post("/api/lint")
-def lint(payload: LintRequest, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def lint(payload: LintRequest, request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
     check_api_rate_limit(request, "lint")
     cap = max(1000, int(settings.lint_content_max_chars))
     conn = get_db()
-    rows = conn.execute(
-        "SELECT id, source_id, rel_path, title, "
-        "CASE WHEN length(content) > ? THEN substr(content, 1, ?) ELSE content END AS content, "
-        "updated_at FROM documents",
-        (cap, cap),
-    ).fetchall()
-    conn.close()
-    report = run_lint_report(rows=rows, stale_days=payload.stale_days, report_dir=LINT_DIR, wiki_dir=WIKI_DIR)
+    try:
+        rows = conn.execute(
+            "SELECT id, source_id, rel_path, title, "
+            "CASE WHEN length(content) > ? THEN substr(content, 1, ?) ELSE content END AS content, "
+            "updated_at FROM documents",
+            (cap, cap),
+        ).fetchall()
+        report = run_lint_report(rows=rows, stale_days=payload.stale_days, report_dir=LINT_DIR, wiki_dir=WIKI_DIR, conn=conn)
+    finally:
+        conn.close()
+    from .services.wiki_nav import touch_wiki_nav
+
+    touch_wiki_nav("lint", f"issues={report.get('issue_count', 0)}")
     add_audit_event(
         "lint_completed",
         request,

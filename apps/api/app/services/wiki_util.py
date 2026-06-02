@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 
-def safe_wiki_path(rel: str, wiki_dir: Path) -> Path:
+def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True) -> Path:
     """Validate and resolve a relative wiki path, ensuring no directory traversal.
 
     Args:

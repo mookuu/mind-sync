@@ -1,10 +1,93 @@
 import re
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .link_graph import analyze_wiki_graph
+
+
+def _split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+    if not text.startswith("---"):
+        return {}, text
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return {}, text
+    try:
+        meta = yaml.safe_load(parts[1]) or {}
+    except yaml.YAMLError:
+        meta = {}
+    return (meta if isinstance(meta, dict) else {}), parts[2]
+
+
+def _parse_updated_ts(value: Any, fallback: float) -> float:
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return float(dt.timestamp())
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day, tzinfo=timezone.utc).timestamp()
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(value.strip(), fmt).replace(tzinfo=timezone.utc).timestamp()
+            except ValueError:
+                continue
+    return fallback
+
+
+def _source_mtime_map(conn: Any) -> dict[str, float]:
+    rows = conn.execute("SELECT source_id, rel_path, mtime FROM documents").fetchall()
+    return {f"{row['source_id']}/{row['rel_path']}": float(row["mtime"]) for row in rows}
+
+
+def _normalize_source_ref(raw: str) -> str:
+    ref = (raw or "").strip().replace("\\", "/").lstrip("/")
+    return ref
+
+
+def check_stale_summaries(wiki_dir: Path, conn: Any) -> list[dict[str, Any]]:
+    """Flag summaries whose listed sources were updated after the summary."""
+    if not wiki_dir.exists():
+        return []
+    mtime_map = _source_mtime_map(conn)
+    issues: list[dict[str, Any]] = []
+    for path in sorted(wiki_dir.glob("summaries/**/*.md")):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(wiki_dir)).replace("\\", "/")
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        meta, _ = _split_frontmatter(text)
+        if meta.get("type") not in (None, "summary") and not rel.startswith("summaries/"):
+            continue
+        summary_ts = _parse_updated_ts(meta.get("updated"), path.stat().st_mtime)
+        sources = meta.get("sources") or []
+        if not isinstance(sources, list):
+            continue
+        stale_refs: list[str] = []
+        for item in sources:
+            ref = _normalize_source_ref(str(item))
+            if not ref:
+                continue
+            src_mtime = mtime_map.get(ref)
+            if src_mtime is not None and src_mtime > summary_ts + 1.0:
+                stale_refs.append(ref)
+        if stale_refs:
+            issues.append(
+                {
+                    "type": "stale-summary",
+                    "source_id": "wiki",
+                    "rel_path": rel,
+                    "detail": f"sources updated after summary: {', '.join(stale_refs[:5])}",
+                }
+            )
+    return issues
 
 
 def run_lint_report(
@@ -12,6 +95,7 @@ def run_lint_report(
     stale_days: int,
     report_dir: Path,
     wiki_dir: Path | None = None,
+    conn: Any | None = None,
 ) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     stale_threshold = time.time() - stale_days * 86400
@@ -81,6 +165,8 @@ def run_lint_report(
                     "detail": f"{item.get('kind', 'link')} -> {item.get('target', '')}",
                 }
             )
+        if conn is not None:
+            issues.extend(check_stale_summaries(wiki_dir, conn))
 
     report_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

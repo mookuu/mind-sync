@@ -11,7 +11,7 @@ import yaml
 from ..config import settings
 from ..models import Source
 from .source_adapters import resolve_source_root as adapter_resolve_source_root
-from .source_adapters.base import SourceSpec
+from .source_spec_util import source_to_spec
 
 
 _SOURCES_CACHE_TIME = 0.0
@@ -20,7 +20,13 @@ _SOURCES_CACHE_TTL = 30  # seconds
 
 def _reset_sources_cache() -> None:
     """Clear the cached sources list. Called after sources.yaml could have changed."""
-    load_sources.cache_clear()
+    _load_sources_cached.cache_clear()
+
+
+def reload_sources_config() -> list[Source]:
+    """Force reload sources.yaml from disk (admin reload API)."""
+    _reset_sources_cache()
+    return load_sources()
 
 
 @lru_cache(maxsize=1)
@@ -41,6 +47,9 @@ def _load_sources_cached(cache_key: float) -> list[Source]:
                 include=item.get("include", ["**/*.md"]),
                 branch=item.get("branch", "main"),
                 paths=item.get("paths"),
+                order=item.get("order"),
+                fetch_confirmed=bool(item.get("fetch_confirmed", False)),
+                respect_robots=item.get("respect_robots"),
             )
         )
     return result
@@ -52,16 +61,7 @@ def load_sources() -> list[Source]:
 
 
 def resolve_source_root(source: Source) -> Path:
-    spec = SourceSpec(
-        id=source.id,
-        source_type=source.source_type,
-        path=source.path,
-        url=source.url,
-        include=source.include,
-        branch=source.branch,
-        paths=source.paths,
-    )
-    p = adapter_resolve_source_root(spec)
+    p = adapter_resolve_source_root(source_to_spec(source))
     if p.exists():
         return p
     fallback = Path("/sources") / source.id
@@ -190,6 +190,57 @@ def remove_missing(conn: sqlite3.Connection, source_id: str, existing: set[str])
             conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (row["id"],))
             removed += 1
     return removed
+
+
+def clear_source_index(conn: sqlite3.Connection, source_id: str) -> int:
+    """Remove all indexed documents (and FTS rows) for one source."""
+    rows = conn.execute("SELECT id FROM documents WHERE source_id = ?", (source_id,)).fetchall()
+    for row in rows:
+        conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (row["id"],))
+        conn.execute("DELETE FROM documents WHERE id = ?", (row["id"],))
+    return len(rows)
+
+
+def index_single_source_force(
+    conn: sqlite3.Connection,
+    source: Source,
+    rel_path_filter: str | None = None,
+) -> dict[str, Any]:
+    """Re-read every file and rewrite index entries (no mtime/sha1 skip)."""
+    root = resolve_source_root(source)
+    if not root.exists():
+        return {"source_id": source.id, "status": "missing", "indexed": 0, "deleted": 0, "scanned": 0, "skipped": 0}
+
+    files = collect_files(root, source.include)
+    existing: set[str] = set()
+    scanned = 0
+    indexed = 0
+    skipped = 0
+    for f in files:
+        rel_path = str(f.relative_to(root)).replace("\\", "/")
+        if rel_path_filter and rel_path != rel_path_filter:
+            continue
+        scanned += 1
+        existing.add(rel_path)
+        stat = f.stat()
+        mtime = stat.st_mtime
+        size = int(stat.st_size)
+        if size > int(settings.max_index_file_bytes):
+            skipped += 1
+            continue
+        content = read_text_safely(f)
+        sha1 = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
+        upsert_document(conn, source.id, rel_path, content, mtime, size, sha1, language_from_suffix(f))
+        indexed += 1
+    deleted = 0 if rel_path_filter else remove_missing(conn, source.id, existing)
+    return {
+        "source_id": source.id,
+        "status": "ok",
+        "indexed": indexed,
+        "skipped": skipped,
+        "deleted": deleted,
+        "scanned": scanned,
+    }
 
 
 def index_single_source(conn: sqlite3.Connection, source: Source, rel_path_filter: str | None = None) -> dict[str, Any]:

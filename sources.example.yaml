@@ -1,46 +1,76 @@
 # 复制为 sources.yaml 并按环境修改 path。
 # Docker 推荐使用 /sources/<id>，由 docker-compose 卷挂载。
-# 本机直跑 API 时可改为绝对路径，例如 D:/notes/knowledge_engineering
+# order：默认同步顺序（越小越先）；Web 设置可覆盖 sync_source_order。
 
 sources:
   - id: knowledge_engineering
     type: local
+    order: 10
     path: "/sources/knowledge_engineering"
     include:
       - "**/*.md"
       - "**/*.py"
       - "**/*.java"
 
+  # Obsidian Web Clipper 导出目录
+  - id: obsidian
+    type: local
+    order: 20
+    path: "/sources/obsidian"
+    include:
+      - "**/*.md"
+
   - id: JavaBasic
     type: local
+    order: 30
     path: "/sources/JavaBasic"
     include:
       - "**/*.md"
       - "**/*.java"
 
+  # 同源：优先 GitHub pull，失败回退下方 local
+  - id: PythonBasic
+    type: github
+    order: 45
+    path: "/sources/PythonBasic"
+    url: "https://github.com/you/PythonBasic.git"
+    branch: main
+    include:
+      - "**/*.md"
+      - "**/*.py"
+
   - id: PythonBasic
     type: local
+    order: 40
     path: "/sources/PythonBasic"
     include:
       - "**/*.md"
       - "**/*.py"
 
-  - id: wiki
-    type: local
-    path: "/data/wiki"
+  # 需替换 url；私有仓配置 GITHUB_TOKEN
+  - id: example_github
+    type: github
+    order: 50
+    path: "/sources/example_github"
+    url: "https://github.com/you/your-notes.git"
+    branch: main
+    include:
+      - "**/*.md"
+      - "**/*.py"
+
+  # Web 源：见 .env WEB_FETCH_* 与 fetch_confirmed
+  - id: example_web
+    type: web
+    order: 60
+    url: "https://example.com"
+    fetch_confirmed: true
+    path: "/sources/web_snapshots/example_web"
     include:
       - "**/*.md"
 
-  # GitHub 源：同步时 shallow clone 到 data/repos/<id>（需 GITHUB_TOKEN 访问私有仓）
-  # - id: example_github
-  #   type: github
-  #   url: "https://github.com/you/your-notes.git"
-  #   branch: main
-  #   paths: ["docs/", "notes/"]
-  #   include: ["**/*.md", "**/*.py"]
-
-  # Web 源：抓取 URL 快照到 data/web-cache/<id>/index.md
-  # - id: example_web
-  #   type: web
-  #   url: "https://example.com/docs"
-  #   include: ["**/*.md"]
+  - id: wiki
+    type: local
+    order: 100
+    path: "/data/wiki"
+    include:
+      - "**/*.md"

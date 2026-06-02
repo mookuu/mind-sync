@@ -1,6 +1,8 @@
 import logging
 
 from ..config import settings
+from .password_util import is_bcrypt_hash
+from .permissions import load_auth_users
 from .source_health import collect_source_warnings
 
 logger = logging.getLogger("mind-sync.security")
@@ -18,6 +20,14 @@ def collect_security_warnings() -> list[str]:
         warnings.append("API_KEY is default — set a strong random value in .env")
     if settings.secret_key.strip() in WEAK_SECRET_KEYS:
         warnings.append("SECRET_KEY is default — set a random secret in .env for session signing")
+    users = load_auth_users()
+    if users:
+        plain = [u.username for u in users if not is_bcrypt_hash(u.password)]
+        if plain:
+            warnings.append(
+                f"AUTH_USERS contains plaintext passwords for: {', '.join(plain[:5])}"
+                " — use scripts/generate_secrets.py hash-password for bcrypt hashes"
+            )
     if settings.cookie_secure and not settings.security_hsts_enabled:
         warnings.append("COOKIE_SECURE=true but SECURITY_HSTS_ENABLED=false — consider enabling HSTS on HTTPS")
     return warnings

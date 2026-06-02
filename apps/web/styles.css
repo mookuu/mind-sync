@@ -1101,6 +1101,33 @@ select:focus {
   font-size: 13px;
 }
 
+.sync-order-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.sync-order-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.sync-order-label {
+  font-family: var(--font-mono);
+}
+
+.sync-order-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .sources-list {
   list-style: none;
   padding: 0;

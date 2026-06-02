@@ -9,7 +9,6 @@ from .audit import add_audit_event_meta
 from .indexer import (
     collect_files,
     language_from_suffix,
-    load_sources,
     read_text_safely,
     remove_missing,
     resolve_source_root,
@@ -17,24 +16,30 @@ from .indexer import (
     upsert_document,
 )
 from .source_sync import sync_all_sources
+from .source_sync_key import filter_sources_by_sync_keys
+from .sync_settings import apply_source_order, load_ordered_sources
 from .vault_git import pull_vault, push_vault, write_sources_manifest
 
 SYNC_LOCK = threading.Lock()
 SYNC_STATE: dict[str, Any] = {
     "running": False,
+    "job_mode": "sync",
     "started_at": None,
     "finished_at": None,
     "indexed": 0,
     "skipped": 0,
     "deleted": 0,
+    "cleared": 0,
     "sources": [],
     "current_source": None,
     "processed_files": 0,
     "total_files": 0,
     "error": None,
+    "warnings": [],
 }
 LAST_SYNC_SUMMARY: dict[str, Any] = {
     "status": "idle",
+    "mode": "sync",
     "trigger": None,
     "started_at": None,
     "finished_at": None,
@@ -90,12 +95,14 @@ def restore_last_sync_summary() -> None:
 def finalize_sync_run(trigger: str, started_at: float, result: dict[str, Any]) -> None:
     summary = {
         "status": "failed" if result.get("error") else "success",
+        "mode": result.get("mode", "sync"),
         "trigger": trigger,
         "started_at": started_at,
         "finished_at": time.time(),
         "indexed": int(result.get("indexed", 0)),
         "skipped": int(result.get("skipped", 0)),
         "deleted": int(result.get("deleted", 0)),
+        "cleared": int(result.get("cleared", 0)),
         "error": result.get("error"),
     }
     with SYNC_LOCK:
@@ -117,9 +124,12 @@ def is_sync_running() -> bool:
 
 
 def get_sync_status_payload() -> dict[str, Any]:
+    from .sync_backoff import list_backoff_status
+
     with SYNC_LOCK:
         data = dict(SYNC_STATE)
         data["last_completed"] = dict(LAST_SYNC_SUMMARY)
+    data["source_backoff"] = list_backoff_status()
     return data
 
 
@@ -138,16 +148,19 @@ def run_sync_job(
     started_at = time.time()
     with SYNC_LOCK:
         SYNC_STATE["running"] = True
+        SYNC_STATE["job_mode"] = "sync"
         SYNC_STATE["started_at"] = time.time()
         SYNC_STATE["finished_at"] = None
         SYNC_STATE["indexed"] = 0
         SYNC_STATE["skipped"] = 0
         SYNC_STATE["deleted"] = 0
+        SYNC_STATE["cleared"] = 0
         SYNC_STATE["sources"] = []
         SYNC_STATE["current_source"] = None
         SYNC_STATE["processed_files"] = 0
         SYNC_STATE["total_files"] = 0
         SYNC_STATE["error"] = None
+        SYNC_STATE["warnings"] = []
 
     conn = None
     indexed = 0
@@ -157,19 +170,55 @@ def run_sync_job(
     repo_sync: list[dict[str, Any]] = []
     vault_meta: dict[str, Any] = {}
     run_error = None
+    sync_warnings: list[str] = []
     try:
         if vault_pull:
             vault_meta["pull"] = pull_vault()
         conn = get_db()
-        all_sources = load_sources()
+        from ..db import load_settings_map
+
+        settings_map = load_settings_map()
+        all_sources = load_ordered_sources(settings_map)
         if source_ids:
-            allowed = set(source_ids)
-            all_sources = [s for s in all_sources if s.id in allowed]
-        repo_sync = sync_all_sources(all_sources)
-        for source in all_sources:
+            all_sources = apply_source_order(
+                filter_sources_by_sync_keys(all_sources, source_ids),
+                settings_map,
+            )
+        remote_sync = sync_all_sources(all_sources)
+        repo_sync = remote_sync.get("repo_sync", [])
+        sync_warnings = list(remote_sync.get("warnings") or [])
+        index_tasks = remote_sync.get("index_tasks") or []
+
+        for task in index_tasks:
+            source = task.get("source")
+            task_warning = task.get("warning")
+            if task_warning and task_warning not in sync_warnings:
+                sync_warnings.append(task_warning)
+
+            if source is None:
+                gh_id = task.get("github_id") or "unknown"
+                source_stats.append(
+                    {
+                        "source_id": gh_id,
+                        "status": task.get("status", "missing"),
+                        "indexed": 0,
+                        "deleted": 0,
+                        "warning": task_warning,
+                    }
+                )
+                continue
+
             root = resolve_source_root(source)
             if not root.exists():
-                source_stats.append({"source_id": source.id, "status": "missing", "indexed": 0, "deleted": 0})
+                source_stats.append(
+                    {
+                        "source_id": source.id,
+                        "status": "missing",
+                        "indexed": 0,
+                        "deleted": 0,
+                        "warning": task_warning,
+                    }
+                )
                 continue
             files = collect_files(root, source.include)
             with SYNC_LOCK:
@@ -209,13 +258,36 @@ def run_sync_job(
             _update_sync_counts(len(files), indexed, skipped, deleted)
             removed = remove_missing(conn, source.id, existing)
             deleted += removed
-            source_stats.append({"source_id": source.id, "status": "ok", "indexed": src_indexed, "deleted": removed})
+            stat = {
+                "source_id": source.id,
+                "status": "ok",
+                "indexed": src_indexed,
+                "deleted": removed,
+            }
+            if task_warning:
+                stat["warning"] = task_warning
+            pull = task.get("pull") or {}
+            if pull.get("source_id"):
+                stat["github_id"] = pull.get("source_id")
+            elif task.get("github_id"):
+                stat["github_id"] = task.get("github_id")
+            if pull.get("ok") is False and pull.get("fallback"):
+                stat["fallback"] = pull.get("fallback")
+            source_stats.append(stat)
             conn.commit()
         write_sources_manifest(source_stats)
         if vault_push:
             vault_meta["push"] = push_vault()
+        if not run_error:
+            from .wiki_nav import touch_wiki_nav
+
+            detail = f"indexed={indexed} skipped={skipped} deleted={deleted}"
+            if sync_warnings:
+                detail += f" warnings={len(sync_warnings)}"
+            touch_wiki_nav("sync", detail)
         with SYNC_LOCK:
             SYNC_STATE["error"] = None
+            SYNC_STATE["warnings"] = sync_warnings
     except Exception as exc:
         if conn:
             conn.rollback()
@@ -233,12 +305,16 @@ def run_sync_job(
             SYNC_STATE["deleted"] = deleted
             SYNC_STATE["sources"] = source_stats
             SYNC_STATE["current_source"] = None
+            SYNC_STATE["warnings"] = sync_warnings
     result = {
+        "mode": "sync",
         "indexed": indexed,
         "skipped": skipped,
         "deleted": deleted,
+        "cleared": 0,
         "sources": source_stats,
         "repo_sync": repo_sync,
+        "warnings": sync_warnings,
         "vault": vault_meta,
         "error": run_error,
     }

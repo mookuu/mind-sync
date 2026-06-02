@@ -12,8 +12,12 @@ from app.config import settings
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr("app.config.settings.auth_password", "test-pass")
+    monkeypatch.setattr("app.config.settings.auth_users", "")
     monkeypatch.setattr("app.config.settings.api_key", "test-api-key")
     monkeypatch.setattr("app.config.settings.secret_key", "test-secret-key-long-enough-1234567890123456")
+    from tests.auth_util import patch_session_serializer
+
+    patch_session_serializer(monkeypatch, "test-secret-key-long-enough-1234567890123456")
     api_key_val = "test-api-key"
     monkeypatch.setattr("app.services.auth.parse_api_keys", lambda: {api_key_val})
     with TestClient(app) as c:
@@ -67,6 +71,9 @@ def test_auth_mode_no_api_key(client):
         # Login with password since api key is disabled
         resp = client.post("/api/login", json={"password": "test-pass"})
         assert resp.status_code == 200
+        from tests.auth_util import attach_session_cookies
+
+        attach_session_cookies(client, resp)
         am = client.get("/api/auth-mode")
         assert am.status_code == 200
         body = am.json()
@@ -78,7 +85,7 @@ def test_auth_mode_no_api_key(client):
 def test_login_invalid_password(client):
     resp = client.post("/api/login", json={"password": "wrong"})
     assert resp.status_code == 401
-    assert "Invalid password" in resp.json().get("detail", "")
+    assert "Invalid username or password" in resp.json().get("detail", "")
 
 
 def test_categories_endpoint(client):
@@ -134,8 +141,15 @@ def test_audit_events(client):
     assert "items" in body
 
 
+def test_rebuild_index_starts(client):
+    resp = client.post("/api/rebuild-index", json={"use_saved_defaults": True}, headers={"x-api-key": "test-api-key"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("mode") == "rebuild"
+    assert "started" in body
+
+
 @pytest.mark.parametrize("endpoint", [
-    "/api/health",
     "/api/sources",
     "/api/sync-status",
     "/api/library",
@@ -143,6 +157,6 @@ def test_audit_events(client):
     "/api/vault-status",
 ])
 def test_get_endpoints_require_auth(client, endpoint):
-    """All protected GET endpoints should return 401 without credentials."""
+    """Protected GET endpoints should return 401 without credentials (/api/health is public)."""
     resp = client.get(endpoint)
     assert resp.status_code == 401, f"{endpoint} should require auth"

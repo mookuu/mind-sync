@@ -3,6 +3,7 @@
 let currentSyncPreset = "all";
 let customSyncSourceIds = [];
 let availableSources = [];
+let syncSourceOrder = [];
 
 function switchView(viewId) {
   document.querySelectorAll(".nav-item").forEach((btn) => {
@@ -67,15 +68,60 @@ function renderSyncPresets(presets, selectedPreset) {
   if (customBox) customBox.classList.toggle("hidden", currentSyncPreset !== "custom");
 }
 
+function sourceSyncKey(s) {
+  return s.sync_key || `${s.id}:${s.type || "local"}`;
+}
+
+function sourceSyncLabel(s) {
+  return s.label || `${s.id}${s.type ? ` (${s.type})` : ""}`;
+}
+
+function expandSyncKeys(rawKeys, sources) {
+  const out = [];
+  const seen = new Set();
+  for (const key of rawKeys || []) {
+    const chunk = String(key || "").trim();
+    if (!chunk) continue;
+    const colon = chunk.lastIndexOf(":");
+    const typed = colon > 0 && ["local", "github", "web"].includes(chunk.slice(colon + 1));
+    if (typed) {
+      if (!seen.has(chunk)) {
+        out.push(chunk);
+        seen.add(chunk);
+      }
+      continue;
+    }
+    const matches = (sources || []).filter((s) => s.id === chunk);
+    for (const s of matches) {
+      const sk = sourceSyncKey(s);
+      if (!seen.has(sk)) {
+        out.push(sk);
+        seen.add(sk);
+      }
+    }
+  }
+  return out;
+}
+
+function isSourceKeySelected(s, selectedKeys) {
+  const selected = new Set(selectedKeys || []);
+  const sk = sourceSyncKey(s);
+  if (selected.has(sk)) return true;
+  if (selected.has(s.id)) {
+    const hasTyped = [...selected].some((k) => String(k).startsWith(`${s.id}:`));
+    return !hasTyped;
+  }
+  return false;
+}
+
 function renderCustomSourceCheckboxes(sources, selectedIds) {
   const box = document.getElementById("syncCustomSources");
   if (!box) return;
   box.innerHTML = "<div class='field-label'>勾选要同步的来源</div>";
-  const selected = new Set(selectedIds || []);
   for (const s of sources || []) {
     const label = document.createElement("label");
-    const checked = selected.has(s.id) ? "checked" : "";
-    label.innerHTML = `<input type="checkbox" value="${s.id}" ${checked} /> ${s.id}${s.exists ? "" : " (路径缺失)"}`;
+    const checked = isSourceKeySelected(s, selectedIds) ? "checked" : "";
+    label.innerHTML = `<input type="checkbox" value="${sourceSyncKey(s)}" ${checked} /> ${sourceSyncLabel(s)}${s.exists ? "" : " (路径缺失)"}`;
     box.appendChild(label);
   }
 }
@@ -84,6 +130,48 @@ function getCustomSourceSelection() {
   const box = document.getElementById("syncCustomSources");
   if (!box) return [];
   return [...box.querySelectorAll("input[type=checkbox]:checked")].map((el) => el.value);
+}
+
+function renderSyncOrderList(orderIds, sources) {
+  const list = document.getElementById("syncOrderList");
+  if (!list) return;
+  list.innerHTML = "";
+  const byKey = Object.fromEntries((sources || []).map((s) => [sourceSyncKey(s), s]));
+  const defaultKeys = (sources || []).map(sourceSyncKey);
+  let keys = expandSyncKeys(orderIds && orderIds.length ? orderIds.slice() : defaultKeys, sources);
+  for (const sk of defaultKeys) {
+    if (!keys.includes(sk)) keys.push(sk);
+  }
+  syncSourceOrder = keys;
+  keys.forEach((key, index) => {
+    const s = byKey[key];
+    const li = document.createElement("li");
+    li.className = "sync-order-item";
+    const label = s ? sourceSyncLabel(s) : key;
+    li.innerHTML = `
+      <span class="sync-order-label">${label}</span>
+      <span class="sync-order-actions">
+        <button type="button" class="btn btn-sm sync-order-up" data-index="${index}" ${index === 0 ? "disabled" : ""}>↑</button>
+        <button type="button" class="btn btn-sm sync-order-down" data-index="${index}" ${index === keys.length - 1 ? "disabled" : ""}>↓</button>
+      </span>`;
+    list.appendChild(li);
+  });
+  list.querySelectorAll(".sync-order-up").forEach((btn) => {
+    btn.onclick = () => {
+      const i = Number(btn.dataset.index);
+      if (i <= 0) return;
+      [syncSourceOrder[i - 1], syncSourceOrder[i]] = [syncSourceOrder[i], syncSourceOrder[i - 1]];
+      renderSyncOrderList(syncSourceOrder, sources);
+    };
+  });
+  list.querySelectorAll(".sync-order-down").forEach((btn) => {
+    btn.onclick = () => {
+      const i = Number(btn.dataset.index);
+      if (i >= syncSourceOrder.length - 1) return;
+      [syncSourceOrder[i + 1], syncSourceOrder[i]] = [syncSourceOrder[i], syncSourceOrder[i + 1]];
+      renderSyncOrderList(syncSourceOrder, sources);
+    };
+  });
 }
 
 async function loadVaultStatus() {
@@ -117,13 +205,32 @@ async function loadSourcesSettingsList() {
     for (const s of availableSources) {
       const li = document.createElement("li");
       li.innerHTML = `<div><b>${s.id}</b> <span class="${s.exists ? "ok" : "missing"}">${s.exists ? "● 可访问" : "● 路径缺失"}</span></div>
-        <div class="subtle">${s.path || ""}</div>
+        <div class="subtle">${s.type || "local"} · order=${s.order ?? "—"} · ${s.path || ""}</div>
         <div class="subtle">${(s.include || []).join(", ")}</div>`;
       list.appendChild(li);
     }
     renderCustomSourceCheckboxes(availableSources, customSyncSourceIds);
   } catch (e) {
     list.innerHTML = `<li class="subtle">加载失败: ${e.message}</li>`;
+  }
+}
+
+async function reloadSourcesConfig() {
+  const statusEl = document.getElementById("reloadSourcesStatus");
+  const btn = document.getElementById("reloadSourcesBtn");
+  if (!btn) return;
+  try {
+    btn.disabled = true;
+    if (statusEl) statusEl.textContent = "重新加载中…";
+    const data = await api("/api/admin/sources/reload", { method: "POST" });
+    const count = data.count ?? (data.sources || []).length;
+    if (statusEl) statusEl.textContent = `已加载 ${count} 个源`;
+    await loadSourcesSettingsList();
+    if (typeof loadSourcesFilter === "function") await loadSourcesFilter();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `失败: ${e.message}`;
+  } finally {
+    if (btn && window.MindSyncAuth?.canWrite !== false) btn.removeAttribute("disabled");
   }
 }
 
@@ -371,14 +478,15 @@ async function loadSettingsExtended() {
   try {
     const st = await api("/api/settings");
     renderSyncPresets(st.sync_presets, st.sync_preset);
-    customSyncSourceIds = st.sync_source_ids || [];
-    renderCustomSourceCheckboxes(availableSources.length ? availableSources : [], customSyncSourceIds);
+    const srcList = availableSources.length ? availableSources : (await api("/api/sources")).sources || [];
+    if (!availableSources.length) availableSources = srcList;
+    customSyncSourceIds = expandSyncKeys(st.sync_source_ids || st.sync_selected_keys || [], srcList);
+    renderCustomSourceCheckboxes(srcList, customSyncSourceIds);
     updateSyncScopeText(st);
-    if (!availableSources.length) {
-      const src = await api("/api/sources");
-      availableSources = src.sources || [];
-      renderCustomSourceCheckboxes(availableSources, customSyncSourceIds);
-    }
+    renderSyncOrderList(
+      expandSyncKeys(st.sync_source_order || st.sync_effective_order || [], srcList),
+      srcList,
+    );
   } catch (_) {
     // ignore
   }
@@ -414,6 +522,9 @@ function patchAuthUI() {
   pwdInput?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") loginBtn.click();
   });
+  document.getElementById("user")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") loginBtn.click();
+  });
 
   settingsBtn.onclick = async () => {
     if (!isLoggedIn) return;
@@ -440,6 +551,9 @@ function patchAuthUI() {
       };
       if (currentSyncPreset === "custom") {
         body.sync_source_ids = getCustomSourceSelection();
+      }
+      if (syncSourceOrder.length) {
+        body.sync_source_order = syncSourceOrder;
       }
       const data = await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
       settingsStatus.textContent = `已保存 · 同步范围: ${data.sync_preset}`;
@@ -517,32 +631,58 @@ function patchAuthUI() {
           vault_push: !!vaultPushOnSync,
         }),
       });
-      switchView("sync");
-      const deadline = Date.now() + 15 * 60 * 1000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const status = await loadSyncStatus();
-        if (!status) return;
-        if (status.running) {
-          setStatus(`同步中… ${status.current_source || ""} (${status.processed_files}/${status.total_files})`);
-          continue;
-        }
-        setStatus(status.error ? `同步失败: ${status.error}` : "同步完成");
-        await loadLibrary();
-        await loadSettingsExtended();
-        await loadWikiGraph();
-        return;
-      }
+      await waitForIndexJob("sync");
     } catch (e) {
       setStatus(`同步失败: ${e.message}`);
     }
   };
+
+  const rebuildBtn = document.getElementById("rebuildBtn");
+  rebuildBtn?.addEventListener("click", async () => {
+    if (!isLoggedIn) return;
+    const ok = window.confirm(
+      "将按当前同步范围清空索引并强制重扫所有文件（不拉取 GitHub/Web/Vault）。确定继续？"
+    );
+    if (!ok) return;
+    try {
+      setStatus("全量重建中…");
+      await api("/api/rebuild-index", {
+        method: "POST",
+        body: JSON.stringify({ use_saved_defaults: true }),
+      });
+      await waitForIndexJob("rebuild");
+    } catch (e) {
+      setStatus(`全量重建失败: ${e.message}`);
+    }
+  });
+}
+
+async function waitForIndexJob(expectedMode) {
+  switchView("sync");
+  const label = expectedMode === "rebuild" ? "全量重建" : "同步";
+  const deadline = Date.now() + 15 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const status = await loadSyncStatus();
+    if (!status) return;
+    if (status.running) {
+      setStatus(`${label}中… ${status.current_source || ""} (${status.processed_files}/${status.total_files})`);
+      continue;
+    }
+    setStatus(status.error ? `${label}失败: ${status.error}` : `${label}完成`);
+    await loadLibrary();
+    await loadSettingsExtended();
+    await loadWikiGraph();
+    return;
+  }
 }
 
 function initUI() {
   bindViewNav();
   bindSettingsTabs();
   patchAuthUI();
+  const reloadSourcesBtn = document.getElementById("reloadSourcesBtn");
+  if (reloadSourcesBtn) reloadSourcesBtn.onclick = () => reloadSourcesConfig();
   switchView("library");
   bootstrapAuthState();
 }

@@ -5,14 +5,8 @@ from typing import Any
 import yaml
 
 from ..db import WIKI_DIR, get_db
-from .indexer import index_single_source, load_sources
-
-
-def get_wiki_source():
-    for source in load_sources():
-        if source.id == "wiki":
-            return source
-    return None
+from .indexer import index_single_source
+from .wiki_source import get_wiki_source_or_fallback
 
 
 def build_query_page_body(
@@ -65,12 +59,32 @@ def save_query_page(
     )
 
     index_stat: dict[str, Any] = {"indexed": 0, "status": "skipped"}
-    wiki_source = get_wiki_source()
-    if wiki_source:
-        conn = get_db()
-        try:
-            index_stat = index_single_source(conn, wiki_source, rel_path_filter=rel_name)
-            conn.commit()
-        finally:
-            conn.close()
+    wiki_source = get_wiki_source_or_fallback()
+    conn = get_db()
+    try:
+        index_stat = index_single_source(conn, wiki_source, rel_path_filter=rel_name)
+        conn.commit()
+    finally:
+        conn.close()
+    return rel_name, index_stat
+
+
+def save_query_page_with_nav(
+    *,
+    question: str,
+    answer: str,
+    model_used: str,
+    evidences: list[dict[str, Any]],
+    slug: str,
+) -> tuple[str, dict[str, Any]]:
+    rel_name, index_stat = save_query_page(
+        question=question,
+        answer=answer,
+        model_used=model_used,
+        evidences=evidences,
+        slug=slug,
+    )
+    from .wiki_nav import touch_wiki_nav
+
+    touch_wiki_nav("query", f"saved {rel_name}")
     return rel_name, index_stat

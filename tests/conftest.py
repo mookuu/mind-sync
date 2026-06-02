@@ -25,6 +25,10 @@ def test_data_dir(monkeypatch: pytest.MonkeyPatch) -> Generator[Path, None, None
         monkeypatch.setattr("app.db.DB_PATH", data_dir / "mind_sync.db")
         monkeypatch.setattr("app.db.WIKI_DIR", data_dir / "wiki")
         monkeypatch.setattr("app.db.LINT_DIR", data_dir / "lint-reports")
+        wiki_path = data_dir / "wiki"
+        monkeypatch.setattr("app.main.WIKI_DIR", wiki_path)
+        monkeypatch.setattr("app.services.wiki_nav.WIKI_DIR", wiki_path)
+        monkeypatch.setattr("app.services.wiki_source.WIKI_DIR", wiki_path)
         # Re-initialize DB with fresh schema
         init_db()
         yield data_dir
@@ -53,3 +57,9 @@ def db_conn():
 def wiki_dir(test_data_dir: Path) -> Path:
     """Shortcut to the test wiki directory."""
     return test_data_dir / "wiki"
+
+
+@pytest.fixture
+def test_db(test_data_dir: Path) -> Path:
+    """Alias used by older tests."""
+    return test_data_dir

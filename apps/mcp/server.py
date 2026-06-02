@@ -39,11 +39,20 @@ def list_library(category: str = "all") -> dict[str, Any]:
 
 @mcp.tool()
 def sync_sources(use_saved_defaults: bool = True, preset: str | None = None) -> dict[str, Any]:
-    """Start background sync. Uses saved sync scope by default, or optional preset."""
+    """Start background incremental sync (remote pull + index). Uses saved sync scope by default."""
     body: dict[str, Any] = {"use_saved_defaults": use_saved_defaults}
     if preset:
         body["preset"] = preset
     return call_api("POST", "/api/sync", body=body)
+
+
+@mcp.tool()
+def rebuild_index(use_saved_defaults: bool = True, preset: str | None = None) -> dict[str, Any]:
+    """Full index rebuild: clear selected sources then force re-scan (no remote pull)."""
+    body: dict[str, Any] = {"use_saved_defaults": use_saved_defaults}
+    if preset:
+        body["preset"] = preset
+    return call_api("POST", "/api/rebuild-index", body=body)
 
 
 @mcp.tool()
@@ -151,7 +160,7 @@ def query_wiki(
 
 @mcp.tool()
 def ingest_source(source_id: str | None = None, rel_path: str | None = None) -> dict[str, Any]:
-    """Ingest all sources or a specific source/path into index."""
+    """Incremental index only (no remote pull): ingest sources or a specific path."""
     return call_api("POST", "/api/ingest", body={"source_id": source_id, "rel_path": rel_path})
 
 

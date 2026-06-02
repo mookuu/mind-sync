@@ -7,6 +7,16 @@ alwaysApply: false
 
 在 Cursor 中处理学习笔记、技术调研或 Harness 等内容时，优先使用 **mind-sync API / MCP**，而不是仅依赖对话记忆。
 
+## Cursor Skills（推荐）
+
+| Skill | 用途 |
+|-------|------|
+| `/mind-sync-ingest` | 素材 → 摘要（见 `.cursor/skills/mind-sync-ingest/`） |
+| `/mind-sync-query` | 带证据问答 + 可选保存 queries |
+| `/mind-sync-lint` | wiki 质检（含 stale-summary） |
+
+维护规范：`data/wiki/SCHEMA.md`
+
 ## 数据流
 
 1. **sources（原始素材）**：各仓库 `.md/.py/.java`，由 `sources.yaml` 配置
@@ -17,30 +27,33 @@ alwaysApply: false
 
 ```
 /data/purpose.md              # 研究方向，问答时会注入 prompt
-/data/wiki/summaries/{topic}/ # 学习摘要，如 summaries/harness/*.md
-/data/wiki/queries/           # 问答沉淀（type: query, derived: true）
+/data/wiki/SCHEMA.md          # Agent 维护规范（ingest/query/lint）
+/data/wiki/index.md           # 自动目录（sync/query/lint 后更新）
+/data/wiki/log.md             # 自动事件日志
+/data/wiki/summaries/{topic}/ # 学习摘要
+/data/wiki/queries/           # 问答沉淀
 ```
 
 新建摘要请参考 `templates/wiki/summary-template.md`。
 
 ## 推荐操作顺序
 
-1. 用户新增/修改笔记或摘要后 → 调用 `sync_sources` 或 Web「一键同步」
-2. 调研问题 → `query_wiki(question=..., save_to_wiki=true)` 获取答案 + evidences
+1. 用户新增/修改笔记或摘要后 → `sync_sources` 或 Web「同步」
+2. 调研问题 → `query_wiki(question=..., save_to_wiki=true)`
 3. 浏览某主题 → `browse_docs(category="summary", topic="harness")`
 4. 全文检索 → `search_docs(q=..., category=..., topic=...)`
-5. 质量检查 → `lint_wiki()`（断链、孤儿页、过期摘要）
+5. 质量检查 → `lint_wiki()`（断链、孤儿页、源新摘要旧）
+
+## Obsidian 协作（可选）
+
+- Obsidian **仅作编辑器/剪藏**，不是索引引擎
+- Web Clipper 保存到 `sources/obsidian/`（`sources.yaml` 中 `obsidian` 源）
+- 摘要在 mind-sync 的 `summaries/`，通过 MCP ingest skill 维护
+- **不**在工程内实现 Obsidian 插件、Sync 或 obsidian-wiki 双轨 `raw/` 目录
 
 ## 证据与置信度
 
-`query_wiki` 返回的 `evidences` 含四档置信度：
-
-- **EXTRACTED** — 原文摘录
-- **INFERRED** — 合理推断
-- **AMBIGUOUS** — 待澄清
-- **UNVERIFIED** — 未验证
-
-回答用户时引用 `[ref]` 与 `source_id/rel_path`，不要编造未出现在证据中的内容。
+`query_wiki` 返回的 `evidences` 含四档置信度：EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED
 
 ## MCP 环境变量
 
@@ -49,5 +62,4 @@ MINDSYNC_BASE_URL=http://localhost:8000
 MINDSYNC_API_KEY=<与 .env 中 API_KEY 一致>
 ```
 
-项目内已配置 `.cursor/mcp.json`，步骤见 `docs/CURSOR_MCP_SETUP.md`。
-详细说明见 `docs/MIND_SYNC_WORKFLOW.md`。
+详见 `docs/MIND_SYNC_WORKFLOW.md` 与 `docs/CURSOR_MCP_SETUP.md`。
