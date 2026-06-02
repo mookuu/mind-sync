@@ -1,4 +1,4 @@
-import argparse
+﻿import argparse
 import json
 import sys
 import time
@@ -51,8 +51,12 @@ def run_smoke(args):
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 
     status, data = request_json(opener, "GET", f"{base}/api/health")
-    if status != 200 or data.get("status") != "ok":
+    if status != 200:
         raise RuntimeError(f"health failed: {status} {data}")
+    if data.get("status") not in ("ok", "degraded"):
+        raise RuntimeError(f"unexpected health status: {data}")
+    if data.get("status") == "degraded" and not args.skip_sync:
+        raise RuntimeError(f"health degraded: {data}")
 
     status, data = request_json(opener, "POST", f"{base}/api/login", body={"password": args.password})
     if status != 200 or not data.get("ok"):
