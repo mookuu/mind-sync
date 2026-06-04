@@ -8,6 +8,7 @@ apps/api/.venv/
 data/
 sources/
 .pytest-data/
+.pytest-debug-wiki/
 .ci-data/
 wiki_graph.json
 
