@@ -115,7 +115,7 @@ allow = ["bash=cat .gitignore 2>/dev/null; echo \"EXIT:$?\"", "write_file=/mnt/c
 # bash = "enforce" (default) jails each command in an OS sandbox (macOS now;
 # graceful fallback elsewhere); "off" disables it. network allows egress.
 # workspace_root = ""            # default: current working directory
-# allow_write = ["/tmp"]          # extra dirs writers may also modify
+allow_write = ["/mnt/c/Workspace/program/knowledge_engineering/tool_setting"]
 bash    = "enforce"
 network = true
 
