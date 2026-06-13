@@ -10,7 +10,7 @@ theme = "auto"   # auto|dark|light; CLI colors only; REASONIX_THEME can override
 # theme_style = "graphite"   # graphite|ember|aurora|midnight|sandstone|porcelain|linen|glacier
 
 [network]
-proxy_mode = "auto"   # auto|env|custom|off; auto currently uses env proxy
+proxy_mode = "off"   # auto|env|custom|off; auto currently uses env proxy
 # proxy_url  = "socks5://127.0.0.1:7890"   # optional custom override
 # no_proxy   = "localhost,127.0.0.1,.local"   # honored for proxy_mode = "custom"
 
