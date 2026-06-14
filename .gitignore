@@ -17,3 +17,7 @@ wiki_graph.json
 
 # Virtual environment
 .venv/
+.vscode/
+
+# Reasonix project config
+reasonix.toml
