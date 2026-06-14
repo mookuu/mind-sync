@@ -1,9 +1,4 @@
-.env
-__pycache__/
-*.pyc
-.pytest_cache/
-node_modules/
-*.log
+# 项目特有规则（通用规则见全局 ~/.gitignore）
 apps/api/.venv/
 data/
 sources/
@@ -14,10 +9,3 @@ wiki_graph.json
 
 # Python version
 .python-version
-
-# Virtual environment
-.venv/
-.vscode/
-
-# Reasonix project config
-reasonix.toml
