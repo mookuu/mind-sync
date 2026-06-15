@@ -834,20 +834,28 @@ input:focus, select:focus {
 .preset-option {
   display: flex;
   gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
+  padding: 4px 0;
   cursor: pointer;
-  transition: border-color var(--transition-fast);
+  align-items: flex-start;
 }
 
-.preset-option:hover { border-color: var(--fg-subtle); }
-.preset-option.selected { border-color: var(--accent-emphasis); background: var(--accent-bg); }
-.preset-option input { margin-top: 3px; }
+.preset-option:hover { color: var(--accent-fg); }
+.preset-option.selected { color: var(--accent-fg); }
+.preset-option input { margin-top: 3px; accent-color: var(--accent-emphasis); }
+
+#presetAll.preset-option {
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  background: var(--bg-muted);
+}
+#presetAll.preset-option:hover { border-color: var(--fg-subtle); }
+#presetAll.preset-option.selected { border-color: var(--accent-emphasis); background: var(--accent-bg); }
 
 .preset-desc { font-size: 12px; color: var(--fg-muted); }
 
-.source-checkboxes { margin-top: 12px; padding: 12px; border: 1px dashed var(--border-default); border-radius: var(--radius); }
+.source-checkboxes { margin-top: 8px; }
 .source-checkboxes label { display: flex; gap: 8px; margin-bottom: 6px; font-size: 13px; }
 
 .sync-order-list { list-style: none; padding: 0; margin: 8px 0 0; }

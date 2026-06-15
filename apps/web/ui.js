@@ -3,7 +3,6 @@
 let currentSyncPreset = "all";
 let customSyncSourceIds = [];
 let availableSources = [];
-let syncSourceOrder = [];
 
 function switchView(viewId) {
   document.querySelectorAll(".nav-item").forEach((btn) => {
@@ -104,7 +103,7 @@ function renderSyncPresets(presets, selectedPreset) {
   // 自定义路径区域
   const customBox = document.getElementById("syncCustomPaths");
   if (customBox) {
-    customBox.style.display = "block";
+    customBox.classList.remove("hidden");
     customBox.style.opacity = isDefault ? "0.4" : "1";
     customBox.style.pointerEvents = isDefault ? "none" : "auto";
   }
@@ -182,48 +181,6 @@ function getCustomSourceSelection() {
   const box = document.getElementById("syncCustomSources");
   if (!box) return [];
   return [...box.querySelectorAll("input[type=checkbox]:checked")].map((el) => el.value);
-}
-
-function renderSyncOrderList(orderIds, sources) {
-  const list = document.getElementById("syncOrderList");
-  if (!list) return;
-  list.innerHTML = "";
-  const byKey = Object.fromEntries((sources || []).map((s) => [sourceSyncKey(s), s]));
-  const defaultKeys = (sources || []).map(sourceSyncKey);
-  let keys = expandSyncKeys(orderIds && orderIds.length ? orderIds.slice() : defaultKeys, sources);
-  for (const sk of defaultKeys) {
-    if (!keys.includes(sk)) keys.push(sk);
-  }
-  syncSourceOrder = keys;
-  keys.forEach((key, index) => {
-    const s = byKey[key];
-    const li = document.createElement("li");
-    li.className = "sync-order-item";
-    const label = s ? sourceSyncLabel(s) : key;
-    li.innerHTML = `
-      <span class="sync-order-label">${label}</span>
-      <span class="sync-order-actions">
-        <button type="button" class="btn btn-sm sync-order-up" data-index="${index}" ${index === 0 ? "disabled" : ""}>↑</button>
-        <button type="button" class="btn btn-sm sync-order-down" data-index="${index}" ${index === keys.length - 1 ? "disabled" : ""}>↓</button>
-      </span>`;
-    list.appendChild(li);
-  });
-  list.querySelectorAll(".sync-order-up").forEach((btn) => {
-    btn.onclick = () => {
-      const i = Number(btn.dataset.index);
-      if (i <= 0) return;
-      [syncSourceOrder[i - 1], syncSourceOrder[i]] = [syncSourceOrder[i], syncSourceOrder[i - 1]];
-      renderSyncOrderList(syncSourceOrder, sources);
-    };
-  });
-  list.querySelectorAll(".sync-order-down").forEach((btn) => {
-    btn.onclick = () => {
-      const i = Number(btn.dataset.index);
-      if (i >= syncSourceOrder.length - 1) return;
-      [syncSourceOrder[i + 1], syncSourceOrder[i]] = [syncSourceOrder[i], syncSourceOrder[i + 1]];
-      renderSyncOrderList(syncSourceOrder, sources);
-    };
-  });
 }
 
 async function loadVaultStatus() {
@@ -535,10 +492,6 @@ async function loadSettingsExtended() {
     customSyncSourceIds = expandSyncKeys(st.sync_source_ids || st.sync_selected_keys || [], srcList);
     renderCustomSourceCheckboxes(srcList, customSyncSourceIds);
     updateSyncScopeText(st);
-    renderSyncOrderList(
-      expandSyncKeys(st.sync_source_order || st.sync_effective_order || [], srcList),
-      srcList,
-    );
   } catch (_) {
     // ignore
   }
@@ -634,9 +587,6 @@ function patchAuthUI() {
       };
       if (currentSyncPreset === "custom") {
         body.sync_source_ids = getCustomSourceSelection();
-      }
-      if (syncSourceOrder.length) {
-        body.sync_source_order = syncSourceOrder;
       }
       const data = await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
       settingsStatus.textContent = `已保存 · 同步范围: ${data.sync_preset}`;
