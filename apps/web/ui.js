@@ -30,7 +30,7 @@ function switchView(viewId) {
   }
   if (viewId === "sync-sources") {
     loadSourcesSettingsList();
-    loadSettingsExtended();
+    loadSettingsExtended(true);
   }
   if (viewId === "sync-vault") {
     loadVaultStatus();
@@ -580,11 +580,11 @@ function updateSyncScopeText(settingsData) {
     : `同步范围：${label}`;
 }
 
-async function loadSettingsExtended() {
+async function loadSettingsExtended(forceDefault) {
   await loadSettings();
   try {
     const st = await api("/api/settings");
-    renderSyncPresets(st.sync_presets, st.sync_preset);
+    renderSyncPresets(st.sync_presets, forceDefault ? "all" : st.sync_preset);
     const srcList = availableSources.length ? availableSources : (await api("/api/sources")).sources || [];
     if (!availableSources.length) availableSources = srcList;
     customSyncSourceIds = expandSyncKeys(st.sync_source_ids || st.sync_selected_keys || [], srcList);
