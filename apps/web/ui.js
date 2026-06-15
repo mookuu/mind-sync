@@ -70,6 +70,9 @@ function bindViewNav() {
     });
     parent.addEventListener("mouseenter", () => {
       if (window.innerWidth <= 900) return;
+      // don't close a sub-nav that has a clicked (sub-active) item
+      const lockedParent = document.querySelector(".sub-nav-item.sub-active")?.closest(".sub-nav");
+      if (lockedParent && lockedParent !== subnav) return;
       closeAllSubnavs();
       subnav.classList.add("open");
       parent.classList.add("active");
