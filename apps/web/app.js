@@ -229,11 +229,9 @@ if (runLintBtn) {
 
 // browse removed — search with pagination replaces category browse
 
-categoryFilter.onchange = () => {
-  if (categoryFilter.value !== "summary") {
-    topicFilter.value = "";
-  }
-};
+categoryFilter.addEventListener("change", () => {
+  if (categoryFilter.value !== "summary") topicFilter.value = "";
+});
 
 refreshAuditBtn.onclick = async () => {
   if (!isLoggedIn) return;
