@@ -12,9 +12,16 @@ function switchView(viewId) {
     el.classList.toggle("hidden", el.id !== `view-${viewId}`);
     el.classList.toggle("active", el.id === `view-${viewId}`);
   });
-  if (viewId === "settings") {
-    loadSettingsExtended();
+  if (viewId === "purpose") {
     loadPurposePreview();
+  }
+  if (viewId === "sync") {
+    loadSettings();
+    loadSyncStatus();
+    loadSourcesSettingsList();
+    loadVaultStatus();
+    loadAuditEvents();
+    loadSettingsExtended();
   }
 }
 
@@ -23,23 +30,6 @@ function bindViewNav() {
     btn.onclick = () => {
       if (!isLoggedIn) return;
       switchView(btn.dataset.view);
-    };
-  });
-}
-
-function bindSettingsTabs() {
-  document.querySelectorAll(".settings-tab").forEach((tab) => {
-    tab.onclick = () => {
-      const id = tab.dataset.settingsTab;
-      document.querySelectorAll(".settings-tab").forEach((t) => t.classList.toggle("active", t === tab));
-      document.querySelectorAll(".settings-pane").forEach((pane) => {
-        pane.classList.toggle("active", pane.id === `settingsTab-${id}`);
-        pane.classList.toggle("hidden", pane.id !== `settingsTab-${id}`);
-      });
-      if (id === "sources") loadSourcesSettingsList();
-      if (id === "vault") loadVaultStatus();
-      if (id === "purpose") loadPurposePreview();
-      if (id === "audit") loadAuditEvents();
     };
   });
 }
@@ -171,8 +161,17 @@ function renderCustomSourceCheckboxes(sources, selectedIds) {
   box.innerHTML = "<div class='field-label'>勾选要同步的来源</div>";
   for (const s of sources || []) {
     const label = document.createElement("label");
+    label.className = "source-checkbox-item";
     const checked = isSourceKeySelected(s, selectedIds) ? "checked" : "";
-    label.innerHTML = `<input type="checkbox" value="${sourceSyncKey(s)}" ${checked} /> ${sourceSyncLabel(s)}${s.exists ? "" : " (路径缺失)"}`;
+    const name = sourceSyncLabel(s);
+    const spath = s.path || "";
+    const status = s.exists ? "" : " ❌ 路径缺失";
+    label.innerHTML = `
+      <input type="checkbox" value="${sourceSyncKey(s)}" ${checked} style="margin-top:4px" />
+      <div>
+        <div class="source-checkbox-name">${name}${status}</div>
+        <div class="source-checkbox-path">${spath}</div>
+      </div>`;
     box.appendChild(label);
   }
 }
@@ -236,6 +235,7 @@ async function reloadSourcesConfig() {
     if (statusEl) statusEl.textContent = `已加载 ${count} 个源`;
     await loadSourcesSettingsList();
     if (typeof loadSourcesFilter === "function") await loadSourcesFilter();
+    await loadSettingsExtended();
   } catch (e) {
     if (statusEl) statusEl.textContent = `失败: ${e.message}`;
   } finally {
@@ -533,7 +533,7 @@ function patchAuthUI() {
 
   if (settingsBtn) {
     settingsBtn.onclick = () => {
-      if (isLoggedIn) switchView("settings");
+      if (isLoggedIn) switchView("purpose");
     };
   }
 
@@ -544,8 +544,13 @@ function patchAuthUI() {
 
   if (addCustomPathBtn && customPathInput) {
     addCustomPathBtn.onclick = async () => {
-      const path = customPathInput.value.trim();
-      if (!path) { customPathError.textContent = "请输入路径"; return; }
+      let path = customPathInput.value.trim();
+      if (!path) {
+        path = window.prompt("请输入要添加的目录路径：\n（如 /home/moku/projects/xxx）");
+        if (!path || !path.trim()) return;
+        path = path.trim();
+        customPathInput.value = path;
+      }
       customPathError.textContent = "";
       addCustomPathBtn.disabled = true;
       addCustomPathBtn.textContent = "验证中…";
@@ -577,25 +582,20 @@ function patchAuthUI() {
     });
   }
 
-  saveSettingsBtn.onclick = async () => {
-    try {
-      settingsStatus.textContent = "保存中…";
-      const body = {
-        auto_sync_enabled: !!autoSyncEnabled.checked,
-        auto_sync_interval_minutes: Number(autoSyncInterval.value || 60),
-        sync_preset: currentSyncPreset,
-      };
-      if (currentSyncPreset === "custom") {
-        body.sync_source_ids = getCustomSourceSelection();
-      }
-      const data = await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
-      settingsStatus.textContent = `已保存 · 同步范围: ${data.sync_preset}`;
-      updateSyncScopeText(data);
-      await loadSettings();
-    } catch (e) {
-      settingsStatus.textContent = `保存失败: ${e.message}`;
-    }
-  };
+  function buildSettingsBody() {
+    return {
+      auto_sync_enabled: !!autoSyncEnabled.checked,
+      auto_sync_interval_minutes: Number(autoSyncInterval.value || 60),
+      sync_preset: currentSyncPreset,
+    };
+  }
+  [autoSyncEnabled, autoSyncInterval].forEach((el) => {
+    if (el) el.addEventListener("change", () => {
+      const body = buildSettingsBody();
+      if (currentSyncPreset === "custom") body.sync_source_ids = getCustomSourceSelection();
+      api("/api/settings", { method: "POST", body: JSON.stringify(body) }).catch(() => {});
+    });
+  });
 
   if (savePurposeBtn) {
     savePurposeBtn.onclick = async () => {
@@ -673,7 +673,8 @@ function patchAuthUI() {
   const rebuildBtn = document.getElementById("rebuildBtn");
   rebuildBtn?.addEventListener("click", async () => {
     if (!isLoggedIn) return;
-    const ok = window.confirm(
+    const ok = await showConfirm(
+      "🔃 全量重建",
       "将按当前同步范围清空索引并强制重扫所有文件（不拉取 GitHub/Web/Vault）。确定继续？"
     );
     if (!ok) return;
@@ -712,7 +713,6 @@ async function waitForIndexJob(expectedMode) {
 
 function initUI() {
   bindViewNav();
-  bindSettingsTabs();
   patchAuthUI();
   const reloadSourcesBtn = document.getElementById("reloadSourcesBtn");
   if (reloadSourcesBtn) reloadSourcesBtn.onclick = () => reloadSourcesConfig();

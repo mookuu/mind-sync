@@ -1,4 +1,20 @@
 /** Shared DOM state, API wrapper, modals (loaded before feature modules). */
+const confirmModal = document.getElementById("confirmModal");
+const confirmTitle = document.getElementById("confirmTitle");
+const confirmMessage = document.getElementById("confirmMessage");
+const confirmOkBtn = document.getElementById("confirmOkBtn");
+const confirmCancelBtn = document.getElementById("confirmCancelBtn");
+
+function showConfirm(title, message) {
+  return new Promise((resolve) => {
+    confirmTitle.textContent = title;
+    confirmMessage.textContent = message;
+    openModal(confirmModal);
+    confirmOkBtn.onclick = () => { closeModal(confirmModal); resolve(true); };
+    confirmCancelBtn.onclick = () => { closeModal(confirmModal); resolve(false); };
+  });
+}
+
 const loginBtn = document.getElementById("loginBtn");
 const syncBtn = document.getElementById("syncBtn");
 const searchBtn = document.getElementById("searchBtn");

@@ -18,16 +18,6 @@ SYNC_PRESETS: dict[str, dict[str, Any]] = {
         "description": "同步 sources.yaml 中所有已配置来源",
         "source_ids": None,
     },
-    "learning_repos": {
-        "label": "学习仓库",
-        "description": "PythonBasic + JavaBasic",
-        "source_ids": ["PythonBasic", "JavaBasic"],
-    },
-    "notes": {
-        "label": "笔记与知识工程",
-        "description": "knowledge_engineering 原始笔记",
-        "source_ids": ["knowledge_engineering"],
-    },
     "obsidian": {
         "label": "Obsidian 剪藏",
         "description": "Obsidian Web Clipper 等导出的 Markdown",
@@ -39,7 +29,7 @@ SYNC_PRESETS: dict[str, dict[str, Any]] = {
         "source_ids": ["example_web"],
     },
     "wiki": {
-        "label": "仅 Wiki",
+        "label": "Wiki",
         "description": "摘要与问答沉淀目录",
         "source_ids": ["wiki"],
     },

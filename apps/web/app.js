@@ -200,9 +200,7 @@ graphFilterMinDegree = Number(graphMinDegreeSelect.value || 0);
 setGraphView(currentGraphView);
 initPanelCollapse();
 
-closeSettingsBtn.onclick = () => {
-  closeTransientModals();
-};
+// closeSettingsBtn removed — settings content moved to sync/purpose views
 
 accountBtn.onclick = async () => {
   if (!isLoggedIn) return;
