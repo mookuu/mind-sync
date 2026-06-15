@@ -6,22 +6,6 @@ let availableSources = [];
 let syncSourceOrder = [];
 
 function switchView(viewId) {
-  if (viewId === "settings") {
-    document.querySelectorAll(".nav-item").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.view === viewId);
-    });
-    openModal(settingsModal);
-    document.querySelectorAll(".settings-tab").forEach((t, i) => {
-      t.classList.toggle("active", i === 0);
-    });
-    document.querySelectorAll(".settings-pane").forEach((p, i) => {
-      p.classList.toggle("active", i === 0);
-      p.classList.toggle("hidden", i !== 0);
-    });
-    loadSettingsExtended();
-    loadPurposePreview();
-    return;
-  }
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === viewId);
   });
@@ -29,6 +13,10 @@ function switchView(viewId) {
     el.classList.toggle("hidden", el.id !== `view-${viewId}`);
     el.classList.toggle("active", el.id === `view-${viewId}`);
   });
+  if (viewId === "settings") {
+    loadSettingsExtended();
+    loadPurposePreview();
+  }
 }
 
 function bindViewNav() {

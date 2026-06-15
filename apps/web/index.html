@@ -79,7 +79,6 @@
           <input id="globalSearch" type="search" placeholder="快速搜索文档… (Enter)" />
         </div>
         <div class="topbar-actions">
-          <button id="syncBtn" class="btn btn-primary">同步</button>
           <button id="accountBtn" class="btn">账户</button>
         </div>
       </header>
@@ -231,14 +230,10 @@
               <pre id="lintSummary" class="lint-summary hidden"></pre>
             </div>
           </section>
-        </main>
-      </div>
-    </div>
 
-    <!-- 设置（模块化 Tab） -->
-    <div id="settingsModal" class="modal hidden">
-      <div class="modal-card modal-wide">
-        <div class="modal-split">
+          <!-- 设置页面 -->
+          <section id="view-settings" class="view hidden">
+            <div class="settings-layout">
           <nav class="settings-nav">
             <h3>设置</h3>
             <button type="button" class="settings-tab active" data-settings-tab="sync">同步</button>
@@ -310,7 +305,7 @@
             </section>
           </div>
         </div>
-      </div>
+      </section>
     </div>
 
     <div id="accountModal" class="modal hidden">

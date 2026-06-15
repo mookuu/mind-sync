@@ -1010,6 +1010,14 @@ select:focus {
   width: min(760px, 100%);
 }
 
+.settings-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 20px;
+  min-height: calc(100vh - 160px);
+  padding: 4px 0;
+}
+
 .modal-split {
   display: grid;
   grid-template-columns: 180px 1fr;
@@ -1251,6 +1259,7 @@ mark.search-hit-active {
   .topbar {
     grid-template-columns: 1fr;
   }
+  .settings-layout,
   .modal-split {
     grid-template-columns: 1fr;
   }
