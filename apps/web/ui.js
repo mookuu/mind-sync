@@ -185,8 +185,16 @@ function renderSyncPresets(presets, selectedPreset) {
         <div class="preset-desc">${p.description || ""}</div>
       </div>`;
     label.querySelector("input").onchange = (e) => {
-      label.classList.toggle("selected", e.target.checked);
+      const checked = e.target.checked;
+      label.classList.toggle("selected", checked);
       localStorage.setItem("mindsync_preset_touched", "1");
+      if (checked) {
+        currentSyncPreset = p.id;
+        document.querySelectorAll(".preset-option:not(#presetAll)").forEach((el) => {
+          if (el !== label) { const cb = el.querySelector("input"); if (cb) cb.checked = false; el.classList.remove("selected"); }
+        });
+        api("/api/settings", { method: "POST", body: JSON.stringify({ sync_preset: p.id }) }).catch(() => {});
+      }
     };
     box.appendChild(label);
   }
