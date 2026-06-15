@@ -16,7 +16,7 @@ function switchView(viewId) {
   if (viewId === "purpose") {
     loadPurposePreview();
   }
-  const parentMap = { sync: "sync", "sync-sources": "sync", "sync-vault": "sync", "sync-audit": "sync" };
+  const parentMap = { sync: "sync", "sync-sources": "sync", "sync-vault": "sync", "sync-audit": "sync", library: "library" };
   const parentKey = parentMap[viewId];
   if (parentKey) {
     const parent = document.querySelector(`.parent-item[data-view='${parentKey}']`);
