@@ -43,9 +43,11 @@ function applyLocalFilters() {
   const cat = document.getElementById("categoryFilter")?.value || "";
   const src = document.getElementById("sourceFilter")?.value || "";
   const typ = document.getElementById("typeFilter")?.value || "";
+  const top = document.getElementById("topicFilter")?.value || "";
   if (cat) items = items.filter((i) => String(i.category || "") === cat);
   if (src) items = items.filter((i) => String(i.source_id || "") === src);
   if (typ) items = items.filter((i) => String(i.lang || "") === typ);
+  if (top) items = items.filter((i) => (i.rel_path || "").includes(`summaries/${top}/`));
   filteredResults = items;
   currentPage = 1;
   renderPage();
@@ -53,7 +55,7 @@ function applyLocalFilters() {
   if (pageInfo) pageInfo.textContent = `${filteredResults.length} / ${allSearchResults.length} 条`;
 }
 
-["categoryFilter", "sourceFilter", "typeFilter"].forEach((id) => {
+["categoryFilter", "sourceFilter", "typeFilter", "topicFilter"].forEach((id) => {
   const el = document.getElementById(id);
   if (el) el.addEventListener("change", applyLocalFilters);
 });
