@@ -205,10 +205,7 @@ if (runLintBtn) {
   runLintBtn.onclick = () => runWikiLint();
 }
 
-browseBtn.onclick = async () => {
-  if (!isLoggedIn) return;
-  await loadBrowseList();
-};
+// browse removed — search with pagination replaces category browse
 
 categoryFilter.onchange = () => {
   if (categoryFilter.value !== "summary") {
