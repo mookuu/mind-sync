@@ -70,10 +70,16 @@ function bindViewNav() {
     });
     parent.addEventListener("mouseenter", () => {
       if (window.innerWidth <= 900) return;
-      // don't close a sub-nav that has a clicked (sub-active) item
-      const lockedParent = document.querySelector(".sub-nav-item.sub-active")?.closest(".sub-nav");
-      if (lockedParent && lockedParent !== subnav) return;
-      closeAllSubnavs();
+      // close unlocked subnavs, keep locked ones (with clicked sub-item)
+      document.querySelectorAll(".sub-nav").forEach((s) => {
+        if (!s.querySelector(".sub-nav-item.sub-active")) s.classList.remove("open");
+      });
+      document.querySelectorAll(".parent-item").forEach((p) => {
+        const sid = p.dataset.view;
+        if (!sid) return;
+        const sub = document.getElementById(`subnav-${sid}`);
+        if (!sub || !sub.querySelector(".sub-nav-item.sub-active")) p.classList.remove("active");
+      });
       subnav.classList.add("open");
       parent.classList.add("active");
       activeSubParent = parent.dataset.view;
