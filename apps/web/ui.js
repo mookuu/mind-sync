@@ -16,17 +16,27 @@ function switchView(viewId) {
   if (viewId === "purpose") {
     loadPurposePreview();
   }
-  if (viewId === "sync") {
-    const parent = document.querySelector(".parent-item[data-view='sync']");
+  const parentMap = { sync: "sync", "sync-sources": "sync", "sync-vault": "sync", "sync-audit": "sync" };
+  const parentKey = parentMap[viewId];
+  if (parentKey) {
+    const parent = document.querySelector(`.parent-item[data-view='${parentKey}']`);
     if (parent) parent.classList.add("active");
-    const subnav = document.getElementById("subnav-sync");
-    if (subnav && window.innerWidth > 900) subnav.classList.add("open");
+    const subnav = document.getElementById(`subnav-${parentKey}`);
+    if (subnav) subnav.classList.add("open");
+  }
+  if (viewId === "sync" || viewId === "sync-control") {
     loadSettings();
     loadSyncStatus();
+  }
+  if (viewId === "sync-sources") {
     loadSourcesSettingsList();
-    loadVaultStatus();
-    loadAuditEvents();
     loadSettingsExtended();
+  }
+  if (viewId === "sync-vault") {
+    loadVaultStatus();
+  }
+  if (viewId === "sync-audit") {
+    loadAuditEvents();
   }
 }
 
@@ -100,17 +110,15 @@ function bindViewNav() {
       document.querySelectorAll(".sub-nav-item").forEach((s) => s.classList.remove("active", "sub-active"));
       item.classList.add("active", "sub-active");
       const section = item.dataset.section;
-      const parts = section.split("-");
-      const parentView = parts[0];
-      if (section === "library-all") {
-        switchView("library");
-        return;
-      }
-      if (section === "library-recent") {
-        switchView("library");
-        return;
-      }
-      switchView(section);
+      const viewMap = {
+        "library-all": "library",
+        "library-recent": "library",
+        "sync-control": "sync",
+        "sync-sources": "sync-sources",
+        "sync-vault": "sync-vault",
+        "sync-audit": "sync-audit",
+      };
+      switchView(viewMap[section] || section);
     });
   });
 }
