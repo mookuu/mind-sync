@@ -312,7 +312,7 @@ def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Dep
     sources: list = config.get("sources", [])
     existing_ids = {s.get("id") for s in sources if isinstance(s, dict)}
     if source_id in existing_ids:
-        raise HTTPException(status_code=409, detail=f"source '{source_id}' already exists")
+        raise HTTPException(status_code=409, detail=f"同步源已存在：{source_id}（{path}）")
 
     new_source = {
         "id": source_id,
