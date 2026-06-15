@@ -6,6 +6,22 @@ let availableSources = [];
 let syncSourceOrder = [];
 
 function switchView(viewId) {
+  if (viewId === "settings") {
+    document.querySelectorAll(".nav-item").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.view === viewId);
+    });
+    openModal(settingsModal);
+    document.querySelectorAll(".settings-tab").forEach((t, i) => {
+      t.classList.toggle("active", i === 0);
+    });
+    document.querySelectorAll(".settings-pane").forEach((p, i) => {
+      p.classList.toggle("active", i === 0);
+      p.classList.toggle("hidden", i !== 0);
+    });
+    loadSettingsExtended();
+    loadPurposePreview();
+    return;
+  }
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === viewId);
   });
@@ -526,19 +542,8 @@ function patchAuthUI() {
     if (e.key === "Enter") loginBtn.click();
   });
 
-  settingsBtn.onclick = async () => {
-    if (!isLoggedIn) return;
-    openModal(settingsModal);
-    settingsStatus.textContent = "";
-    document.querySelectorAll(".settings-tab").forEach((t, i) => {
-      t.classList.toggle("active", i === 0);
-    });
-    document.querySelectorAll(".settings-pane").forEach((p, i) => {
-      p.classList.toggle("active", i === 0);
-      p.classList.toggle("hidden", i !== 0);
-    });
-    await loadSettingsExtended();
-    await loadPurposePreview();
+  settingsBtn.onclick = () => {
+    if (isLoggedIn) switchView("settings");
   };
 
   saveSettingsBtn.onclick = async () => {

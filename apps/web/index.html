@@ -80,8 +80,6 @@
         </div>
         <div class="topbar-actions">
           <button id="syncBtn" class="btn btn-primary">同步</button>
-          <button id="rebuildBtn" class="btn" title="清空所选源索引并强制全量重扫">全量重建</button>
-          <button id="settingsBtn" class="btn">设置</button>
           <button id="accountBtn" class="btn">账户</button>
         </div>
       </header>
@@ -89,11 +87,12 @@
       <div class="app-frame">
         <aside class="sidebar">
           <nav class="sidebar-nav">
-            <button type="button" class="nav-item active" data-view="library">文档库</button>
-            <button type="button" class="nav-item" data-view="search">搜索</button>
-            <button type="button" class="nav-item" data-view="qa">问答</button>
-            <button type="button" class="nav-item" data-view="graph">Wiki 图谱</button>
-            <button type="button" class="nav-item" data-view="sync">同步状态</button>
+            <button type="button" class="nav-item active" data-view="library">📚 文档库</button>
+            <button type="button" class="nav-item" data-view="search">🔍 搜索</button>
+            <button type="button" class="nav-item" data-view="qa">💬 问答</button>
+            <button type="button" class="nav-item" data-view="graph">🕸 Wiki 图谱</button>
+            <button type="button" class="nav-item" data-view="sync">🔄 同步</button>
+            <button type="button" class="nav-item" data-view="settings">⚙️ 设置</button>
           </nav>
         </aside>
 
@@ -211,7 +210,11 @@
 
           <!-- 同步 -->
           <section id="view-sync" class="view hidden">
-            <div class="view-header"><h2>同步状态</h2></div>
+            <div class="view-header"><h2>同步</h2></div>
+            <div class="btn-row" style="margin-bottom:12px">
+              <button id="syncBtn" class="btn btn-primary">🔄 同步</button>
+              <button id="rebuildBtn" class="btn" title="清空所选源索引并强制全量重扫，不拉取远程">🔃 全量重建</button>
+            </div>
             <div class="sync-card">
               <p id="syncProgressText" class="sync-progress">当前同步：空闲</p>
               <p id="lastSyncSummaryText">最近一次同步：--</p>
