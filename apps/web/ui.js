@@ -13,10 +13,10 @@ function switchView(viewId) {
     el.classList.toggle("hidden", el.id !== `view-${viewId}`);
     el.classList.toggle("active", el.id === `view-${viewId}`);
   });
-  if (viewId === "purpose") {
+  if (viewId === "sync-purpose") {
     loadPurposePreview();
   }
-  const parentMap = { sync: "sync", "sync-sources": "sync", "sync-vault": "sync", "sync-audit": "sync", library: "library" };
+  const parentMap = { sync: "sync", "sync-sources": "sync", "sync-vault": "sync", "sync-audit": "sync", "sync-purpose": "sync", library: "library" };
   const parentKey = parentMap[viewId];
   if (parentKey) {
     const parent = document.querySelector(`.parent-item[data-view='${parentKey}']`);
@@ -126,6 +126,7 @@ function bindViewNav() {
         "sync-sources": "sync-sources",
         "sync-vault": "sync-vault",
         "sync-audit": "sync-audit",
+        "sync-purpose": "sync-purpose",
       };
       switchView(viewMap[section] || section);
     });
@@ -141,11 +142,24 @@ function renderSyncPresets(presets, selectedPreset) {
   const allPreset = presets.find((p) => p.id === "all");
   const otherPresets = presets.filter((p) => p.id !== "all" && p.id !== "custom");
 
+  const storedIds = (localStorage.getItem("mindsync_checked_presets") || "").split(",").filter(Boolean);
+
+  function saveSyncSetting() {
+    const checkedItems = [...box.querySelectorAll("input[type=checkbox]:checked")].map((cb) => cb.value).filter((v) => v && v !== "all");
+    const hasAll = document.getElementById("presetAll")?.querySelector("input")?.checked;
+    localStorage.setItem("mindsync_checked_presets", hasAll ? "" : checkedItems.join(","));
+    if (hasAll) {
+      api("/api/settings", { method: "POST", body: JSON.stringify({ sync_preset: "all" }) }).catch(() => {});
+    } else {
+      api("/api/settings", { method: "POST", body: JSON.stringify({ sync_preset: "custom", sync_source_ids: checkedItems }) }).catch(() => {});
+    }
+  }
+
   // 默认 checkbox（master toggle）
   const allLabel = document.createElement("label");
   allLabel.className = `preset-option${isDefault ? " selected" : ""}`;
   allLabel.innerHTML = `
-    <input type="checkbox" ${isDefault ? "checked" : ""} />
+    <input type="checkbox" ${isDefault ? "checked" : ""} value="all" />
     <div>
       <div>${allPreset ? allPreset.label : "全部同步"}</div>
       <div class="preset-desc">同步 sources.yaml 中所有已配置来源</div>
@@ -157,7 +171,7 @@ function renderSyncPresets(presets, selectedPreset) {
       el.style.opacity = checked ? "0.4" : "1";
       el.style.pointerEvents = checked ? "none" : "auto";
       const cb = el.querySelector("input[type=checkbox]");
-      if (cb) cb.disabled = checked;
+      if (cb) { cb.disabled = checked; if (checked) cb.checked = false; }
     });
     const customBox = document.getElementById("syncCustomPaths");
     if (customBox) {
@@ -165,37 +179,29 @@ function renderSyncPresets(presets, selectedPreset) {
       customBox.style.pointerEvents = checked ? "none" : "auto";
     }
     currentSyncPreset = checked ? "all" : "custom";
-    localStorage.setItem("mindsync_preset_touched", "1");
-    api("/api/settings", { method: "POST", body: JSON.stringify({ sync_preset: currentSyncPreset }) }).catch(() => {});
+    saveSyncSetting();
   };
   allLabel.id = "presetAll";
   box.appendChild(allLabel);
 
-  // 其他 preset 选项
+  // 其他 preset 选项（支持多选）
   for (const p of otherPresets) {
     const label = document.createElement("label");
     label.className = "preset-option";
     label.style.opacity = isDefault ? "0.4" : "1";
     label.style.pointerEvents = isDefault ? "none" : "auto";
-    const checked = p.id === currentSyncPreset;
+    const checked = storedIds.includes(p.id) || (!isDefault && !storedIds.length && selectedPreset !== "all");
     label.innerHTML = `
       <input type="checkbox" value="${p.id}" ${checked ? "checked" : ""} ${isDefault ? "disabled" : ""} />
       <div>
         <div>${p.label}</div>
         <div class="preset-desc">${p.description || ""}</div>
       </div>`;
-    label.querySelector("input").onchange = (e) => {
-      const checked = e.target.checked;
-      label.classList.toggle("selected", checked);
-      localStorage.setItem("mindsync_preset_touched", "1");
-      if (checked) {
-        currentSyncPreset = p.id;
-        document.querySelectorAll(".preset-option:not(#presetAll)").forEach((el) => {
-          if (el !== label) { const cb = el.querySelector("input"); if (cb) cb.checked = false; el.classList.remove("selected"); }
-        });
-        api("/api/settings", { method: "POST", body: JSON.stringify({ sync_preset: p.id }) }).catch(() => {});
-      }
+    label.querySelector("input").onchange = () => {
+      label.classList.toggle("selected");
+      saveSyncSetting();
     };
+    if (checked) label.classList.add("selected");
     box.appendChild(label);
   }
 
@@ -595,8 +601,7 @@ async function loadSettingsExtended() {
   await loadSettings();
   try {
     const st = await api("/api/settings");
-    const preset = localStorage.getItem("mindsync_preset_touched") ? st.sync_preset : "all";
-    renderSyncPresets(st.sync_presets, preset);
+    renderSyncPresets(st.sync_presets, st.sync_preset);
     const srcList = availableSources.length ? availableSources : (await api("/api/sources")).sources || [];
     if (!availableSources.length) availableSources = srcList;
     customSyncSourceIds = expandSyncKeys(st.sync_source_ids || st.sync_selected_keys || [], srcList);
