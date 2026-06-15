@@ -702,6 +702,28 @@ function patchAuthUI() {
     customPathInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") addCustomPathBtn.click();
     });
+    customPathInput.addEventListener("blur", async () => {
+      const path = customPathInput.value.trim();
+      if (!path) return;
+      if (customPathError.textContent) customPathError.textContent = "";
+      try {
+        const data = await api("/api/admin/sources/custom", {
+          method: "POST", body: JSON.stringify({ path }),
+        });
+        if (customPathList) {
+          const li = document.createElement("li");
+          li.className = "sync-order-item";
+          li.innerHTML = `<span class="sync-order-label">📁 ${data.source.id}</span><span class="subtle">${data.source.path}</span>`;
+          customPathList.appendChild(li);
+        }
+        customPathInput.value = "";
+        await reloadSourcesConfig();
+        const cb = document.querySelector("#syncPresetList input[type=checkbox]:not(#presetAll input)");
+        if (cb) { cb.checked = true; cb.dispatchEvent(new Event("change")); }
+      } catch (e) {
+        customPathError.textContent = e.message || "路径无效";
+      }
+    });
   }
 
   if (dirPickerGo && dirPickerPath) {
