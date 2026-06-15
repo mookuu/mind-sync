@@ -213,21 +213,31 @@
           <!-- 同步 -->
           <section id="view-sync" class="view hidden">
             <div class="view-header"><h2>同步</h2></div>
-            <div class="btn-row" style="margin-bottom:12px">
-              <button id="syncBtn" class="btn btn-primary">🔄 同步</button>
-              <button id="rebuildBtn" class="btn" title="清空所选源索引并强制全量重扫，不拉取远程">🔃 全量重建</button>
-            </div>
-            <div class="sync-card">
-              <p id="syncProgressText" class="sync-progress">当前同步：空闲</p>
-              <p id="lastSyncSummaryText">最近一次同步：--</p>
-              <p id="nextAutoSyncText">下次自动同步：--</p>
-              <p id="lastAutoSyncText">最近自动同步：--</p>
-              <p id="syncScopeText" class="subtle">同步范围：--</p>
-              <div class="btn-row">
-                <button id="runLintBtn" type="button" class="btn btn-sm">运行 Wiki Lint</button>
+            <div class="sync-dashboard">
+              <div class="sync-card">
+                <h3>📊 同步控制</h3>
+                <button id="syncBtn" class="btn btn-primary" style="width:100%;margin-bottom:8px">🔄 同步</button>
+                <button id="rebuildBtn" class="btn" style="width:100%" title="清空所选源索引并强制全量重扫，不拉取远程">🔃 全量重建</button>
+                <div class="btn-row" style="margin-top:12px">
+                  <button id="runLintBtn" type="button" class="btn btn-sm" style="width:100%">🧹 Wiki Lint</button>
+                </div>
               </div>
-              <p id="lintStatus" class="subtle"></p>
-              <pre id="lintSummary" class="lint-summary hidden"></pre>
+              <div class="sync-card">
+                <h3>📈 运行状态</h3>
+                <p id="syncProgressText" class="sync-progress">当前同步：空闲</p>
+                <p id="lastSyncSummaryText" class="sync-stat">最近一次同步：--</p>
+                <p id="syncScopeText" class="subtle" style="margin-top:8px">同步范围：--</p>
+              </div>
+              <div class="sync-card">
+                <h3>⏰ 自动同步</h3>
+                <p id="nextAutoSyncText" class="sync-stat">下次自动同步：--</p>
+                <p id="lastAutoSyncText" class="sync-stat">最近自动同步：--</p>
+              </div>
+              <div class="sync-card">
+                <h3>🧪 Lint 报告</h3>
+                <p id="lintStatus" class="subtle"></p>
+                <pre id="lintSummary" class="lint-summary hidden"></pre>
+              </div>
             </div>
           </section>
 

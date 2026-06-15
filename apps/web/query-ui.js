@@ -47,19 +47,29 @@ function renderEvidences(evidences = []) {
   evidenceList.innerHTML = "";
   if (!evidences.length) {
     const li = document.createElement("li");
+    li.className = "evidence-card";
     li.textContent = "暂无证据。";
     evidenceList.appendChild(li);
     return;
   }
   for (const ev of evidences) {
     const li = document.createElement("li");
+    li.className = "evidence-card";
+    const confColor = {
+      extracted: "var(--success-fg)",
+      inferred: "var(--warning-fg)",
+      ambiguous: "var(--danger-fg)",
+      unverified: "var(--fg-subtle)",
+    }[(ev.confidence || "").toLowerCase()] || "var(--fg-muted)";
     li.innerHTML = `
-      <div class="ev-top">
-        <div><b>[${ev.ref}] ${ev.source_id}/${ev.rel_path}</b></div>
-        <button class="ev-open" data-doc-id="${ev.doc_id}">打开</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <span class="confidence-badge" style="background:${confColor}15;color:${confColor};border:1px solid ${confColor}30">
+          ${ev.confidence_label || ev.confidence_level || ev.confidence || "—"}
+        </span>
+        <button class="ev-open btn btn-sm" data-doc-id="${ev.doc_id}">打开文档</button>
       </div>
-      <div>${ev.confidence_label || ev.confidence_level || ""} (${ev.confidence ?? "-"})</div>
-      <div>${ev.excerpt || ""}</div>
+      <div style="font-size:13px;margin-bottom:4px"><b>[${ev.ref}]</b> ${ev.source_id}/${ev.rel_path}</div>
+      <div class="subtle" style="font-size:12px">${ev.excerpt || ""}</div>
     `;
     const btn = li.querySelector(".ev-open");
     btn.onclick = async () => {

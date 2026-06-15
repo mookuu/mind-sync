@@ -55,7 +55,15 @@ searchBtn.onclick = async () => {
     const data = await api(`/api/search?${params.toString()}`);
     for (const item of data.items) {
       const li = document.createElement("li");
-      li.innerHTML = `<div>${categoryBadge(item.category)} <b>${item.source_id}</b> / ${item.rel_path}</div><div>${item.snippet || ""}</div>`;
+      li.className = "card-result";
+      const snippet = (item.snippet || "").replace(/<mark>/g, '<mark class="search-hit">').replace(/<\/mark>/g, "</mark>");
+      li.innerHTML = `
+        <div class="card-result-head">
+          <span class="cat-badge ${item.category === "summary" ? "cat-summary" : item.category === "query" ? "cat-query" : ""}">${categoryBadge(item.category)}</span>
+          <b>${item.source_id}</b> / ${item.rel_path}
+        </div>
+        <div class="card-result-snippet">${snippet || ""}</div>
+      `;
       li.onclick = async () => {
         const doc = await api(`/api/document/${item.id}`);
         if (typeof switchView === "function") switchView("library");
