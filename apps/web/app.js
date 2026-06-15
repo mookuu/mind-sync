@@ -39,18 +39,20 @@ let currentPageSize = 10;
 
 function applyLocalFilters() {
   let items = allSearchResults;
+  if (!items.length) return;
   const cat = document.getElementById("categoryFilter")?.value;
   const src = document.getElementById("sourceFilter")?.value;
-  const type = document.getElementById("typeFilter")?.value;
-  if (cat) items = items.filter((i) => (i.category || "") === cat);
-  if (src) items = items.filter((i) => (i.source_id || "") === src);
-  if (type) items = items.filter((i) => (i.lang || "") === type);
+  const typ = document.getElementById("typeFilter")?.value;
+  if (cat) items = items.filter((i) => String(i.category || "") === cat);
+  if (src) items = items.filter((i) => String(i.source_id || "") === src);
+  if (typ) items = items.filter((i) => String(i.lang || "") === typ);
   filteredResults = items;
   currentPage = 1;
   renderPage();
 }
 
-[categoryFilter, sourceFilter, typeFilter].forEach((el) => {
+["categoryFilter", "sourceFilter", "typeFilter"].forEach((id) => {
+  const el = document.getElementById(id);
   if (el) el.addEventListener("change", applyLocalFilters);
 });
 
