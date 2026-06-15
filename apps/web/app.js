@@ -39,14 +39,15 @@ let currentPageSize = 10;
 
 function applyLocalFilters() {
   let items = allSearchResults;
-  if (!items.length) return;
   const cat = document.getElementById("categoryFilter")?.value;
   const src = document.getElementById("sourceFilter")?.value;
   const typ = document.getElementById("typeFilter")?.value;
+  const hasFilter = cat || src || typ;
+  if (!items.length) { filteredResults = []; renderPage(); return; }
   if (cat) items = items.filter((i) => String(i.category || "") === cat);
   if (src) items = items.filter((i) => String(i.source_id || "") === src);
   if (typ) items = items.filter((i) => String(i.lang || "") === typ);
-  filteredResults = items;
+  filteredResults = hasFilter ? items : allSearchResults;
   currentPage = 1;
   renderPage();
 }
@@ -58,7 +59,7 @@ function applyLocalFilters() {
 
 function renderPage() {
   results.innerHTML = "";
-  const source = filteredResults.length ? filteredResults : allSearchResults;
+  const source = filteredResults;
   const total = source.length;
   const totalPages = Math.ceil(total / currentPageSize) || 1;
   const start = (currentPage - 1) * currentPageSize;
@@ -149,7 +150,7 @@ searchBtn.onclick = async () => {
 };
 
 document.getElementById("prevPageBtn")?.addEventListener("click", () => { if (currentPage > 1) { currentPage--; renderPage(); } });
-document.getElementById("nextPageBtn")?.addEventListener("click", () => { const src = filteredResults.length ? filteredResults : allSearchResults; const tp = Math.ceil(src.length / currentPageSize); if (currentPage < tp) { currentPage++; renderPage(); } });
+document.getElementById("nextPageBtn")?.addEventListener("click", () => { const tp = Math.ceil(filteredResults.length / currentPageSize); if (currentPage < tp) { currentPage++; renderPage(); } });
 document.getElementById("pageSizeSelect")?.addEventListener("change", (e) => { currentPageSize = parseInt(e.target.value) || 10; currentPage = 1; renderPage(); });
 
 qInput.addEventListener("keydown", (e) => {
