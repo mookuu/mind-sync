@@ -8,6 +8,7 @@ function switchView(viewId) {
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === viewId);
   });
+  document.querySelectorAll(".sub-nav").forEach((sub) => sub.classList.remove("open"));
   document.querySelectorAll(".view").forEach((el) => {
     el.classList.toggle("hidden", el.id !== `view-${viewId}`);
     el.classList.toggle("active", el.id === `view-${viewId}`);
@@ -16,6 +17,10 @@ function switchView(viewId) {
     loadPurposePreview();
   }
   if (viewId === "sync") {
+    const parent = document.querySelector(".parent-item[data-view='sync']");
+    if (parent) parent.classList.add("active");
+    const subnav = document.getElementById("subnav-sync");
+    if (subnav && window.innerWidth > 900) subnav.classList.add("open");
     loadSettings();
     loadSyncStatus();
     loadSourcesSettingsList();
@@ -26,11 +31,87 @@ function switchView(viewId) {
 }
 
 function bindViewNav() {
-  document.querySelectorAll(".nav-item").forEach((btn) => {
+  document.querySelectorAll(".nav-item:not(.parent-item)").forEach((btn) => {
     btn.onclick = () => {
       if (!isLoggedIn) return;
       switchView(btn.dataset.view);
     };
+  });
+  let activeSubParent = null;
+  function closeAllSubnavs() {
+    document.querySelectorAll(".sub-nav").forEach((s) => s.classList.remove("open"));
+    document.querySelectorAll(".parent-item").forEach((p) => p.classList.toggle("active", false));
+  }
+  document.querySelectorAll(".parent-item").forEach((parent) => {
+    const subnav = document.getElementById(`subnav-${parent.dataset.view}`);
+    if (!subnav) return;
+    parent.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (subnav.classList.contains("open")) {
+        subnav.classList.remove("open");
+        parent.classList.remove("active");
+        activeSubParent = null;
+      } else {
+        closeAllSubnavs();
+        subnav.classList.add("open");
+        parent.classList.add("active");
+        activeSubParent = parent.dataset.view;
+      }
+    });
+    parent.addEventListener("mouseenter", () => {
+      if (window.innerWidth <= 900) return;
+      closeAllSubnavs();
+      subnav.classList.add("open");
+      parent.classList.add("active");
+      activeSubParent = parent.dataset.view;
+    });
+    parent.addEventListener("mouseleave", () => {
+      if (window.innerWidth <= 900) return;
+      const isHoveringSub = subnav.matches(":hover");
+      const childHovered = subnav.querySelector(".sub-nav-item:hover");
+      if (!isHoveringSub && !childHovered && !subnav.querySelector(".sub-nav-item.sub-active")) {
+        setTimeout(() => {
+          if (!subnav.matches(":hover")) {
+            subnav.classList.remove("open");
+            parent.classList.remove("active");
+            activeSubParent = null;
+          }
+        }, 150);
+      }
+    });
+  });
+  document.querySelectorAll(".sub-nav").forEach((sub) => {
+    sub.addEventListener("mouseleave", () => {
+      if (window.innerWidth <= 900) return;
+      const parent = sub.closest(".sidebar-nav")?.querySelector(`.parent-item[data-view="${sub.id.replace("subnav-", "")}"]`);
+      if (parent && !parent.matches(":hover") && !sub.querySelector(".sub-nav-item.sub-active")) {
+        setTimeout(() => {
+          if (!sub.matches(":hover") && !parent.matches(":hover")) {
+            sub.classList.remove("open");
+            parent.classList.remove("active");
+            activeSubParent = null;
+          }
+        }, 150);
+      }
+    });
+  });
+  document.querySelectorAll(".sub-nav-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      document.querySelectorAll(".sub-nav-item").forEach((s) => s.classList.remove("active", "sub-active"));
+      item.classList.add("active", "sub-active");
+      const section = item.dataset.section;
+      const parts = section.split("-");
+      const parentView = parts[0];
+      if (section === "library-all") {
+        switchView("library");
+        return;
+      }
+      if (section === "library-recent") {
+        switchView("library");
+        return;
+      }
+      switchView(section);
+    });
   });
 }
 
@@ -541,15 +622,48 @@ function patchAuthUI() {
   const customPathInput = document.getElementById("customPathInput");
   const customPathError = document.getElementById("customPathError");
   const customPathList = document.getElementById("customPathList");
+  const dirPickerModal = document.getElementById("dirPickerModal");
+  const dirPickerPath = document.getElementById("dirPickerPath");
+  const dirPickerGo = document.getElementById("dirPickerGo");
+  const dirPickerList = document.getElementById("dirPickerList");
+  const dirPickerError = document.getElementById("dirPickerError");
+  const dirPickerSelect = document.getElementById("dirPickerSelect");
+  const dirPickerCancel = document.getElementById("dirPickerCancel");
+  let dirPickerCurrentPath = "/home/moku/projects";
+
+  async function loadDirPicker(path) {
+    dirPickerError.textContent = "";
+    dirPickerList.innerHTML = "<li class='subtle' style='padding:8px'>加载中…</li>";
+    try {
+      const data = await api(`/api/admin/browse-dir?path=${encodeURIComponent(path)}`);
+      dirPickerCurrentPath = data.current;
+      dirPickerPath.value = data.current;
+      dirPickerList.innerHTML = `<li class="tree-dir-head" data-path="${data.parent}" style="cursor:pointer;color:var(--accent-fg)">
+        ⬆ ${data.parent}
+      </li>`;
+      for (const e of data.entries) {
+        const li = document.createElement("li");
+        li.className = "tree-dir-head";
+        li.dataset.path = e.path;
+        li.textContent = `📁 ${e.name}`;
+        li.style.cursor = "pointer";
+        li.onclick = () => loadDirPicker(e.path);
+        dirPickerList.appendChild(li);
+      }
+      if (!data.entries.length) dirPickerList.innerHTML += "<li class='subtle' style='padding:8px'>（空目录）</li>";
+    } catch (e) {
+      dirPickerError.textContent = e.message || "加载失败";
+      dirPickerList.innerHTML = "";
+    }
+  }
 
   if (addCustomPathBtn && customPathInput) {
     addCustomPathBtn.onclick = async () => {
       let path = customPathInput.value.trim();
       if (!path) {
-        path = window.prompt("请输入要添加的目录路径：\n（如 /home/moku/projects/xxx）");
-        if (!path || !path.trim()) return;
-        path = path.trim();
-        customPathInput.value = path;
+        openModal(dirPickerModal);
+        await loadDirPicker(dirPickerCurrentPath);
+        return;
       }
       customPathError.textContent = "";
       addCustomPathBtn.disabled = true;
@@ -571,7 +685,7 @@ function patchAuthUI() {
         await reloadSourcesConfig();
         settingsStatus.textContent = `已添加源: ${data.source.id}`;
       } catch (e) {
-        customPathError.textContent = `添加失败: ${e.message}`;
+        customPathError.textContent = e.message || "添加失败，请检查路径";
       } finally {
         addCustomPathBtn.disabled = false;
         addCustomPathBtn.textContent = "添加";
@@ -581,6 +695,20 @@ function patchAuthUI() {
       if (e.key === "Enter") addCustomPathBtn.click();
     });
   }
+
+  if (dirPickerGo && dirPickerPath) {
+    dirPickerGo.onclick = () => loadDirPicker(dirPickerPath.value.trim() || dirPickerCurrentPath);
+    dirPickerPath.addEventListener("keydown", (e) => { if (e.key === "Enter") dirPickerGo.click(); });
+  }
+  if (dirPickerSelect) {
+    dirPickerSelect.onclick = async () => {
+      const selectedPath = dirPickerCurrentPath;
+      closeModal(dirPickerModal);
+      customPathInput.value = selectedPath;
+      addCustomPathBtn.click();
+    };
+  }
+  if (dirPickerCancel) dirPickerCancel.onclick = () => closeModal(dirPickerModal);
 
   function buildSettingsBody() {
     return {

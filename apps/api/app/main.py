@@ -271,6 +271,22 @@ def admin_reload_sources(request: Request, _: Any = Depends(require_admin)) -> d
     return payload
 
 
+@app.get("/api/admin/browse-dir")
+def browse_directory(path: str = "/home/moku", _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    from pathlib import Path
+    base = Path(path).expanduser().resolve()
+    if not base.is_dir():
+        raise HTTPException(status_code=400, detail=f"not a directory: {base}")
+    entries = []
+    try:
+        for entry in sorted(base.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            if entry.is_dir() and not entry.name.startswith("."):
+                entries.append({"name": entry.name, "path": str(entry.resolve())})
+    except PermissionError:
+        raise HTTPException(status_code=403, detail=f"permission denied: {base}")
+    return {"parent": str(base.parent), "current": str(base), "entries": entries[:50]}
+
+
 @app.post("/api/admin/sources/custom")
 def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
     from pathlib import Path
@@ -278,13 +294,15 @@ def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Dep
 
     path_str = (body.get("path") or "").strip()
     if not path_str:
-        raise HTTPException(status_code=400, detail="path is required")
+        raise HTTPException(status_code=400, detail="请输入要同步的文件夹路径")
     path = Path(path_str).expanduser().resolve()
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"文件夹不存在：{path}")
     if not path.is_dir():
-        raise HTTPException(status_code=400, detail=f"path does not exist or is not a directory: {path}")
+        raise HTTPException(status_code=400, detail=f"路径不是文件夹：{path}")
     source_id = path.name
     if not source_id or source_id.startswith("."):
-        raise HTTPException(status_code=400, detail=f"invalid source name: {source_id}")
+        raise HTTPException(status_code=400, detail=f"文件夹名称无效：{source_id}")
 
     src_file = Path(settings.sources_file)
     if not src_file.is_file():

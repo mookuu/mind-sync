@@ -86,11 +86,21 @@
       <div class="app-frame">
         <aside class="sidebar">
           <nav class="sidebar-nav">
-            <button type="button" class="nav-item active" data-view="library">📚 文档库</button>
+            <button type="button" class="nav-item parent-item active" data-view="library">📚 文档库 ▾</button>
+            <div class="sub-nav open" id="subnav-library">
+              <button type="button" class="sub-nav-item active" data-section="library-all">📄 全部文档</button>
+              <button type="button" class="sub-nav-item" data-section="library-recent">⭐ 最近查看</button>
+            </div>
             <button type="button" class="nav-item" data-view="search">🔍 搜索</button>
             <button type="button" class="nav-item" data-view="qa">💡 知识查询</button>
             <button type="button" class="nav-item" data-view="graph">🕸 Wiki 图谱</button>
-            <button type="button" class="nav-item" data-view="sync">🔄 同步运维</button>
+            <button type="button" class="nav-item parent-item" data-view="sync">🔄 同步运维 ▾</button>
+            <div class="sub-nav" id="subnav-sync">
+              <button type="button" class="sub-nav-item active" data-section="sync-control">📊 同步控制</button>
+              <button type="button" class="sub-nav-item" data-section="sync-sources">📦 来源</button>
+              <button type="button" class="sub-nav-item" data-section="sync-vault">🔐 Vault</button>
+              <button type="button" class="sub-nav-item" data-section="sync-audit">📜 审计</button>
+            </div>
           </nav>
           <div class="sidebar-bottom">
             <button type="button" class="nav-item" data-view="purpose">📋 规则约束</button>
@@ -210,42 +220,42 @@
             </div>
           </section>
 
-          <!-- 同步运维 -->
+          <!-- 同步运维：控制面板 -->
           <section id="view-sync" class="view hidden">
-            <div class="sync-dashboard">
+            <div class="view-header"><h2>📊 同步控制</h2></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:800px">
               <div class="sync-card" style="grid-column:1/-1">
-                <h3>📊 同步控制</h3>
                 <div style="display:flex;gap:8px">
                   <button id="syncBtn" class="btn btn-primary" style="flex:1">🔄 同步</button>
-                  <button id="rebuildBtn" class="btn" style="flex:1" title="清空所选源索引并强制全量重扫，不拉取远程">🔃 全量重建</button>
-                </div>
-                <div class="btn-row" style="margin-top:8px">
-                  <button id="runLintBtn" type="button" class="btn btn-sm" style="width:100%">🧹 Wiki Lint</button>
+                  <button id="rebuildBtn" class="btn" style="flex:1">🔃 全量重建</button>
                 </div>
               </div>
               <div class="sync-card">
-                <h3>📈 运行状态</h3>
-                <p id="syncProgressText" class="sync-progress">当前同步：空闲</p>
-                <p id="lastSyncSummaryText" class="sync-stat">最近一次同步：--</p>
-                <p id="syncScopeText" class="subtle" style="margin-top:8px">同步范围：--</p>
+                <p id="syncProgressText" class="sync-progress" style="font-size:14px;font-weight:500">当前同步：空闲</p>
+                <p id="lastSyncSummaryText" class="sync-stat" style="font-size:12px">最近一次同步：--</p>
               </div>
               <div class="sync-card">
-                <h3>⏰ 自动同步</h3>
                 <label class="checkbox-row" style="margin:0 0 6px">
                   <input id="autoSyncEnabled" type="checkbox" />
-                  启用定时同步
+                  定时同步
                 </label>
-                <label class="field-label">间隔（分钟）</label>
+                <label class="field-label" style="font-size:12px">间隔（分钟）</label>
                 <input id="autoSyncInterval" type="number" min="1" max="1440" value="60" style="width:100%" />
-                <label class="checkbox-row" style="margin:8px 0 0">
-                  <input id="vaultPushOnSync" type="checkbox" />
-                  同步后推送 Vault
-                </label>
-                <p id="nextAutoSyncText" class="sync-stat" style="margin-top:8px">下次自动同步：--</p>
-                <p id="lastAutoSyncText" class="sync-stat">最近自动同步：--</p>
+                <p id="nextAutoSyncText" class="subtle" style="margin-top:4px;font-size:11px"></p>
               </div>
-              <div class="sync-card" style="grid-row:span 2">
-                <h3>📋 同步范围</h3>
+              <div class="sync-card" style="grid-column:1/-1">
+                <button id="runLintBtn" type="button" class="btn btn-sm">🧹 Wiki Lint</button>
+                <p id="lintStatus" class="subtle" style="margin-top:4px"></p>
+                <pre id="lintSummary" class="lint-summary hidden"></pre>
+              </div>
+            </div>
+          </section>
+          <!-- 同步运维：来源管理 -->
+          <section id="view-sync-sources" class="view hidden">
+            <div class="view-header"><h2>📦 来源管理</h2></div>
+            <div style="max-width:800px">
+              <div class="sync-card" style="margin-bottom:12px">
+                <h4 style="margin:0 0 8px">同步范围</h4>
                 <div id="syncPresetList" class="preset-list" style="margin-bottom:8px"></div>
                 <div id="syncCustomPaths" class="source-checkboxes" style="margin-top:4px">
                   <div class="field-label" style="font-size:12px">自定义路径</div>
@@ -258,33 +268,38 @@
                 </div>
               </div>
               <div class="sync-card">
-                <h3>📦 来源管理</h3>
+                <h4 style="margin:0 0 8px">来源列表</h4>
                 <div class="btn-row" style="margin:0 0 8px">
-                  <button id="reloadSourcesBtn" type="button" class="btn btn-sm" style="width:100%">⟳ 重载 sources.yaml</button>
+                  <button id="reloadSourcesBtn" type="button" class="btn btn-sm">⟳ 重载 sources.yaml</button>
                 </div>
-                <ul id="sourcesList" class="sources-list" style="max-height:180px;overflow:auto"></ul>
+                <ul id="sourcesList" class="sources-list" style="max-height:300px;overflow:auto"></ul>
               </div>
+            </div>
+          </section>
+          <!-- 同步运维：Vault -->
+          <section id="view-sync-vault" class="view hidden">
+            <div class="view-header"><h2>🔐 Vault</h2></div>
+            <div style="max-width:500px">
               <div class="sync-card">
-                <h3>🔐 Vault</h3>
                 <p id="vaultStatusText" class="subtle">加载中…</p>
                 <div class="btn-row">
                   <button id="vaultPullBtn" type="button" class="btn btn-sm" style="flex:1">拉取</button>
                   <button id="vaultPushBtn" type="button" class="btn btn-sm btn-primary" style="flex:1">推送</button>
                 </div>
               </div>
-              <div class="sync-card">
-                <h3>🧪 Lint 报告</h3>
-                <p id="lintStatus" class="subtle"></p>
-                <pre id="lintSummary" class="lint-summary hidden"></pre>
+            </div>
+          </section>
+          <!-- 同步运维：审计日志 -->
+          <section id="view-sync-audit" class="view hidden">
+            <div class="view-header">
+              <div class="row-between">
+                <h2>📜 审计日志</h2>
+                <button id="refreshAuditBtn" type="button" class="btn btn-sm">刷新</button>
               </div>
-              <div class="sync-card" style="grid-column:1/-1">
-                <div class="row-between">
-                  <h3 style="margin:0">📜 审计日志</h3>
-                  <button id="refreshAuditBtn" type="button" class="btn btn-sm">刷新</button>
-                </div>
-                <p id="auditStatus" class="subtle">加载中…</p>
-                <ul id="auditList" class="audit-list" style="max-height:200px"></ul>
-              </div>
+            </div>
+            <div style="max-width:800px">
+              <p id="auditStatus" class="subtle">加载中…</p>
+              <ul id="auditList" class="audit-list" style="max-height:500px"></ul>
             </div>
           </section>
 
@@ -304,16 +319,32 @@
             </div>
           </section>
 
-    <div id="confirmModal" class="modal hidden">
-      <div class="modal-card" style="width:min(400px,100%)">
-        <h3 id="confirmTitle">确认操作</h3>
-        <p id="confirmMessage" style="margin:12px 0"></p>
-        <div class="btn-row" style="justify-content:flex-end">
-          <button id="confirmCancelBtn" class="btn">取消</button>
-          <button id="confirmOkBtn" class="btn btn-danger">确认</button>
-        </div>
-      </div>
+<div id="confirmModal" class="modal hidden">
+  <div class="modal-card" style="width:min(400px,100%)">
+    <h3 id="confirmTitle">确认操作</h3>
+    <p id="confirmMessage" style="margin:12px 0"></p>
+    <div class="btn-row" style="justify-content:flex-end">
+      <button id="confirmCancelBtn" class="btn">取消</button>
+      <button id="confirmOkBtn" class="btn btn-danger">确认</button>
     </div>
+  </div>
+</div>
+
+<div id="dirPickerModal" class="modal hidden">
+  <div class="modal-card" style="width:min(500px,100%);max-height:80vh;display:flex;flex-direction:column">
+    <h3>选择目录</h3>
+    <div style="display:flex;gap:4px;margin:8px 0">
+      <input id="dirPickerPath" type="text" value="/home/moku/projects" style="flex:1;font-size:12px" />
+      <button id="dirPickerGo" class="btn btn-sm">跳转</button>
+    </div>
+    <p id="dirPickerError" class="subtle" style="color:var(--danger-fg);font-size:11px;margin:0 0 4px"></p>
+    <ul id="dirPickerList" style="list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:200px"></ul>
+    <div class="btn-row" style="margin-top:8px">
+      <button id="dirPickerCancel" class="btn">取消</button>
+      <button id="dirPickerSelect" class="btn btn-primary" disabled>选择当前目录</button>
+    </div>
+  </div>
+</div>
 
     <div id="accountModal" class="modal hidden">
       <div class="modal-card">
