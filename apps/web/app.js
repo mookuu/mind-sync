@@ -33,16 +33,35 @@ loginBtn.onclick = async () => {
 };
 
 let allSearchResults = [];
+let filteredResults = [];
 let currentPage = 1;
 let currentPageSize = 10;
 
+function applyLocalFilters() {
+  let items = allSearchResults;
+  const cat = document.getElementById("categoryFilter")?.value;
+  const src = document.getElementById("sourceFilter")?.value;
+  const type = document.getElementById("typeFilter")?.value;
+  if (cat) items = items.filter((i) => (i.category || "") === cat);
+  if (src) items = items.filter((i) => (i.source_id || "") === src);
+  if (type) items = items.filter((i) => (i.lang || "") === type);
+  filteredResults = items;
+  currentPage = 1;
+  renderPage();
+}
+
+[categoryFilter, sourceFilter, typeFilter].forEach((el) => {
+  if (el) el.addEventListener("change", applyLocalFilters);
+});
+
 function renderPage() {
   results.innerHTML = "";
-  const total = allSearchResults.length;
+  const source = filteredResults.length ? filteredResults : allSearchResults;
+  const total = source.length;
   const totalPages = Math.ceil(total / currentPageSize) || 1;
   const start = (currentPage - 1) * currentPageSize;
   const end = Math.min(start + currentPageSize, total);
-  const pageItems = allSearchResults.slice(start, end);
+  const pageItems = source.slice(start, end);
 
   for (const item of pageItems) {
     const li = document.createElement("li");
@@ -120,14 +139,15 @@ searchBtn.onclick = async () => {
     if (sort && sort !== "relevance") params.set("sort", sort);
     const data = await api(`/api/search?${params.toString()}`);
     allSearchResults = data.items || [];
-    renderPage();
+    filteredResults = [];
+    applyLocalFilters();
   } catch (e) {
     setStatus(`搜索失败: ${e.message}`);
   }
 };
 
 document.getElementById("prevPageBtn")?.addEventListener("click", () => { if (currentPage > 1) { currentPage--; renderPage(); } });
-document.getElementById("nextPageBtn")?.addEventListener("click", () => { const tp = Math.ceil(allSearchResults.length / currentPageSize); if (currentPage < tp) { currentPage++; renderPage(); } });
+document.getElementById("nextPageBtn")?.addEventListener("click", () => { const src = filteredResults.length ? filteredResults : allSearchResults; const tp = Math.ceil(src.length / currentPageSize); if (currentPage < tp) { currentPage++; renderPage(); } });
 document.getElementById("pageSizeSelect")?.addEventListener("change", (e) => { currentPageSize = parseInt(e.target.value) || 10; currentPage = 1; renderPage(); });
 
 qInput.addEventListener("keydown", (e) => {
