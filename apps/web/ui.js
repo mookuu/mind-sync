@@ -646,7 +646,7 @@ function patchAuthUI() {
   const dirPickerError = document.getElementById("dirPickerError");
   const dirPickerSelect = document.getElementById("dirPickerSelect");
   const dirPickerCancel = document.getElementById("dirPickerCancel");
-  let dirPickerCurrentPath = "/home/moku/projects";
+  let dirPickerCurrentPath = "/sources";
   let dirPickerSelectedPath = "";
 
   async function loadDirPicker(path) {
