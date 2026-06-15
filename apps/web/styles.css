@@ -1018,3 +1018,24 @@ mark.search-hit-active { background: rgba(248, 81, 73, 0.35); }
   .settings-layout { grid-template-columns: 1fr; }
   .settings-nav { flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--border-muted); padding-bottom: 12px; }
 }
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-muted);
+  margin-top: 8px;
+}
+.pagination-info { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--fg-muted); }
+.pagination-info select { font-size:12px; padding:4px 6px; }
+.pagination-controls { display:flex; align-items:center; gap:6px; }
+.page-numbers { display:flex; gap:4px; }
+.page-num {
+  min-width:28px; height:28px; display:grid; place-items:center;
+  border-radius:var(--radius); cursor:pointer; font-size:12px;
+  color:var(--fg-muted); border:1px solid transparent;
+}
+.page-num:hover { background:var(--bg-muted); color:var(--fg-default); }
+.page-num.active { background:var(--accent-emphasis); color:#fff; border-color:var(--accent-emphasis); }

@@ -32,6 +32,62 @@ loginBtn.onclick = async () => {
   }
 };
 
+let allSearchResults = [];
+let currentPage = 1;
+let currentPageSize = 10;
+
+function renderPage() {
+  results.innerHTML = "";
+  const total = allSearchResults.length;
+  const totalPages = Math.ceil(total / currentPageSize) || 1;
+  const start = (currentPage - 1) * currentPageSize;
+  const end = Math.min(start + currentPageSize, total);
+  const pageItems = allSearchResults.slice(start, end);
+
+  for (const item of pageItems) {
+    const li = document.createElement("li");
+    li.className = "card-result";
+    const snippet = (item.snippet || "").replace(/<mark>/g, '<mark class="search-hit">').replace(/<\/mark>/g, "</mark>");
+    li.innerHTML = `
+      <div class="card-result-head">
+        <span class="cat-badge ${item.category === "summary" ? "cat-summary" : item.category === "query" ? "cat-query" : ""}">${categoryBadge(item.category)}</span>
+        <b>${item.source_id}</b> / ${item.rel_path}
+      </div>
+      <div class="card-result-snippet">${snippet || ""}</div>
+    `;
+    li.onclick = async () => {
+      const doc = await api(`/api/document/${item.id}`);
+      if (typeof switchView === "function") switchView("library");
+      renderDocumentPreview(doc, currentSearchTerm);
+    };
+    results.appendChild(li);
+  }
+
+  const pagination = document.getElementById("pagination");
+  const pageInfo = document.getElementById("pageInfo");
+  const prevBtn = document.getElementById("prevPageBtn");
+  const nextBtn = document.getElementById("nextPageBtn");
+  const pageNumbers = document.getElementById("pageNumbers");
+  if (!pagination) return;
+  if (total <= currentPageSize) { pagination.classList.add("hidden"); return; }
+  pagination.classList.remove("hidden");
+  pageInfo.textContent = `${start + 1}-${end} / ${total} 条`;
+  prevBtn.disabled = currentPage <= 1;
+  nextBtn.disabled = currentPage >= totalPages;
+  pageNumbers.innerHTML = "";
+  const maxVisible = 7;
+  let ps = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+  let pe = Math.min(totalPages, ps + maxVisible - 1);
+  if (pe - ps < maxVisible - 1) ps = Math.max(1, pe - maxVisible + 1);
+  for (let i = ps; i <= pe; i++) {
+    const btn = document.createElement("span");
+    btn.className = `page-num${i === currentPage ? " active" : ""}`;
+    btn.textContent = i;
+    btn.onclick = () => { currentPage = i; renderPage(); };
+    pageNumbers.appendChild(btn);
+  }
+}
+
 searchBtn.onclick = async () => {
   const q = qInput.value.trim();
   if (!q) return;
@@ -44,6 +100,7 @@ searchBtn.onclick = async () => {
   docNav.classList.add("hidden");
   matchCount.textContent = "0 / 0";
   currentMatchIndex = -1;
+  currentPage = 1;
   try {
     const params = new URLSearchParams({ q });
     if (sourceFilter.value) params.set("source_id", sourceFilter.value);
@@ -53,28 +110,16 @@ searchBtn.onclick = async () => {
     const sort = window.MindSyncSearch?.getSort?.() || "relevance";
     if (sort && sort !== "relevance") params.set("sort", sort);
     const data = await api(`/api/search?${params.toString()}`);
-    for (const item of data.items) {
-      const li = document.createElement("li");
-      li.className = "card-result";
-      const snippet = (item.snippet || "").replace(/<mark>/g, '<mark class="search-hit">').replace(/<\/mark>/g, "</mark>");
-      li.innerHTML = `
-        <div class="card-result-head">
-          <span class="cat-badge ${item.category === "summary" ? "cat-summary" : item.category === "query" ? "cat-query" : ""}">${categoryBadge(item.category)}</span>
-          <b>${item.source_id}</b> / ${item.rel_path}
-        </div>
-        <div class="card-result-snippet">${snippet || ""}</div>
-      `;
-      li.onclick = async () => {
-        const doc = await api(`/api/document/${item.id}`);
-        if (typeof switchView === "function") switchView("library");
-        renderDocumentPreview(doc, currentSearchTerm);
-      };
-      results.appendChild(li);
-    }
+    allSearchResults = data.items || [];
+    renderPage();
   } catch (e) {
     setStatus(`搜索失败: ${e.message}`);
   }
 };
+
+document.getElementById("prevPageBtn")?.addEventListener("click", () => { if (currentPage > 1) { currentPage--; renderPage(); } });
+document.getElementById("nextPageBtn")?.addEventListener("click", () => { const tp = Math.ceil(allSearchResults.length / currentPageSize); if (currentPage < tp) { currentPage++; renderPage(); } });
+document.getElementById("pageSizeSelect")?.addEventListener("change", (e) => { currentPageSize = parseInt(e.target.value) || 10; currentPage = 1; renderPage(); });
 
 qInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") searchBtn.onclick();

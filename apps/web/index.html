@@ -167,7 +167,24 @@
               <button id="browseBtn" type="button" class="btn btn-sm">加载列表</button>
             </div>
             <ul id="browseList" class="result-list browse-list"></ul>
-            <ul id="results" class="result-list"></ul>
+            <div id="resultsWrap" style="overflow:auto;max-height:calc(100vh - 260px)">
+              <ul id="results" class="result-list"></ul>
+            </div>
+            <div id="pagination" class="pagination-bar hidden">
+              <div class="pagination-info">
+                <span id="pageInfo"></span>
+                <select id="pageSizeSelect">
+                  <option value="10">10条/页</option>
+                  <option value="20">20条/页</option>
+                  <option value="50">50条/页</option>
+                </select>
+              </div>
+              <div class="pagination-controls">
+                <button id="prevPageBtn" class="btn btn-sm" disabled>‹ 上一页</button>
+                <span id="pageNumbers" class="page-numbers"></span>
+                <button id="nextPageBtn" class="btn btn-sm" disabled>下一页 ›</button>
+              </div>
+            </div>
           </section>
 
           <!-- 问答 -->
