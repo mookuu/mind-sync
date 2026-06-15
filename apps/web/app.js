@@ -39,9 +39,9 @@ let currentPageSize = 10;
 
 function applyLocalFilters() {
   let items = allSearchResults;
-  const cat = document.getElementById("categoryFilter")?.value;
-  const src = document.getElementById("sourceFilter")?.value;
-  const typ = document.getElementById("typeFilter")?.value;
+  const cat = document.getElementById("categoryFilter")?.value || "";
+  const src = document.getElementById("sourceFilter")?.value || "";
+  const typ = document.getElementById("typeFilter")?.value || "";
   const hasFilter = cat || src || typ;
   if (!items.length) { filteredResults = []; renderPage(); return; }
   if (cat) items = items.filter((i) => String(i.category || "") === cat);
@@ -133,11 +133,7 @@ searchBtn.onclick = async () => {
   currentMatchIndex = -1;
   currentPage = 1;
   try {
-    const params = new URLSearchParams({ q });
-    if (sourceFilter.value) params.set("source_id", sourceFilter.value);
-    if (typeFilter.value) params.set("file_type", typeFilter.value);
-    if (categoryFilter.value) params.set("category", categoryFilter.value);
-    if (topicFilter.value) params.set("topic", topicFilter.value);
+    const params = new URLSearchParams({ q, limit: "200" });
     const sort = window.MindSyncSearch?.getSort?.() || "relevance";
     if (sort && sort !== "relevance") params.set("sort", sort);
     const data = await api(`/api/search?${params.toString()}`);
