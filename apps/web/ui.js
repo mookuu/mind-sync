@@ -133,7 +133,7 @@ function bindViewNav() {
   });
 }
 
-function renderSyncPresets(presets, selectedPreset) {
+function renderSyncPresets(presets, selectedPreset, savedSourceIds) {
   const box = document.getElementById("syncPresetList");
   if (!box) return;
   box.innerHTML = "";
@@ -141,13 +141,11 @@ function renderSyncPresets(presets, selectedPreset) {
   const isDefault = currentSyncPreset === "all" || currentSyncPreset === "";
   const allPreset = presets.find((p) => p.id === "all");
   const otherPresets = presets.filter((p) => p.id !== "all" && p.id !== "custom");
-
-  const storedIds = (localStorage.getItem("mindsync_checked_presets") || "").split(",").filter(Boolean);
+  const savedIds = (savedSourceIds || []).map(String);
 
   function saveSyncSetting() {
     const checkedItems = [...box.querySelectorAll("input[type=checkbox]:checked")].map((cb) => cb.value).filter((v) => v && v !== "all");
     const hasAll = document.getElementById("presetAll")?.querySelector("input")?.checked;
-    localStorage.setItem("mindsync_checked_presets", hasAll ? "" : checkedItems.join(","));
     if (hasAll) {
       api("/api/settings", { method: "POST", body: JSON.stringify({ sync_preset: "all" }) }).catch(() => {});
     } else {
@@ -155,7 +153,7 @@ function renderSyncPresets(presets, selectedPreset) {
     }
   }
 
-  // 默认 checkbox（master toggle）
+  // 全部来源（master toggle）
   const allLabel = document.createElement("label");
   allLabel.className = `preset-option${isDefault ? " selected" : ""}`;
   allLabel.innerHTML = `
@@ -174,23 +172,21 @@ function renderSyncPresets(presets, selectedPreset) {
       if (cb) { cb.disabled = checked; if (checked) cb.checked = false; }
     });
     const customBox = document.getElementById("syncCustomPaths");
-    if (customBox) {
-      customBox.style.opacity = checked ? "0.4" : "1";
-      customBox.style.pointerEvents = checked ? "none" : "auto";
-    }
+    if (customBox) { customBox.style.opacity = checked ? "0.4" : "1"; customBox.style.pointerEvents = checked ? "none" : "auto"; }
     currentSyncPreset = checked ? "all" : "custom";
     saveSyncSetting();
   };
   allLabel.id = "presetAll";
   box.appendChild(allLabel);
 
-  // 其他 preset 选项（支持多选）
+  // 其他 preset 选项（多选），从 DB 恢复状态
   for (const p of otherPresets) {
     const label = document.createElement("label");
     label.className = "preset-option";
     label.style.opacity = isDefault ? "0.4" : "1";
     label.style.pointerEvents = isDefault ? "none" : "auto";
-    const checked = storedIds.includes(p.id) || (!isDefault && !storedIds.length && selectedPreset !== "all");
+    const fromDb = savedIds.includes(p.id) || savedIds.includes((p.source_ids || [])[0]);
+    const checked = isDefault ? false : (fromDb || selectedPreset === p.id);
     label.innerHTML = `
       <input type="checkbox" value="${p.id}" ${checked ? "checked" : ""} ${isDefault ? "disabled" : ""} />
       <div>
@@ -601,7 +597,7 @@ async function loadSettingsExtended() {
   await loadSettings();
   try {
     const st = await api("/api/settings");
-    renderSyncPresets(st.sync_presets, st.sync_preset);
+    renderSyncPresets(st.sync_presets, st.sync_preset, st.sync_source_ids);
     const srcList = availableSources.length ? availableSources : (await api("/api/sources")).sources || [];
     if (!availableSources.length) availableSources = srcList;
     customSyncSourceIds = expandSyncKeys(st.sync_source_ids || st.sync_selected_keys || [], srcList);
