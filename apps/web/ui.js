@@ -542,9 +542,11 @@ function patchAuthUI() {
     if (e.key === "Enter") loginBtn.click();
   });
 
-  settingsBtn.onclick = () => {
-    if (isLoggedIn) switchView("settings");
-  };
+  if (settingsBtn) {
+    settingsBtn.onclick = () => {
+      if (isLoggedIn) switchView("settings");
+    };
+  }
 
   saveSettingsBtn.onclick = async () => {
     try {

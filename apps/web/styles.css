@@ -195,6 +195,14 @@ html[data-auth="guest"] #loginScreen {
   border-right: 1px solid var(--border-default);
   background: var(--bg-default);
   padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.sidebar-bottom {
+  padding-top: 8px;
+  border-top: 1px solid var(--border-muted);
 }
 
 .sidebar-nav {
@@ -1227,10 +1235,15 @@ mark.search-hit-active {
   .sidebar {
     border-right: none;
     border-bottom: 1px solid var(--border-default);
+    justify-content: flex-start;
   }
   .sidebar-nav {
     flex-direction: row;
     flex-wrap: wrap;
+  }
+  .sidebar-bottom {
+    border-top: none;
+    padding-top: 0;
   }
   .library-layout {
     grid-template-columns: 1fr;
