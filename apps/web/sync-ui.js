@@ -170,6 +170,7 @@ const AUDIT_EVENT_LABELS = {
   sync_requested: "同步请求",
   sync_completed: "同步完成",
   sources_reloaded: "重载 sources.yaml",
+  sources_custom_added: "添加自定义源",
   rebuild_requested: "全量重建请求",
   rebuild_completed: "全量重建完成",
 };

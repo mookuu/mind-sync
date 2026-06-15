@@ -271,6 +271,46 @@ def admin_reload_sources(request: Request, _: Any = Depends(require_admin)) -> d
     return payload
 
 
+@app.post("/api/admin/sources/custom")
+def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
+    from pathlib import Path
+    import yaml
+
+    path_str = (body.get("path") or "").strip()
+    if not path_str:
+        raise HTTPException(status_code=400, detail="path is required")
+    path = Path(path_str).expanduser().resolve()
+    if not path.is_dir():
+        raise HTTPException(status_code=400, detail=f"path does not exist or is not a directory: {path}")
+    source_id = path.name
+    if not source_id or source_id.startswith("."):
+        raise HTTPException(status_code=400, detail=f"invalid source name: {source_id}")
+
+    src_file = Path(settings.sources_file)
+    if not src_file.is_file():
+        raise HTTPException(status_code=404, detail=f"sources file not found: {src_file}")
+    raw = src_file.read_text(encoding="utf-8")
+    config = yaml.safe_load(raw) or {}
+    sources: list = config.get("sources", [])
+    existing_ids = {s.get("id") for s in sources if isinstance(s, dict)}
+    if source_id in existing_ids:
+        raise HTTPException(status_code=409, detail=f"source '{source_id}' already exists")
+
+    new_source = {
+        "id": source_id,
+        "type": "local",
+        "order": max((s.get("order", 0) or 0) for s in sources if isinstance(s, dict)) + 10 if sources else 50,
+        "path": str(path),
+        "include": ["**/*.md", "**/*.py"],
+    }
+    sources.append(new_source)
+    config["sources"] = sources
+    src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+    reload_sources_config()
+    add_audit_event("sources_custom_added", request, actor=resolve_actor(request), detail=f"id={source_id} path={path}")
+    return {"ok": True, "source": new_source}
+
+
 @app.get("/api/settings")
 def get_settings(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
     conn = get_db()

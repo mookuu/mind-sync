@@ -265,10 +265,18 @@
                 <input id="vaultPushOnSync" type="checkbox" />
                 同步结束后推送 Vault 到 Git（需配置 VAULT_GIT_URL）
               </label>
-              <h4 class="mt">默认同步范围</h4>
-              <p class="subtle">「同步」= 增量（含 Vault/GitHub/Web 拉取）。「全量重建」= 清空所选源索引并强制重扫，不拉远程。</p>
+              <h4 class="mt">同步范围</h4>
+              <p class="subtle">勾选要同步的来源。「默认」选中时同步所有配置源。</p>
               <div id="syncPresetList" class="preset-list"></div>
-              <div id="syncCustomSources" class="source-checkboxes hidden"></div>
+              <div id="syncCustomPaths" class="source-checkboxes hidden" style="margin-top:10px">
+                <div class="field-label">自定义路径（点击添加）</div>
+                <div style="display:flex;gap:8px">
+                  <input id="customPathInput" type="text" placeholder="/home/moku/projects/xxx" style="flex:1" />
+                  <button id="addCustomPathBtn" class="btn btn-sm btn-primary">添加</button>
+                </div>
+                <div id="customPathError" class="subtle" style="color:var(--danger-fg);margin-top:4px"></div>
+                <ul id="customPathList" class="sync-order-list" style="margin-top:8px"></ul>
+              </div>
               <h4 class="mt">同步顺序</h4>
               <p class="subtle">仅影响多源合并索引时的处理先后，与搜索相关度排序无关。</p>
               <ul id="syncOrderList" class="sync-order-list"></ul>

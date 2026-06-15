@@ -50,26 +50,74 @@ function renderSyncPresets(presets, selectedPreset) {
   if (!box) return;
   box.innerHTML = "";
   currentSyncPreset = selectedPreset || "all";
-  for (const p of presets || []) {
+  const isDefault = currentSyncPreset === "all" || currentSyncPreset === "";
+  const allPreset = presets.find((p) => p.id === "all");
+  const otherPresets = presets.filter((p) => p.id !== "all" && p.id !== "custom");
+
+  // 默认 checkbox（master toggle）
+  const allLabel = document.createElement("label");
+  allLabel.className = `preset-option${isDefault ? " selected" : ""}`;
+  allLabel.innerHTML = `
+    <input type="checkbox" ${isDefault ? "checked" : ""} />
+    <div>
+      <div>${allPreset ? allPreset.label : "全部同步"}</div>
+      <div class="preset-desc">同步 sources.yaml 中所有已配置来源</div>
+    </div>`;
+  allLabel.querySelector("input").onchange = (e) => {
+    const checked = e.target.checked;
+    allLabel.classList.toggle("selected", checked);
+    document.querySelectorAll(".preset-option:not(#presetAll)").forEach((el) => {
+      el.style.opacity = checked ? "0.4" : "1";
+      el.style.pointerEvents = checked ? "none" : "auto";
+      const cb = el.querySelector("input[type=checkbox]");
+      if (cb) cb.disabled = checked;
+    });
+    const customBox = document.getElementById("syncCustomPaths");
+    if (customBox) {
+      customBox.style.opacity = checked ? "0.4" : "1";
+      customBox.style.pointerEvents = checked ? "none" : "auto";
+    }
+    currentSyncPreset = checked ? "all" : "custom";
+  };
+  allLabel.id = "presetAll";
+  box.appendChild(allLabel);
+
+  // 其他 preset 选项
+  for (const p of otherPresets) {
     const label = document.createElement("label");
-    label.className = `preset-option${p.id === currentSyncPreset ? " selected" : ""}`;
+    label.className = "preset-option";
+    label.style.opacity = isDefault ? "0.4" : "1";
+    label.style.pointerEvents = isDefault ? "none" : "auto";
+    const checked = p.id === currentSyncPreset;
     label.innerHTML = `
-      <input type="radio" name="syncPreset" value="${p.id}" ${p.id === currentSyncPreset ? "checked" : ""} />
+      <input type="checkbox" value="${p.id}" ${checked ? "checked" : ""} ${isDefault ? "disabled" : ""} />
       <div>
         <div>${p.label}</div>
         <div class="preset-desc">${p.description || ""}</div>
       </div>`;
-    label.querySelector("input").onchange = () => {
-      currentSyncPreset = p.id;
-      document.querySelectorAll(".preset-option").forEach((el) => el.classList.remove("selected"));
-      label.classList.add("selected");
-      const customBox = document.getElementById("syncCustomSources");
-      if (customBox) customBox.classList.toggle("hidden", currentSyncPreset !== "custom");
+    label.querySelector("input").onchange = (e) => {
+      label.classList.toggle("selected", e.target.checked);
     };
     box.appendChild(label);
   }
-  const customBox = document.getElementById("syncCustomSources");
-  if (customBox) customBox.classList.toggle("hidden", currentSyncPreset !== "custom");
+
+  // 自定义路径区域
+  const customBox = document.getElementById("syncCustomPaths");
+  if (customBox) {
+    customBox.style.display = "block";
+    customBox.style.opacity = isDefault ? "0.4" : "1";
+    customBox.style.pointerEvents = isDefault ? "none" : "auto";
+  }
+
+  // 初始化：默认选中时灰掉其他
+  if (isDefault) {
+    document.querySelectorAll(".preset-option:not(#presetAll)").forEach((el) => {
+      el.style.opacity = "0.4";
+      el.style.pointerEvents = "none";
+      const cb = el.querySelector("input[type=checkbox]");
+      if (cb) cb.disabled = true;
+    });
+  }
 }
 
 function sourceSyncKey(s) {
@@ -534,6 +582,46 @@ function patchAuthUI() {
     settingsBtn.onclick = () => {
       if (isLoggedIn) switchView("settings");
     };
+  }
+
+  const addCustomPathBtn = document.getElementById("addCustomPathBtn");
+  const customPathInput = document.getElementById("customPathInput");
+  const customPathError = document.getElementById("customPathError");
+  const customPathList = document.getElementById("customPathList");
+
+  if (addCustomPathBtn && customPathInput) {
+    addCustomPathBtn.onclick = async () => {
+      const path = customPathInput.value.trim();
+      if (!path) { customPathError.textContent = "请输入路径"; return; }
+      customPathError.textContent = "";
+      addCustomPathBtn.disabled = true;
+      addCustomPathBtn.textContent = "验证中…";
+      try {
+        const data = await api("/api/admin/sources/custom", {
+          method: "POST", body: JSON.stringify({ path }),
+        });
+        if (customPathList) {
+          const li = document.createElement("li");
+          li.className = "sync-order-item";
+          li.innerHTML = `
+            <span class="sync-order-label">📁 ${data.source.id}</span>
+            <span class="subtle">${data.source.path}</span>
+          `;
+          customPathList.appendChild(li);
+        }
+        customPathInput.value = "";
+        await reloadSourcesConfig();
+        settingsStatus.textContent = `已添加源: ${data.source.id}`;
+      } catch (e) {
+        customPathError.textContent = `添加失败: ${e.message}`;
+      } finally {
+        addCustomPathBtn.disabled = false;
+        addCustomPathBtn.textContent = "添加";
+      }
+    };
+    customPathInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") addCustomPathBtn.click();
+    });
   }
 
   saveSettingsBtn.onclick = async () => {
