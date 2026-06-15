@@ -38,18 +38,19 @@ let currentPage = 1;
 let currentPageSize = 10;
 
 function applyLocalFilters() {
-  let items = allSearchResults;
+  if (!allSearchResults.length) { filteredResults = []; renderPage(); return; }
+  let items = [...allSearchResults];
   const cat = document.getElementById("categoryFilter")?.value || "";
   const src = document.getElementById("sourceFilter")?.value || "";
   const typ = document.getElementById("typeFilter")?.value || "";
-  const hasFilter = cat || src || typ;
-  if (!items.length) { filteredResults = []; renderPage(); return; }
   if (cat) items = items.filter((i) => String(i.category || "") === cat);
   if (src) items = items.filter((i) => String(i.source_id || "") === src);
   if (typ) items = items.filter((i) => String(i.lang || "") === typ);
-  filteredResults = hasFilter ? items : allSearchResults;
+  filteredResults = items;
   currentPage = 1;
   renderPage();
+  const pageInfo = document.getElementById("pageInfo");
+  if (pageInfo) pageInfo.textContent = `${filteredResults.length} / ${allSearchResults.length} 条`;
 }
 
 ["categoryFilter", "sourceFilter", "typeFilter"].forEach((id) => {
