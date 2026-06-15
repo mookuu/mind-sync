@@ -863,7 +863,7 @@ input:focus, select:focus {
   justify-content: space-between;
   margin-bottom: 8px;
 }
-.browse-list { max-height: 160px; overflow: auto; margin-bottom: 12px; }
+.browse-list { margin-bottom: 12px; }
 
 .preset-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 

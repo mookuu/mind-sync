@@ -69,11 +69,20 @@ function renderPage() {
   const nextBtn = document.getElementById("nextPageBtn");
   const pageNumbers = document.getElementById("pageNumbers");
   if (!pagination) return;
-  if (total <= currentPageSize) { pagination.classList.add("hidden"); return; }
+  if (total === 0) { pagination.classList.add("hidden"); return; }
   pagination.classList.remove("hidden");
   pageInfo.textContent = `${start + 1}-${end} / ${total} 条`;
-  prevBtn.disabled = currentPage <= 1;
-  nextBtn.disabled = currentPage >= totalPages;
+  if (totalPages > 1) {
+    prevBtn.disabled = currentPage <= 1;
+    nextBtn.disabled = currentPage >= totalPages;
+    prevBtn.classList.remove("hidden");
+    nextBtn.classList.remove("hidden");
+    pageNumbers.classList.remove("hidden");
+  } else {
+    prevBtn.classList.add("hidden");
+    nextBtn.classList.add("hidden");
+    pageNumbers.classList.add("hidden");
+  }
   pageNumbers.innerHTML = "";
   const maxVisible = 7;
   let ps = Math.max(1, currentPage - Math.floor(maxVisible / 2));
