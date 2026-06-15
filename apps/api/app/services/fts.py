@@ -32,13 +32,29 @@ def _weights_active(weights: dict[str, float]) -> bool:
     return any(abs(weights.get(k, 1.0) - 1.0) > 1e-9 for k in _DEFAULT_WEIGHTS)
 
 
-def _rank_with_weights(items: list[dict[str, Any]], weights: dict[str, float]) -> list[dict[str, Any]]:
+def _boost_title_match(items: list[dict[str, Any]], query: str) -> None:
+    """Boost documents whose title/path contains query keywords (lower rank_score = better)."""
+    keywords = [t.lower() for t in _TOKEN_SPLIT.split(query.strip()) if len(t) >= 2]
+    if not keywords:
+        return
+    for item in items:
+        title = (item.get("title") or "").lower()
+        path = (item.get("rel_path") or "").lower()
+        match_count = sum(1 for kw in keywords if kw in title or kw in path)
+        if match_count > 0:
+            boost = 1.0 - (match_count / (len(keywords) * 2))
+            item["rank_score"] = float(item.get("rank_score", 0)) * max(boost, 0.3)
+
+
+def _rank_with_weights(items: list[dict[str, Any]], weights: dict[str, float], query: str = "") -> list[dict[str, Any]]:
     """Lower effective rank is better (SQLite bm25: smaller = better match)."""
     for item in items:
         rank = float(item.get("rank_score", 0))
         cat = item.get("category") or classify_document(item.get("source_id", ""), item.get("rel_path", ""))
         weight = weights.get(cat, 1.0)
         item["rank_score"] = rank / weight
+    if query:
+        _boost_title_match(items, query)
     return sorted(items, key=lambda x: float(x.get("rank_score", 0)))
 
 
@@ -104,7 +120,7 @@ def search_for_query(conn: sqlite3.Connection, question: str, limit: int = 8) ->
         for item in items:
             item["category"] = classify_document(item["source_id"], item["rel_path"])
         if _weights_active(weights):
-            items = _rank_with_weights(items, weights)
+            items = _rank_with_weights(items, weights, question)
         return items[:limit]
     return _like_fallback(conn, question, limit=limit)
 
@@ -172,7 +188,7 @@ def search_documents(
         existing_ids.add(int(row["id"]))
 
     if sort != "mtime_desc" and _weights_active(weights):
-        items = _rank_with_weights(items, weights)
+        items = _rank_with_weights(items, weights, q)
 
     if len(items) >= limit:
         trimmed = items[:limit]
