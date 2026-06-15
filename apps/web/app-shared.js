@@ -261,4 +261,6 @@ window.onclick = (e) => {
   if (e.target === settingsModal || e.target === accountModal) {
     closeTransientModals();
   }
+  if (e.target === dirPickerModal) closeModal(dirPickerModal);
+  if (e.target === confirmModal) closeModal(confirmModal);
 };
