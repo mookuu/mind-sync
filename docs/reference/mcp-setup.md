@@ -1,6 +1,6 @@
 # Cursor MCP 配置（mind-sync）
 
-文档索引：[docs/README.md](./README.md) · 工作流：[MIND_SYNC_WORKFLOW.md](./MIND_SYNC_WORKFLOW.md)
+文档索引：[docs/README.md](./README.md) · 工作流：[../workflow.md](./../workflow.md)
 
 ## 一键启用（推荐）
 

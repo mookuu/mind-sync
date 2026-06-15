@@ -12,7 +12,7 @@
 | `./sources/obsidian` | Obsidian Web Clipper 导出 |
 | `./sources/web_snapshots/<id>` | Web 源抓取快照（API 写入，需可写） |
 
-详见 [SOURCES.md](./SOURCES.md)。
+详见 [SOURCES.md](./reference/sources.md)。
 
 ## Docker（推荐）
 
@@ -88,7 +88,7 @@ SECURITY_HSTS_ENABLED=true
 CORS_ALLOW_ORIGINS=https://your-domain.example
 ```
 
-- 使用反向代理终止 TLS（Caddy / Nginx），示例见 [MIND_SYNC_WORKFLOW.md](./MIND_SYNC_WORKFLOW.md)
+- 使用反向代理终止 TLS（Caddy / Nginx），示例见 [workflow.md](./workflow.md)
 - 多用户场景配置 `AUTH_USERS`，只读用户用 `viewer` 角色
 - 限制 API 端口暴露；`API_KEY` 仅给可信自动化
 
@@ -103,7 +103,7 @@ API 启动时若仍用默认 `AUTH_PASSWORD` / `API_KEY`，日志会输出 `SECU
 
 ## 升级注意
 
-- 修改 `sources.yaml` 后：Web 设置 **重新加载**，或重启 API（见 [SOURCES.md](./SOURCES.md)）
+- 修改 `sources.yaml` 后：Web 设置 **重新加载**，或重启 API（见 [SOURCES.md](./reference/sources.md)）
 - 远程源连续同步失败会进入指数退避（`SYNC_BACKOFF_*`），可在 `/api/sync-status` 查看
 - 新增 Python 依赖后 `docker compose up --build`
 - RBAC / Web 合规相关 env 变更后需重启

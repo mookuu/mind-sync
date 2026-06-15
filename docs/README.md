@@ -6,13 +6,16 @@
 
 | 你想… | 文档 |
 |--------|------|
-| 启动 Docker、备份、HTTPS | [DEPLOYMENT.md](./DEPLOYMENT.md) |
-| 理解整体架构与模块 | [ARCHITECTURE.md](./ARCHITECTURE.md) |
-| 配置 `sources.yaml`、多源类型 | [SOURCES.md](./SOURCES.md) |
-| 日常维护：同步 / ingest / 问答 / lint | [MIND_SYNC_WORKFLOW.md](./MIND_SYNC_WORKFLOW.md) |
-| Cursor MCP 与 Skills | [CURSOR_MCP_SETUP.md](./CURSOR_MCP_SETUP.md) |
-| 本地开发、测试、模块路径 | [DEVELOPMENT.md](./DEVELOPMENT.md) |
-| 鉴权、RBAC、限速、合规 | [../SECURITY.md](../SECURITY.md) |
+| 启动 Docker、备份、HTTPS | [deployment.md](./deployment.md) |
+| 理解整体架构与模块 | [architecture.md](./architecture.md) |
+| 配置 `sources.yaml`、多源类型 | [reference/sources.md](./reference/sources.md) |
+| 日常维护：同步 / ingest / 问答 / lint | [workflow.md](./workflow.md) |
+| Cursor MCP 与 Skills | [reference/mcp-setup.md](./reference/mcp-setup.md) |
+| 本地开发、测试、模块路径 | [development.md](./development.md) |
+| API 端点参考 | [api/endpoints.md](./api/endpoints.md) |
+| 鉴权、RBAC、限速、合规 | [SECURITY.md](../SECURITY.md) |
+| 待办事项 | [project/todo.md](./project/todo.md) |
+| 变更日志 | [project/changelog.md](./project/changelog.md) |
 
 ## 概念速查
 
@@ -42,8 +45,28 @@ sources.yaml（素材）  →  sync / ingest  →  SQLite FTS 索引
 
 ## 文档维护约定
 
-- **用户向流程**（怎么用）→ `MIND_SYNC_WORKFLOW.md`
-- **运维向**（怎么部署）→ `DEPLOYMENT.md`
-- **开发向**（代码在哪）→ `DEVELOPMENT.md` + `ARCHITECTURE.md`
-- **配置参考**（sources / env）→ `SOURCES.md` + `.env.example`
+- **用户向流程**（怎么用）→ `workflow.md`
+- **运维向**（怎么部署）→ `deployment.md`
+- **开发向**（代码在哪）→ `development.md` + `architecture.md`
+- **配置参考**（sources / env）→ `reference/sources.md` + `.env.example`
+- **API 参考** → `api/endpoints.md`
 - 根 `README.md` 保持简短：启动步骤 + 能力概览 + 指向本索引
+
+## docs/ 目录结构
+
+```
+docs/
+├── README.md            ← 本索引
+├── architecture.md      ← 系统架构
+├── workflow.md          ← 数据流与工作流
+├── deployment.md        ← 部署指南
+├── development.md       ← 开发指南
+├── reference/           ← 配置参考
+│   ├── sources.md       ← sources.yaml 说明
+│   └── mcp-setup.md     ← MCP 配置
+├── api/
+│   └── endpoints.md     ← API 端点参考
+└── project/
+    ├── todo.md           ← 待办事项
+    └── changelog.md      ← 变更日志
+```

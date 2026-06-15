@@ -1,6 +1,6 @@
 # mind-sync 工作流指南
 
-> 文档索引：[docs/README.md](./README.md) · 架构：[ARCHITECTURE.md](./ARCHITECTURE.md) · 源配置：[SOURCES.md](./SOURCES.md)
+> 文档索引：[docs/README.md](./README.md) · 架构：[ARCHITECTURE.md](./architecture.md) · 源配置：[SOURCES.md](./reference/sources.md)
 
 本文说明如何在 **Web、CLI、Cursor MCP** 之间协作，维护个人可信知识库。
 
@@ -162,7 +162,7 @@ updated: 2026-05-30
 ## Cursor + MCP
 
 1. 安装依赖：`pip install -r apps/mcp/requirements.txt`
-2. 项目已含 `.cursor/mcp.json` — 详见 **`docs/CURSOR_MCP_SETUP.md`**
+2. 项目已含 `.cursor/mcp.json` — 详见 **`docs/reference/mcp-setup.md`**
 3. 启用项目 Rule：`.cursor/rules/mind-sync.mdc`
 
 常用工具：

@@ -7,19 +7,19 @@
 | 文档 | 说明 |
 |------|------|
 | [docs/README.md](docs/README.md) | **文档索引**（建议从这里进） |
-| [docs/MIND_SYNC_WORKFLOW.md](docs/MIND_SYNC_WORKFLOW.md) | 日常使用：同步、问答、lint、Obsidian |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构与模块 |
-| [docs/SOURCES.md](docs/SOURCES.md) | `sources.yaml` 配置参考 |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker、备份、HTTPS |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 本地开发与测试 |
-| [docs/CURSOR_MCP_SETUP.md](docs/CURSOR_MCP_SETUP.md) | Cursor MCP / Skills |
+| [docs/workflow.md](docs/workflow.md) | 日常使用：同步、问答、lint、Obsidian |
+| [docs/architecture.md](docs/architecture.md) | 架构与模块 |
+| [docs/reference/sources.md](docs/reference/sources.md) | `sources.yaml` 配置参考 |
+| [docs/deployment.md](docs/deployment.md) | Docker、备份、HTTPS |
+| [docs/development.md](docs/development.md) | 本地开发与测试 |
+| [docs/reference/mcp-setup.md](docs/reference/mcp-setup.md) | Cursor MCP / Skills |
 | [SECURITY.md](SECURITY.md) | 鉴权、RBAC、安全清单 |
 
 ## 启动
 
 1. 复制环境变量文件：`cp .env.example .env`
 2. 修改 `.env` 中密码和密钥（尤其是 `AUTH_PASSWORD`、`API_KEY`、`LLM_API_KEY`）  
-   多用户时配置 `AUTH_USERS`（如 `admin:强密码:admin,reader:密码:viewer`），详见 `docs/MIND_SYNC_WORKFLOW.md` 权限一节
+   多用户时配置 `AUTH_USERS`（如 `admin:强密码:admin,reader:密码:viewer`），详见 `docs/workflow.md` 权限一节
 3. 启动：`docker compose up --build -d`
 4. 打开：
    - Web: `http://localhost:8080`
@@ -121,7 +121,7 @@ python apps/cli/mind_sync_cli.py --api-key mind-sync-dev-key search "闭包" --o
 
 ### 4) MCP（面向 Cursor / Codex / Claude Code）
 
-**Cursor 项目内已配置** `.cursor/mcp.json`（详见 `docs/CURSOR_MCP_SETUP.md`）。
+**Cursor 项目内已配置** `.cursor/mcp.json`（详见 `docs/reference/mcp-setup.md`）。
 
 手动启动（调试）：
 
@@ -171,7 +171,7 @@ data/
 ```
 
 - 摘要模板：`templates/wiki/summary-template.md`
-- 工作流详解：`docs/MIND_SYNC_WORKFLOW.md`
+- 工作流详解：`docs/workflow.md`
 - Cursor Rule：`.cursor/rules/mind-sync.mdc`
 - Cursor Skills：`.cursor/skills/mind-sync-{ingest,query,lint}/`
 
@@ -184,7 +184,7 @@ data/
 - 同步本地源仓库与 wiki 的 `.md/.py/.java`
 - **GitHub 源**：`type: github` 时 shallow clone/pull 到 `path`（默认 `/sources/<id>`，与 local 源同布局；`GITHUB_TOKEN`）
 - **Vault Git**：`VAULT_GIT_URL` 跨设备同步 `wiki/` + `purpose.md`（设置 → Vault / 一键同步）
-- **Web 源**：`type: web` 抓取 URL → Markdown；支持 robots / UA / 域名限速（见 `docs/SOURCES.md`）
+- **Web 源**：`type: web` 抓取 URL → Markdown；支持 robots / UA / 域名限速（见 `docs/reference/sources.md`）
 - **Obsidian 剪藏**：`type: local` 的 `obsidian` 源，挂载 `/sources/obsidian` 供 Web Clipper 导出
 - 增量索引与全文搜索（SQLite FTS5，默认 **bm25** 相关度排序）；可选 `sort=mtime_desc`
 - **文档分类**：原始素材 / 学习摘要 / 问答沉淀；按主题浏览（`/api/categories`、`/api/browse`）
@@ -196,7 +196,7 @@ data/
 - Wiki 页面 Web 内编辑（`PUT /api/wiki-content`）与 MCP `update_wiki_page`
 - 无 `LLM_API_KEY` 时问答降级为检索摘要；可配置 `OLLAMA_BASE_URL` 使用本地模型
 - `/api/classify-suggest` 启发式归档路径建议（无需 LLM）
-- 部署与路径迁移见 `docs/DEPLOYMENT.md`；来源示例见 `sources.example.yaml`
+- 部署与路径迁移见 `docs/deployment.md`；来源示例见 `sources.example.yaml`
 - 自动定时同步（可在设置中开启，默认关闭）
 - 页面显式展示“下次自动同步时间 / 最近一次自动同步状态”
 - 设置页展示最近审计事件（登录/登出/同步/设置变更，只读）
@@ -205,16 +205,16 @@ data/
 - **RBAC**：admin 可同步/编辑 wiki；viewer 只读（`AUTH_USERS`）
 - 同步性能优化：先用 `mtime + size` 快速跳过未变文件，再按需计算 hash
 
-更多能力说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+更多能力说明见 [docs/architecture.md](docs/architecture.md)。
 
 ## API 模块结构（后端）
 
-`apps/api/app/main.py` 仅保留路由与装配；模块索引见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#后端目录appsapiapp)。
+`apps/api/app/main.py` 仅保留路由与装配；模块索引见 [docs/architecture.md](docs/architecture.md#后端目录appsapiapp)。
 
 ## 安全与合规
 
 - 登录/API 限速、CSRF、审计、RBAC：见 [SECURITY.md](SECURITY.md)
-- Web 源抓取合规（robots、allowlist）：见 [docs/MIND_SYNC_WORKFLOW.md](docs/MIND_SYNC_WORKFLOW.md#web-源抓取合规)
+- Web 源抓取合规（robots、allowlist）：见 [docs/workflow.md](docs/workflow.md#web-源抓取合规)
 
 ## L1 安全强化（已支持）
 
@@ -260,4 +260,4 @@ python scripts/smoke_auth_meta.py --base-url http://localhost:8000 --password "<
 
 - Web 界面支持窄屏布局（搜索与筛选自动换行）
 - 外网 HTTPS 建议：反向代理 + `.env` 中 `COOKIE_SECURE=true`、`SECURITY_HSTS_ENABLED=true`
-- 详见 `docs/MIND_SYNC_WORKFLOW.md` 中的 Caddy 示例与 CORS 配置
+- 详见 `docs/workflow.md` 中的 Caddy 示例与 CORS 配置

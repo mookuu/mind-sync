@@ -75,11 +75,11 @@ python -m pytest -q
 
 ## 模块速查
 
-完整架构见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+完整架构见 [ARCHITECTURE.md](./architecture.md)。
 
 | 能力 | 模块 |
 |------|------|
-| 来源配置 | `services/indexer.load_sources`, [SOURCES.md](./SOURCES.md) |
+| 来源配置 | `services/indexer.load_sources`, [SOURCES.md](./reference/sources.md) |
 | GitHub / Web 拉取 | `services/source_sync.py`, `services/git_ops.py` |
 | 同源配对 | `services/source_pairing.py` |
 | Web 抓取合规 | `services/web_fetch_policy.py` |

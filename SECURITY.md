@@ -1,6 +1,6 @@
 # Security Policy
 
-文档索引：[docs/README.md](docs/README.md) · 架构：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+文档索引：[docs/README.md](docs/README.md) · 架构：[docs/architecture.md](docs/architecture.md)
 
 ## Supported versions
 

@@ -63,7 +63,7 @@ Shallow clone / pull 到 `path`（默认 `/sources/<id>`），需可写挂载；
 
 同步时对 **单个** `url` 发 HTTP GET，转为 Markdown 写入 `path`（如 `/sources/web_snapshots/<id>/index.md`），再索引。
 
-合规开关见 [MIND_SYNC_WORKFLOW.md](./MIND_SYNC_WORKFLOW.md#web-源抓取合规) 与 `.env` 中 `WEB_FETCH_*`。
+合规开关见 [../workflow.md](./../workflow.md#web-源抓取合规) 与 `.env` 中 `WEB_FETCH_*`。
 
 ```yaml
 - id: example_web
@@ -138,7 +138,7 @@ A：在设置 → 源列表点击 **重新加载**，或 `POST /api/admin/source
 A：检查 `WEB_FETCH_*` 与 `fetch_confirmed`；查看 sync warnings 与 `/api/health`.
 
 **Q：ingest 与 sync 区别？**  
-A：ingest 只重扫磁盘索引，不 pull GitHub、不抓 Web、不 pull Vault；**同样跳过 paired local**。见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+A：ingest 只重扫磁盘索引，不 pull GitHub、不抓 Web、不 pull Vault；**同样跳过 paired local**。见 [ARCHITECTURE.md](../architecture.md)。
 
 **Q：能否 API 编辑 index.md？**  
 A：不能；`index.md`、`log.md`、`SCHEMA.md` 为系统页。
