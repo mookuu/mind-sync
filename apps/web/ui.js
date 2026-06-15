@@ -30,7 +30,7 @@ function switchView(viewId) {
   }
   if (viewId === "sync-sources") {
     loadSourcesSettingsList();
-    loadSettingsExtended(true);
+    loadSettingsExtended();
   }
   if (viewId === "sync-vault") {
     loadVaultStatus();
@@ -165,6 +165,7 @@ function renderSyncPresets(presets, selectedPreset) {
       customBox.style.pointerEvents = checked ? "none" : "auto";
     }
     currentSyncPreset = checked ? "all" : "custom";
+    localStorage.setItem("mindsync_preset_touched", "1");
   };
   allLabel.id = "presetAll";
   box.appendChild(allLabel);
@@ -580,11 +581,12 @@ function updateSyncScopeText(settingsData) {
     : `同步范围：${label}`;
 }
 
-async function loadSettingsExtended(forceDefault) {
+async function loadSettingsExtended() {
   await loadSettings();
   try {
     const st = await api("/api/settings");
-    renderSyncPresets(st.sync_presets, forceDefault ? "all" : st.sync_preset);
+    const preset = localStorage.getItem("mindsync_preset_touched") ? st.sync_preset : "all";
+    renderSyncPresets(st.sync_presets, preset);
     const srcList = availableSources.length ? availableSources : (await api("/api/sources")).sources || [];
     if (!availableSources.length) availableSources = srcList;
     customSyncSourceIds = expandSyncKeys(st.sync_source_ids || st.sync_selected_keys || [], srcList);
