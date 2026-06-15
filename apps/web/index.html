@@ -337,17 +337,18 @@
 </div>
 
 <div id="dirPickerModal" class="modal hidden">
-  <div class="modal-card" style="width:min(500px,100%);max-height:80vh;display:flex;flex-direction:column">
+  <div class="modal-card" style="width:min(540px,100%);max-height:80vh;display:flex;flex-direction:column">
     <h3>选择目录</h3>
     <div style="display:flex;gap:4px;margin:8px 0">
       <input id="dirPickerPath" type="text" value="/home/moku/projects" style="flex:1;font-size:12px" />
       <button id="dirPickerGo" class="btn btn-sm">跳转</button>
     </div>
     <p id="dirPickerError" class="subtle" style="color:var(--danger-fg);font-size:11px;margin:0 0 4px"></p>
-    <ul id="dirPickerList" style="list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:200px"></ul>
+    <p id="dirPickerPreview" class="subtle" style="font-size:11px;margin:0 0 4px;padding:4px 6px;background:var(--bg-muted);border-radius:var(--radius);font-family:var(--font-mono)">未选择</p>
+    <ul id="dirPickerList" style="list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:220px"></ul>
     <div class="btn-row" style="margin-top:8px">
       <button id="dirPickerCancel" class="btn">取消</button>
-      <button id="dirPickerSelect" class="btn btn-primary" disabled>选择当前目录</button>
+      <button id="dirPickerSelect" class="btn btn-primary" disabled>选择</button>
     </div>
   </div>
 </div>

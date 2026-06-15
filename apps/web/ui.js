@@ -647,24 +647,37 @@ function patchAuthUI() {
   const dirPickerSelect = document.getElementById("dirPickerSelect");
   const dirPickerCancel = document.getElementById("dirPickerCancel");
   let dirPickerCurrentPath = "/home/moku/projects";
+  let dirPickerSelectedPath = "";
 
   async function loadDirPicker(path) {
     dirPickerError.textContent = "";
+    dirPickerSelectedPath = "";
+    const preview = document.getElementById("dirPickerPreview");
+    if (preview) preview.textContent = "（点击文件夹选中，双击进入）";
+    const sel = document.getElementById("dirPickerSelect");
+    if (sel) sel.disabled = true;
     dirPickerList.innerHTML = "<li class='subtle' style='padding:8px'>加载中…</li>";
     try {
       const data = await api(`/api/admin/browse-dir?path=${encodeURIComponent(path)}`);
       dirPickerCurrentPath = data.current;
       dirPickerPath.value = data.current;
-      dirPickerList.innerHTML = `<li class="tree-dir-head" data-path="${data.parent}" style="cursor:pointer;color:var(--accent-fg)">
-        ⬆ ${data.parent}
-      </li>`;
+      const parentLi = document.createElement("li");
+      parentLi.className = "tree-dir-head";
+      parentLi.dataset.path = data.parent;
+      parentLi.textContent = `⬆ ..`;
+      parentLi.style.cssText = "cursor:pointer;color:var(--accent-fg);padding:6px 8px";
+      parentLi.onclick = () => { dirPickerSelectedPath = data.parent; selectDirItem(parentLi); };
+      parentLi.ondblclick = () => loadDirPicker(data.parent);
+      dirPickerList.appendChild(parentLi);
+
       for (const e of data.entries) {
         const li = document.createElement("li");
         li.className = "tree-dir-head";
         li.dataset.path = e.path;
         li.textContent = `📁 ${e.name}`;
-        li.style.cursor = "pointer";
-        li.onclick = () => loadDirPicker(e.path);
+        li.style.cssText = "cursor:pointer;padding:6px 8px";
+        li.onclick = () => { dirPickerSelectedPath = e.path; selectDirItem(li); };
+        li.ondblclick = () => loadDirPicker(e.path);
         dirPickerList.appendChild(li);
       }
       if (!data.entries.length) dirPickerList.innerHTML += "<li class='subtle' style='padding:8px'>（空目录）</li>";
@@ -672,6 +685,15 @@ function patchAuthUI() {
       dirPickerError.textContent = e.message || "加载失败";
       dirPickerList.innerHTML = "";
     }
+  }
+
+  function selectDirItem(li) {
+    dirPickerList.querySelectorAll(".tree-dir-head").forEach((el) => el.style.background = "");
+    li.style.background = "var(--accent-bg)";
+    const preview = document.getElementById("dirPickerPreview");
+    if (preview) preview.textContent = `已选: ${dirPickerSelectedPath}`;
+    const sel = document.getElementById("dirPickerSelect");
+    if (sel) sel.disabled = false;
   }
 
   if (addCustomPathBtn && customPathInput) {
@@ -741,9 +763,9 @@ function patchAuthUI() {
   }
   if (dirPickerSelect) {
     dirPickerSelect.onclick = async () => {
-      const selectedPath = dirPickerCurrentPath;
+      const selPath = dirPickerSelectedPath || dirPickerCurrentPath;
       closeModal(dirPickerModal);
-      customPathInput.value = selectedPath;
+      customPathInput.value = selPath;
       addCustomPathBtn.click();
     };
   }
