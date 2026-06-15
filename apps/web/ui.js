@@ -166,6 +166,7 @@ function renderSyncPresets(presets, selectedPreset) {
     }
     currentSyncPreset = checked ? "all" : "custom";
     localStorage.setItem("mindsync_preset_touched", "1");
+    api("/api/settings", { method: "POST", body: JSON.stringify({ sync_preset: currentSyncPreset }) }).catch(() => {});
   };
   allLabel.id = "presetAll";
   box.appendChild(allLabel);
@@ -185,6 +186,7 @@ function renderSyncPresets(presets, selectedPreset) {
       </div>`;
     label.querySelector("input").onchange = (e) => {
       label.classList.toggle("selected", e.target.checked);
+      localStorage.setItem("mindsync_preset_touched", "1");
     };
     box.appendChild(label);
   }
