@@ -229,8 +229,7 @@ async function loadPrivateSources() {
     } else {
       privateSources.value = [];
     }
-  } catch (e) {
-    console.warn("loadPrivateSources failed:", e);
+  } catch {
     privateSources.value = [];
   }
 }
