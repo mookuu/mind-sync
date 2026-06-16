@@ -1,6 +1,6 @@
 <template>
   <div class="view-pane">
-    <div class="view-header"><h2>🔐 全局</h2></div>
+    <div class="view-header"><h2>🔐 仓库管理</h2></div>
     <div class="vault-status-card">
       <p class="vault-text">{{ statusText }}</p>
       <div class="vault-actions">

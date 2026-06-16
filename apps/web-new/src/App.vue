@@ -1,7 +1,10 @@
 <template>
   <div class="app-shell" :data-auth="authState" :data-role="role">
+    <!-- Session 验证中：什么都不显示，避免闪烁 -->
+    <div v-if="checkingSession" class="app-boot"></div>
+
     <!-- Login screen -->
-    <div v-if="!isLoggedIn" class="login-screen">
+    <div v-else-if="!isLoggedIn" class="login-screen">
       <div class="login-card">
         <h1 class="login-title">mind-sync</h1>
         <p class="login-subtitle">个人学习知识库</p>
@@ -35,7 +38,7 @@
     </div>
 
     <!-- App -->
-    <template v-else>
+    <template v-else-if="isLoggedIn">
       <aside class="sidebar">
         <AppSidebar />
       </aside>
@@ -75,8 +78,12 @@ const password = ref("");
 const rememberMe = ref(false);
 const loggingIn = ref(false);
 const loginError = ref("");
+const checkingSession = ref(true);
 
-const authState = computed(() => (isLoggedIn.value ? "session" : "guest"));
+const authState = computed(() => {
+  if (checkingSession.value) return "checking";
+  return isLoggedIn.value ? "session" : "guest";
+});
 const role = computed(() => (isLoggedIn.value ? userRole.value : ""));
 const currentRoute = computed(() => route.meta?.title || "");
 const badgeLabel = computed(() => {
@@ -109,6 +116,8 @@ onMounted(async () => {
     await checkSession();
   } catch {
     // not logged in
+  } finally {
+    checkingSession.value = false;
   }
 });
 </script>
@@ -215,6 +224,11 @@ onMounted(async () => {
   padding: 10px 12px;
 }
 
+.app-boot {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  background: var(--bg-default);
+}
 .login-error {
   color: var(--danger-fg);
   font-size: 0.85rem;

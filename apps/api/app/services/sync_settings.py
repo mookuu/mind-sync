@@ -67,20 +67,27 @@ def list_sync_presets() -> list[dict[str, Any]]:
                 "path": meta.get("path", ""),
             }
         )
+    from .source_sync_key import source_sync_key
+
     all_sources = load_sources()
+    seen_ids = set()
     for src in all_sources:
         if src.id in fixed_ids:
             continue
+        sk = source_sync_key(src)
         stype = (src.source_type or "local").lower()
         suffix = " (remote)" if stype == "github" else ""
         label = f"{src.id}{suffix}"
         spath = src.path or src.url or ""
+        if sk in seen_ids:
+            continue
+        seen_ids.add(sk)
         items.append(
             {
-                "id": src.id,
+                "id": sk,
                 "label": label,
                 "description": spath,
-                "source_ids": [src.id],
+                "source_ids": [sk],
                 "path": spath,
                 "type": stype,
             }

@@ -43,7 +43,7 @@ const routes = [
     path: "/sync/vault",
     name: "sync-vault",
     component: () => import("../views/SyncVault.vue"),
-    meta: { title: "全局", parent: "sync" },
+    meta: { title: "仓库管理", parent: "sync" },
   },
   {
     path: "/sync/purpose",

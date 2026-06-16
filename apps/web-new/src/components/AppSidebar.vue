@@ -87,8 +87,8 @@ const orderedItems = [
     path: "/sync/control",
     children: [
       { label: "同步控制", icon: "📊", path: "/sync/control" },
-      { label: "仓库管理", icon: "📦", path: "/sync/sources" },
-      { label: "全局", icon: "🔐", path: "/sync/vault" },
+      { label: "来源", icon: "📦", path: "/sync/sources" },
+      { label: "仓库管理", icon: "🏪", path: "/sync/vault" },
       { label: "规则约束", icon: "📋", path: "/sync/purpose" },
       { label: "审计", icon: "📜", path: "/sync/audit" },
     ],
