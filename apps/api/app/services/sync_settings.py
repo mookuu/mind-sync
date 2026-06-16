@@ -56,6 +56,7 @@ SOURCE_LABELS = {
 
 def list_sync_presets() -> list[dict[str, Any]]:
     items = []
+    fixed_ids = {"all", "obsidian", "web_snapshots", "wiki"}
     for key, meta in SYNC_PRESETS.items():
         items.append(
             {
@@ -63,16 +64,27 @@ def list_sync_presets() -> list[dict[str, Any]]:
                 "label": meta["label"],
                 "description": meta.get("description", ""),
                 "source_ids": meta.get("source_ids"),
+                "path": meta.get("path", ""),
             }
         )
-    items.append(
-        {
-            "id": "custom",
-            "label": "自定义选择",
-            "description": "手动勾选要同步的来源",
-            "source_ids": None,
-        }
-    )
+    all_sources = load_sources()
+    for src in all_sources:
+        if src.id in fixed_ids:
+            continue
+        stype = (src.source_type or "local").lower()
+        suffix = " (remote)" if stype == "github" else ""
+        label = f"{src.id}{suffix}"
+        spath = src.path or src.url or ""
+        items.append(
+            {
+                "id": src.id,
+                "label": label,
+                "description": spath,
+                "source_ids": [src.id],
+                "path": spath,
+                "type": stype,
+            }
+        )
     return items
 
 

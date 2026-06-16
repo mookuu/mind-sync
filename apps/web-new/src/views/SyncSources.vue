@@ -39,30 +39,7 @@
         </label>
       </div>
 
-      <!-- 按来源勾选 -->
-      <div class="custom-sources" :style="isAll ? disabledStyle : {}">
-        <div class="field-label">按来源细粒度选择</div>
-        <div class="source-grid">
-          <label
-            v-for="s in availableSources"
-            :key="sourceSyncKey(s)"
-            class="source-checkbox"
-          >
-            <input
-              type="checkbox"
-              :value="sourceSyncKey(s)"
-              :checked="selectedKeys.includes(sourceSyncKey(s))"
-              :disabled="isAll"
-              @change="onToggleSource(sourceSyncKey(s))"
-            />
-            <div>
-              <div class="source-name">{{ sourceLabel(s) }}</div>
-              <div class="source-path">{{ s.path || "" }}</div>
-            </div>
-          </label>
-          <p v-if="!availableSources.length" class="subtle">暂无来源</p>
-        </div>
-      </div>
+
     </section>
 
     <!-- 自定义路径 -->
@@ -113,22 +90,7 @@
       </div>
     </section>
 
-    <!-- 已配置的来源（只读） -->
-    <section class="settings-section">
-      <h3>已配置的来源</h3>
-      <div class="sources-list">
-        <div v-for="s in availableSources" :key="s.id" class="source-card">
-          <div class="source-head">
-            <span class="source-name">{{ s.id }}</span>
-            <span class="source-status" :class="{ ok: s.exists, missing: !s.exists }">
-              {{ s.exists ? "● 可访问" : "● 路径缺失" }}
-            </span>
-          </div>
-          <div class="source-meta">{{ s.type }} · order={{ s.order ?? "—" }} · {{ s.path }}</div>
-          <div class="source-meta">{{ (s.include || []).join(", ") }}</div>
-        </div>
-      </div>
-    </section>
+
   </div>
 </template>
 
@@ -138,11 +100,9 @@ import api from "../api/index.js";
 import { useSyncSettings } from "../composables/useSyncSettings.js";
 
 const {
-  syncPreset, syncSourceIds, syncPresets, availableSources,
-  load, reload, setPreset, setCustomSources, sourceSyncKey, sourceLabel,
+  syncPreset, syncSourceIds, syncPresets,
+  load, reload, setPreset, setCustomSources,
 } = useSyncSettings();
-
-const DEFAULT_IDS = ["obsidian", "web_snapshots", "wiki"];
 
 // 用于在「全部同步」灰掉时保留勾选显示
 const backupIds = ref([]);
@@ -151,10 +111,7 @@ const backupIds = ref([]);
 const isAll = computed(() => syncPreset.value === "all");
 const otherPresets = computed(() => syncPresets.value.filter((p) => p.id !== "all" && p.id !== "custom"));
 
-// 显示用：全部同步时用备份，否则用 DB 值
-const displayIds = computed(() => isAll.value ? backupIds.value : syncSourceIds.value);
-const customPresetIds = computed(() => displayIds.value);
-const selectedKeys = computed(() => displayIds.value);
+const customPresetIds = computed(() => isAll.value ? backupIds.value : syncSourceIds.value);
 
 const disabledStyle = computed(() => ({
   opacity: "0.4",
@@ -177,14 +134,6 @@ function onTogglePreset(id) {
   const idx = ids.indexOf(id);
   if (idx >= 0) ids.splice(idx, 1);
   else ids.push(id);
-  setCustomSources(ids);
-}
-
-function onToggleSource(key) {
-  let ids = [...syncSourceIds.value];
-  const idx = ids.indexOf(key);
-  if (idx >= 0) ids.splice(idx, 1);
-  else ids.push(key);
   setCustomSources(ids);
 }
 
@@ -257,18 +206,8 @@ function confirmDirSelect() {
   }
 }
 
-// On first load, set default preset if none explicitly configured
 onMounted(async () => {
   await load();
-  if (syncPreset.value === "all" && !localStorage.getItem("sync_initialized")) {
-    // First visit: switch to custom with defaults
-    localStorage.setItem("sync_initialized", "1");
-    try {
-      await setCustomSources(DEFAULT_IDS);
-    } catch {
-      // ignore
-    }
-  }
 });
 </script>
 
@@ -309,28 +248,7 @@ onMounted(async () => {
 .preset-option.selected { border-color: var(--accent-emphasis); background: var(--accent-bg); }
 .preset-option input[type="checkbox"] { margin-top: 3px; }
 .preset-label { font-size: 0.9rem; font-weight: 500; }
-.preset-desc { font-size: 0.8rem; color: var(--fg-subtle); margin-top: 1px; }
-
-.custom-sources { margin-bottom: 16px; }
-.source-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 4px;
-}
-.source-checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border-muted);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.source-checkbox:hover { background: var(--bg-muted); }
-.source-checkbox input[type="checkbox"] { margin-top: 2px; }
-.source-name { font-size: 0.85rem; font-weight: 500; }
-.source-path { font-size: 0.78rem; color: var(--fg-subtle); }
+.preset-desc { font-size: 0.78rem; color: var(--fg-subtle); margin-top: 1px; font-family: var(--font-mono); }
 
 /* Custom path */
 .custom-path-row {
@@ -411,28 +329,6 @@ onMounted(async () => {
   border-top: 1px solid var(--border-muted);
 }
 
-/* Sources list */
-.sources-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 12px 0;
-}
-.source-card {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  padding: 10px 14px;
-}
-.source-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.source-name { font-weight: 600; font-size: 0.92rem; }
-.source-status { font-size: 0.8rem; }
-.source-status.ok { color: var(--success-fg); }
-.source-status.missing { color: var(--danger-fg); }
-.source-meta { font-size: 0.82rem; color: var(--fg-subtle); margin-top: 2px; }
 .status-msg { margin-top: 6px; font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
 </style>
