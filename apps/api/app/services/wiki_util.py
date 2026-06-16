@@ -3,11 +3,32 @@ from pathlib import Path
 from fastapi import HTTPException
 
 
-def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True) -> Path:
+def resolve_wiki_prefix(path: str, username: str | None = None) -> str:
+    """Determine whether a wiki path is shared or user-private.
+
+    - path starts with 'shared/' → shared wiki
+    - path starts with 'users/<name>/' → user wiki (check permission)
+    - otherwise → shared wiki (default)
+
+    Returns the effective path prefix: 'shared/' or 'users/<username>/'
+    """
+    norm = (path or "").strip().replace("\\", "/")
+    if norm.startswith("users/"):
+        parts = norm.split("/")
+        if len(parts) >= 2:
+            requested_user = parts[1]
+            if requested_user == username:
+                return f"users/{username}/"
+            raise HTTPException(status_code=403, detail="无权访问其他用户的 Wiki")
+    return "shared/"
+
+
+def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True, username: str | None = None) -> Path:
     """Validate and resolve a relative wiki path, ensuring no directory traversal.
 
     Args:
         must_exist: If True (default), raises 404 when file does not exist.
+        username: If set, allows access to 'users/<username>/' paths.
     Raises HTTPException(400) if the path is invalid or attempts traversal.
     Returns the resolved absolute Path within wiki_dir.
     """

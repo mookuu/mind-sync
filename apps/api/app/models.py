@@ -15,6 +15,7 @@ class Source:
     order: int | None = None
     fetch_confirmed: bool = False
     respect_robots: bool | None = None
+    owner: str | None = None
 
 
 class LoginRequest(BaseModel):

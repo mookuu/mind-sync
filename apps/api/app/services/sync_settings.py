@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 from ..models import Source
-from .indexer import load_sources
+from .indexer import load_sources, load_sources_for_user
 from .source_sync_key import (
     expand_sync_keys,
     filter_sources_by_sync_keys,
@@ -130,8 +130,13 @@ def apply_source_order(sources: list[Source], settings_map: dict[str, str] | Non
     return sorted(sources, key=sort_key)
 
 
-def load_ordered_sources(settings_map: dict[str, str] | None = None) -> list[Source]:
-    return apply_source_order(load_sources(), settings_map)
+def load_ordered_sources(
+    settings_map: dict[str, str] | None = None,
+    username: str | None = None,
+    role: str | None = None,
+) -> list[Source]:
+    sources = load_sources_for_user(username, role)
+    return apply_source_order(sources, settings_map)
 
 
 def read_sync_settings(settings_map: dict[str, str]) -> dict[str, Any]:

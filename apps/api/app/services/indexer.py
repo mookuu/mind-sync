@@ -12,6 +12,7 @@ from ..config import settings
 from ..models import Source
 from .source_adapters import resolve_source_root as adapter_resolve_source_root
 from .source_spec_util import source_to_spec
+from .chinese_tokenizer import tokenize
 
 
 _SOURCES_CACHE_TIME = 0.0
@@ -31,33 +32,65 @@ def reload_sources_config() -> list[Source]:
 
 @lru_cache(maxsize=1)
 def _load_sources_cached(cache_key: float) -> list[Source]:
-    """Internal: read and parse sources.yaml. The cache_key is a coarse timestamp bucket."""
-    src_file = Path(settings.sources_file)
-    if not src_file.exists():
-        return []
-    raw = yaml.safe_load(src_file.read_text(encoding="utf-8")) or {}
+    """Internal: read and parse sources.yaml + user_sources.yaml. The cache_key is a coarse timestamp bucket."""
     result: list[Source] = []
-    for item in raw.get("sources", []):
-        result.append(
-            Source(
-                id=item["id"],
-                source_type=item.get("type", "local"),
-                path=item.get("path"),
-                url=item.get("url"),
-                include=item.get("include", ["**/*.md"]),
-                branch=item.get("branch", "main"),
-                paths=item.get("paths"),
-                order=item.get("order"),
-                fetch_confirmed=bool(item.get("fetch_confirmed", False)),
-                respect_robots=item.get("respect_robots"),
-            )
-        )
+
+    def _parse_items(items: list) -> None:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                result.append(
+                    Source(
+                        id=item["id"],
+                        source_type=item.get("type", "local"),
+                        path=item.get("path"),
+                        url=item.get("url"),
+                        include=item.get("include", ["**/*.md"]),
+                        branch=item.get("branch", "main"),
+                        paths=item.get("paths"),
+                        order=item.get("order"),
+                        fetch_confirmed=bool(item.get("fetch_confirmed", False)),
+                        respect_robots=item.get("respect_robots"),
+                        owner=item.get("owner"),
+                    )
+                )
+            except (KeyError, TypeError):
+                continue  # Skip malformed entries
+
+    # 1) Load shared sources.yaml
+    src_file = Path(settings.sources_file)
+    if src_file.exists():
+        raw = yaml.safe_load(src_file.read_text(encoding="utf-8")) or {}
+        _parse_items(raw.get("sources", []))
+
+    # 2) Load user-specific sources (private sources, always writable)
+    user_src_file = Path(settings.data_dir) / "user_sources.yaml"
+    if user_src_file.exists():
+        raw = yaml.safe_load(user_src_file.read_text(encoding="utf-8")) or {}
+        _parse_items(raw.get("sources", []))
+
     return result
 
 
 def load_sources() -> list[Source]:
     bucket = int(time.time() / _SOURCES_CACHE_TTL)
     return _load_sources_cached(bucket)
+
+
+def load_sources_for_user(username: str | None = None, role: str | None = None) -> list[Source]:
+    """返回当前用户可见的源列表。
+
+    - admin → 全部源（含私有）
+    - member/viewer → 共享源（owner=None） + 自己的私有源（owner=username）
+    - 未登录（username=None） → 仅共享源
+    """
+    all_sources = load_sources()
+    if role and role.strip().lower() == "admin":
+        return all_sources
+    if not username:
+        return [s for s in all_sources if s.owner is None]
+    return [s for s in all_sources if s.owner is None or s.owner == username]
 
 
 def resolve_source_root(source: Source) -> Path:
@@ -144,13 +177,17 @@ def upsert_document(
     size: int,
     sha1: str,
     lang: str,
+    source_owner: str = "__shared__",
 ) -> None:
     title = Path(rel_path).name
     now = time.time()
+    # Pre-tokenize Chinese text for FTS5
+    title_fts = tokenize(title)
+    content_fts = tokenize(content)
     conn.execute(
         """
-        INSERT INTO documents(source_id, rel_path, title, content, lang, mtime, size, sha1, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO documents(source_id, rel_path, title, content, lang, mtime, size, sha1, source_owner, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source_id, rel_path) DO UPDATE SET
             title=excluded.title,
             content=excluded.content,
@@ -158,9 +195,10 @@ def upsert_document(
             mtime=excluded.mtime,
             size=excluded.size,
             sha1=excluded.sha1,
+            source_owner=excluded.source_owner,
             updated_at=excluded.updated_at
         """,
-        (source_id, rel_path, title, content, lang, mtime, size, sha1, now),
+        (source_id, rel_path, title, content, lang, mtime, size, sha1, source_owner, now),
     )
     row = conn.execute(
         "SELECT id FROM documents WHERE source_id = ? AND rel_path = ?",
@@ -169,8 +207,8 @@ def upsert_document(
     doc_id = row["id"]
     conn.execute("DELETE FROM documents_fts WHERE rowid = ?", (doc_id,))
     conn.execute(
-        "INSERT INTO documents_fts(rowid, title, content, rel_path, source_id) VALUES (?, ?, ?, ?, ?)",
-        (doc_id, title, content, rel_path, source_id),
+        "INSERT INTO documents_fts(rowid, title, content, rel_path, source_id, source_owner) VALUES (?, ?, ?, ?, ?, ?)",
+        (doc_id, title_fts, content_fts, rel_path, source_id, source_owner),
     )
 
 
@@ -230,7 +268,7 @@ def index_single_source_force(
             continue
         content = read_text_safely(f)
         sha1 = hashlib.sha1(content.encode("utf-8", errors="ignore")).hexdigest()
-        upsert_document(conn, source.id, rel_path, content, mtime, size, sha1, language_from_suffix(f))
+        upsert_document(conn, source.id, rel_path, content, mtime, size, sha1, language_from_suffix(f), source_owner=source.owner or "__shared__")
         indexed += 1
     deleted = 0 if rel_path_filter else remove_missing(conn, source.id, existing)
     return {
@@ -278,7 +316,7 @@ def index_single_source(conn: sqlite3.Connection, source: Source, rel_path_filte
             update_document_metadata(conn, source.id, rel_path, mtime, size)
             skipped += 1
             continue
-        upsert_document(conn, source.id, rel_path, content, mtime, size, sha1, language_from_suffix(f))
+        upsert_document(conn, source.id, rel_path, content, mtime, size, sha1, language_from_suffix(f), source_owner=source.owner or "__shared__")
         indexed += 1
     deleted = 0 if rel_path_filter else remove_missing(conn, source.id, existing)
     return {

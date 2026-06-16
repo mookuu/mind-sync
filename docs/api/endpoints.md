@@ -18,11 +18,32 @@
 
 | 方法 | 路径                        | 说明                                          |
 | ---- | --------------------------- | --------------------------------------------- |
-| GET  | `/api/sources`              | 列出所有配置的知识源                          |
+| GET  | `/api/sources`              | 列出当前用户可见的源（共享 + 自己的私有源）   |
 | POST | `/api/sync`                 | 启动增量同步（GitHub pull + 本地扫描 + 索引） |
 | GET  | `/api/sync-status`          | 查看同步进度和状态                            |
 | POST | `/api/rebuild-index`        | 全量重建索引（不清除源数据）                  |
 | POST | `/api/admin/sources/reload` | 重载 sources.yaml 配置                        |
+| POST | `/api/admin/sources/custom` | 添加自定义共享源（admin 专用）                |
+| POST | `/api/admin/sources/delete` | 删除来源（支持复合 key 如 PythonBasic:local） |
+
+## 用户私有源管理
+
+| 方法 | 路径                           | 说明                             |
+| ---- | ------------------------------ | -------------------------------- |
+| GET  | `/api/user/sources`            | 列出当前用户可见的源（含 owner） |
+| POST | `/api/user/sources`            | 添加自己的私有源                 |
+| DELETE | `/api/user/sources/{id}`     | 删除自己的私有源                 |
+
+## 用户管理
+
+| 方法 | 路径                               | 说明                 |
+| ---- | ---------------------------------- | -------------------- |
+| GET  | `/api/admin/users`                 | 列出所有用户         |
+| POST | `/api/admin/users`                 | 创建用户（含目录）   |
+| DELETE | `/api/admin/users/{username}`    | 删除用户及其私有数据 |
+| PUT  | `/api/admin/users/{username}/role` | 修改用户角色         |
+| GET  | `/api/user/me`                     | 当前用户信息         |
+| POST | `/api/change-password`             | 修改密码             |
 
 ## 检索与问答
 
@@ -45,14 +66,16 @@
 
 ## Wiki 管理
 
-| 方法 | 路径                      | 说明                                |
-| ---- | ------------------------- | ----------------------------------- |
-| GET  | `/api/wiki-content?path=` | 读取 Wiki 页面                      |
-| PUT  | `/api/wiki-content`       | 写入/更新 Wiki 页面                 |
-| GET  | `/api/wiki-page`          | Wiki 页面信息                       |
-| GET  | `/api/wiki-graph`         | Wiki 链接图谱分析（hubs / orphans） |
-| POST | `/api/lint`               | Wiki 健康检查（断链/孤岛/过期）     |
-| POST | `/api/ingest`             | 增量索引（不拉取远程）              |
+| 方法 | 路径                      | 说明                                                  |
+| ---- | ------------------------- | ----------------------------------------------------- |
+| GET  | `/api/wiki-content?path=` | 读取 Wiki 页面（shared/ 或 users/{name}/）            |
+| PUT  | `/api/wiki-content`       | 写入/更新 Wiki 页面（shared/ 需 admin，users/ 仅本人） |
+| GET  | `/api/wiki-page`          | Wiki 页面信息（同上权限）                             |
+| GET  | `/api/wiki-graph`         | Wiki 链接图谱分析（hubs / orphans）                   |
+| POST | `/api/lint`               | Wiki 健康检查（断链/孤岛/过期）                       |
+| POST | `/api/ingest`             | 增量索引（不拉取远程）                                |
+
+> **注意**：Wiki 路径 `shared/xxx` 为共享知识库（仅 admin 可写），`users/{username}/xxx` 为用户私有（仅本人可写）。
 
 ## 规则约束 (Purpose)
 

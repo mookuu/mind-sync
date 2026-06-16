@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 2  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 3  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "mind_sync.db"
@@ -61,7 +61,31 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         # V2: add sessions, users, api_keys tables (schema already in CREATE IF NOT EXISTS)
         conn.execute(
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
-            ("_schema_version", str(SCHEMA_VERSION)),
+            ("_schema_version", "2"),
+        )
+    if version < 3:
+        # V3: add source_owner column + rebuild FTS with source_owner
+        try:
+            conn.execute("ALTER TABLE documents ADD COLUMN source_owner TEXT NOT NULL DEFAULT '__shared__'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        # FTS5 doesn't support ALTER TABLE ADD COLUMN → rebuild
+        try:
+            conn.executescript("""
+                DROP TABLE IF EXISTS documents_fts;
+                CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+                    title, content, rel_path, source_id, source_owner,
+                    tokenize='unicode61'
+                );
+                INSERT INTO documents_fts(rowid, title, content, rel_path, source_id, source_owner)
+                SELECT rowid, title, content, rel_path, source_id, '__shared__'
+                FROM documents;
+            """)
+        except sqlite3.OperationalError:
+            pass  # Table might not exist yet
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "3"),
         )
 
 
@@ -93,6 +117,7 @@ def init_db() -> None:
             mtime REAL NOT NULL,
             size INTEGER NOT NULL DEFAULT 0,
             sha1 TEXT NOT NULL,
+            source_owner TEXT NOT NULL DEFAULT '__shared__',
             updated_at REAL NOT NULL,
             UNIQUE(source_id, rel_path)
         );
@@ -153,7 +178,7 @@ def init_db() -> None:
         "CREATE INDEX IF NOT EXISTS idx_api_usage_key_time ON api_usage(identity, bucket, created_at)"
     )
     conn.execute(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(title, content, rel_path, source_id)"
+        "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(title, content, rel_path, source_id, source_owner, tokenize='unicode61')"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_login_failures_key_time ON login_failures(ip, account, failed_at)"

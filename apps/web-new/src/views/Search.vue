@@ -23,6 +23,7 @@
           <span class="cat-badge" :class="'cat-' + (r.category || 'source')">
             {{ categoryLabel(r.category) }}
           </span>
+          <span v-if="r.source_owner && r.source_owner !== '__shared__'" class="owner-badge" title="私有来源">🔒 私有</span>
         </div>
         <div class="result-meta">{{ r.source_id }} · {{ r.rel_path }}</div>
         <div class="result-snippet" v-html="r.snippet"></div>
@@ -149,6 +150,15 @@ function openDoc(doc) {
 .cat-badge.cat-source { color: var(--fg-muted); border-color: var(--border-default); }
 .cat-badge.cat-summary { color: var(--success-fg); border-color: rgba(63,185,80,0.35); }
 .cat-badge.cat-query { color: #a5b4fc; border-color: rgba(165,180,252,0.35); }
+.owner-badge {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--warning-bg, #fef3c7);
+  color: var(--warning-fg, #92400e);
+  white-space: nowrap;
+  margin-left: auto;
+}
 .result-count { font-size: 0.82rem; color: var(--fg-subtle); margin-left: auto; }
 .result-meta {
   font-size: 0.8rem;

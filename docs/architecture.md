@@ -75,7 +75,9 @@ FastAPI 应用，负责：
 | `rebuild_engine.py` | 全量重建：清空 → 强制重扫 |
 | `source_sync.py` | GitHub clone/pull、Web HTTP 抓取 |
 | `source_pairing.py` | GitHub + local 同源配对（只索引一次） |
-| `source_sync_key.py` | 源标识生成与匹配（`id:type` 格式） |
+| `source_sync_key.py` | 源标识生成与匹配（`id:type` 格式，如 `PythonBasic:local`） |
+| `chinese_tokenizer.py` | jieba 中文分词：索引预分词 + 搜索查询分词 + 自定义词典 |
+| `user_manager.py` | 用户目录管理、私有源注册、索引清理 |
 | `sync_settings.py` | 同步范围预设（all / wiki / custom） |
 | `sync_backoff.py` | 远程源失败指数退避 |
 | `scheduler.py` | 定时自动同步 |
@@ -104,9 +106,9 @@ FastAPI 应用，负责：
 
 | 模块 | 职责 |
 |------|------|
-| `auth.py` | Server-side session 管理、API Key 校验、CSRF、限速 |
+| `auth.py` | Server-side session 管理、API Key 校验、CSRF、限速、`resolve_current_user()`、`require_own_source()` |
 | `session_store.py` | Session CRUD（SQLite）、滑动过期、空闲超时 |
-| `permissions.py` | RBAC admin/viewer 角色 + 用户配置解析 |
+| `permissions.py` | RBAC admin/member 角色 + 用户配置解析 |
 | `password_util.py` | bcrypt 哈希 + 明文兼容迁移 |
 | `rate_limit.py` | API 限速（按 IP/Key + 桶） |
 | `audit.py` | 审计日志（登录/同步/设置变更） |

@@ -158,6 +158,43 @@ def require_admin(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Admin permission required")
 
 
+def resolve_current_user(request: Request) -> tuple[str | None, str | None]:
+    """返回 (username, role)。API Key 认证时角色为 admin。"""
+    if is_api_key_valid(request):
+        return None, "admin"
+    session_id = _get_session_id(request)
+    if not session_id:
+        return None, None
+    sess = get_session(session_id)
+    if not sess:
+        return None, None
+    username = sess.get("username")
+    role = sess.get("role", "viewer")
+    return username, (role or "viewer").strip().lower()
+
+
+def require_own_source(source_id: str, request: Request) -> None:
+    """Check if current user can access/modify a source.
+
+    - admin → any source
+    - member → only sources where owner == username or owner is None (shared)
+    """
+    username, role = resolve_current_user(request)
+    if role == "admin":
+        return
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    from .indexer import load_sources
+
+    sources = load_sources()
+    for s in sources:
+        if s.id == source_id or s.id == source_id.split(":")[0]:
+            if s.owner is None or s.owner == username:
+                return
+            raise HTTPException(status_code=403, detail="无权操作此来源")
+    raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
+
+
 def resolve_actor(request: Request) -> str:
     if is_api_key_valid(request):
         key = request.headers.get("x-api-key", "").strip()

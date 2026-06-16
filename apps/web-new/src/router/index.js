@@ -63,6 +63,18 @@ const routes = [
     component: () => import("../views/Account.vue"),
     meta: { title: "账户", parent: null },
   },
+  {
+    path: "/admin/users",
+    name: "admin-users",
+    component: () => import("../views/UsersAdmin.vue"),
+    meta: { title: "用户管理", parent: "admin" },
+  },
+  {
+    path: "/admin/dashboard",
+    name: "admin-dashboard",
+    component: () => import("../views/AdminDashboard.vue"),
+    meta: { title: "系统概览", parent: "admin" },
+  },
 ];
 
 export default routes;

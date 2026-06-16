@@ -17,6 +17,7 @@ Web 设置页为只读展示（不可在此编辑 YAML 内容）。
 | `type` | 是 | `local` · `github` · `web` |
 | `path` | local/github/web 建议有 | 扫描或写入目录（容器内路径） |
 | `include` | 否 | glob 列表，默认 `["**/*.md"]` |
+| `owner` | 否 | 所属用户名。`null` 或缺失 = 共享源（所有人可见）；`alice` = alice 的私有源（仅本人 + admin 可见） |
 | `order` | 否 | 同步处理顺序（小者优先；不影响搜索排序） |
 | `url` | github/web 必填 | 仓库 URL 或网页 URL |
 | `branch` | 否 | GitHub 分支，默认 `main` |
@@ -130,6 +131,12 @@ Shallow clone / pull 到 `path`（默认 `/sources/<id>`），需可写挂载；
 由 `services/sync_settings.py` 解析；`POST /api/sync` 与全量重建共用该范围。
 
 ## 常见问题
+
+**Q：源加了 owner 字段会怎样？**  
+A：`owner: alice` 表示该源仅 alice 和 admin 可见。搜索时自动过滤——alice 只能搜共享源 + 自己的私有源。未登录用户仅见共享源（owner=null）。
+
+**Q：成员如何添加自己的私有源？**  
+A：在 Web「素材管理」→「🔒 我的知识库」输入路径添加。API 层面调用 `POST /api/user/sources`，自动标记 `owner` 为当前用户。
 
 **Q：改了 yaml 为什么 Web 里看不到？**  
 A：在设置 → 源列表点击 **重新加载**，或 `POST /api/admin/sources/reload`（需 admin）。也可等待约 30 秒缓存过期或重启 API。

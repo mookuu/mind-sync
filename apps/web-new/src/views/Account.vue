@@ -4,6 +4,37 @@
       <h2>👤 账户</h2>
     </div>
 
+    <!-- 用户信息 -->
+    <section class="settings-section" v-if="userInfo">
+      <h3>个人信息</h3>
+      <div class="user-info-card">
+        <div class="user-info-row">
+          <span class="user-info-label">用户名</span>
+          <span class="user-info-value"><strong>{{ userInfo.username }}</strong></span>
+        </div>
+        <div class="user-info-row">
+          <span class="user-info-label">角色</span>
+          <span class="user-info-value">
+            <span class="role-badge" :class="userInfo.role === 'admin' ? 'badge-admin' : 'badge-member'">
+              {{ userInfo.role === 'admin' ? '管理员' : '成员' }}
+            </span>
+          </span>
+        </div>
+        <div class="user-info-row">
+          <span class="user-info-label">创建时间</span>
+          <span class="user-info-value">{{ fmtTime(userInfo.created_at) }}</span>
+        </div>
+        <div class="user-info-row">
+          <span class="user-info-label">私有源</span>
+          <span class="user-info-value">{{ userInfo.source_count }} 个来源</span>
+        </div>
+        <div class="user-info-row">
+          <span class="user-info-label">专属目录</span>
+          <span class="user-info-value">{{ userInfo.has_dir ? '✅ 已创建' : '❌ 未创建' }}</span>
+        </div>
+      </div>
+    </section>
+
     <!-- 密码修改 -->
     <section class="settings-section">
       <h3>修改密码</h3>
@@ -97,6 +128,17 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import api from "../api/index.js";
+
+// User info
+const userInfo = ref(null);
+
+async function loadUserInfo() {
+  try {
+    userInfo.value = await api("/api/user/me");
+  } catch {
+    userInfo.value = null;
+  }
+}
 
 // Password change
 const pwCurrent = ref("");
@@ -236,6 +278,7 @@ function fmtTime(ts) {
 }
 
 onMounted(() => {
+  loadUserInfo();
   loadSessions();
   loadApiKeys();
 });
@@ -256,6 +299,44 @@ onMounted(() => {
 
 .password-form {
   max-width: 360px;
+}
+
+.user-info-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-top: 8px;
+}
+.user-info-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-muted);
+}
+.user-info-row:last-child { border-bottom: none; }
+.user-info-label {
+  width: 100px;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+.user-info-value {
+  font-size: 0.9rem;
+}
+.role-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+.badge-admin {
+  background: var(--accent-emphasis, #2563eb);
+  color: #fff;
+}
+.badge-member {
+  background: var(--bg-muted);
+  color: var(--fg-muted);
 }
 
 .status-msg {

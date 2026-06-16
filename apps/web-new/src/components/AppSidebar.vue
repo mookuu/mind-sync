@@ -70,31 +70,54 @@ const hovered = ref(null);
 const expanded = ref({});
 const leaveTimer = ref(null);
 
-const orderedItems = [
-  {
-    label: "文档库",
-    icon: "📚",
-    path: "/library",
-    children: [
-      { label: "全部文档", icon: "📄", path: "/library" },
-    ],
-  },
-  { label: "搜索", icon: "🔍", path: "/search" },
-  { label: "知识查询", icon: "💡", path: "/qa" },
-  {
-    label: "同步运维",
-    icon: "🔄",
-    path: "/sync/control",
-    children: [
-      { label: "同步控制", icon: "📊", path: "/sync/control" },
-      { label: "素材管理", icon: "📦", path: "/sync/sources" },
-      { label: "仓库管理", icon: "🏪", path: "/sync/vault" },
-      { label: "规则约束", icon: "📋", path: "/sync/purpose" },
-      { label: "审计", icon: "📜", path: "/sync/audit" },
-    ],
-  },
-  { label: "Wiki 图谱", icon: "🕸", path: "/graph" },
-];
+const props = defineProps({
+  userRole: { type: String, default: "" },
+});
+
+const isAdmin = computed(() => props.userRole === "admin");
+
+const orderedItems = computed(() => {
+  const items = [
+    {
+      label: "文档库",
+      icon: "📚",
+      path: "/library",
+      children: [
+        { label: "全部文档", icon: "📄", path: "/library" },
+      ],
+    },
+    { label: "搜索", icon: "🔍", path: "/search" },
+    { label: "知识查询", icon: "💡", path: "/qa" },
+    {
+      label: "同步运维",
+      icon: "🔄",
+      path: "/sync/control",
+      children: [
+        { label: "同步控制", icon: "📊", path: "/sync/control" },
+        { label: "素材管理", icon: "📦", path: "/sync/sources" },
+        { label: "仓库管理", icon: "🏪", path: "/sync/vault" },
+        { label: "规则约束", icon: "📋", path: "/sync/purpose" },
+        { label: "审计", icon: "📜", path: "/sync/audit" },
+      ],
+    },
+    { label: "Wiki 图谱", icon: "🕸", path: "/graph" },
+  ];
+
+  // Admin-only links
+  if (isAdmin.value) {
+    items.push({
+      label: "系统管理",
+      icon: "⚙️",
+      path: "/admin/dashboard",
+      children: [
+        { label: "系统概览", icon: "📊", path: "/admin/dashboard" },
+        { label: "用户管理", icon: "👥", path: "/admin/users" },
+      ],
+    });
+  }
+
+  return items;
+});
 
 function isActive(path) {
   return route.path === path || route.path.startsWith(path + "/");

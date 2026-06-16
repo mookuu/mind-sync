@@ -5,6 +5,7 @@ from typing import Any
 from ..config import settings
 from .categories import category_sql_clause, classify_document, path_prefix_sql_clause, topic_sql_clause
 from .indexer import snippet_from_content
+from .chinese_tokenizer import has_chinese, tokenize_query
 
 _TOKEN_SPLIT = re.compile(r"\s+")
 _DEFAULT_WEIGHTS = {"source": 1.0, "summary": 1.2, "query": 1.1}
@@ -70,10 +71,29 @@ def escape_fts_phrase(text: str) -> str:
     return text.replace('"', '""')
 
 
+def _user_owner_filter(username: str | None = None, role: str | None = None) -> tuple[str, list[str]]:
+    """Build SQL filter clause for source_owner based on user/role.
+
+    Returns (sql_clause, args_list).
+    - admin → no filter (access all)
+    - member/logged-in → shared + own
+    - anonymous → shared only
+    """
+    if role and role.strip().lower() == "admin":
+        return "", []
+    if not username:
+        return "AND d.source_owner = ?", ["__shared__"]
+    return "AND (d.source_owner = ? OR d.source_owner = ?)", ["__shared__", username]
+
+
 def build_fts_match_query(raw: str) -> str:
     q = (raw or "").strip()
     if not q:
         return ""
+    # Chinese query → use jieba tokenization
+    if has_chinese(q):
+        return tokenize_query(q, default_op="OR")
+    # English/ASCII query → existing logic
     parts: list[str] = [f'"{escape_fts_phrase(q)}"']
     tokens = [t for t in _TOKEN_SPLIT.split(q) if len(t) >= 2]
     if len(tokens) > 1:
@@ -91,7 +111,7 @@ def _fts_rows(
     if not fts_query:
         return []
     sql = f"""
-        SELECT d.id, d.source_id, d.rel_path, d.title, d.content, d.lang,
+        SELECT d.id, d.source_id, d.rel_path, d.title, d.content, d.lang, d.source_owner,
                snippet(documents_fts, 1, '<mark>', '</mark>', '...', 45) AS snippet,
                bm25(documents_fts) AS rank_score
         FROM documents_fts
@@ -105,15 +125,23 @@ def _fts_rows(
         return []
 
 
-def search_for_query(conn: sqlite3.Connection, question: str, limit: int = 8) -> list[dict[str, Any]]:
+def search_for_query(
+    conn: sqlite3.Connection,
+    question: str,
+    limit: int = 8,
+    username: str | None = None,
+    role: str | None = None,
+) -> list[dict[str, Any]]:
     weights = parse_category_weights()
     fetch_limit = _fts_fetch_limit(limit, "relevance", weights)
     fts_query = build_fts_match_query(question)
+    owner_clause, owner_args = _user_owner_filter(username, role)
+    fts_suffix = f"{owner_clause} ORDER BY bm25(documents_fts) LIMIT ?"
     rows = _fts_rows(
         conn,
         fts_query,
-        "ORDER BY bm25(documents_fts) LIMIT ?",
-        (fetch_limit,),
+        fts_suffix,
+        tuple(owner_args) + (fetch_limit,),
     )
     if rows:
         items = [dict(row) for row in rows]
@@ -151,6 +179,8 @@ def search_documents(
     topic: str | None = None,
     path_prefix: str | None = None,
     sort: str = "relevance",
+    username: str | None = None,
+    role: str | None = None,
 ) -> list[dict[str, Any]]:
     weights = parse_category_weights()
     cat_clause, cat_args = category_sql_clause(category)
@@ -168,6 +198,9 @@ def search_documents(
     filter_args.extend(cat_args)
     filter_args.extend(topic_args)
     filter_args.extend(prefix_args)
+    owner_clause, owner_args = _user_owner_filter(username, role)
+    filter_sql += owner_clause
+    filter_args.extend(owner_args)
 
     fts_query = build_fts_match_query(q)
     fetch_limit = _fts_fetch_limit(limit, sort, weights)

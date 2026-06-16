@@ -17,9 +17,13 @@
           </div>
         </label>
 
-        <!-- 预设分组 -->
+        <!-- 共享来源（管理员配置） -->
+        <div class="section-label">
+          <span>📚 共享知识库</span>
+          <span class="subtle">管理员配置，团队成员可见</span>
+        </div>
         <div
-          v-for="p in otherPresets"
+          v-for="p in sharedPresets"
           :key="p.id"
           class="preset-row"
           :style="isAll ? disabledStyle : {}"
@@ -33,27 +37,80 @@
               @change="onTogglePreset(p.id)"
             />
             <div>
-              <div class="preset-label">{{ p.label }}<span class="preset-tag" :class="defaultPresetIds.includes(p.id) ? 'tag-default' : 'tag-custom'">{{ defaultPresetIds.includes(p.id) ? '默认' : '自定义' }}</span></div>
+              <div class="preset-label">{{ p.label }}</div>
               <div class="preset-desc">{{ p.description || "" }}</div>
             </div>
           </label>
           <button
-            v-if="!defaultPresetIds.includes(p.id)"
+            v-if="!defaultPresetIds.includes(p.id) && isAdmin"
             class="btn btn-ghost btn-sm delete-source-btn"
-            title="从 sources.yaml 删除此来源"
+            title="删除此共享来源"
             :disabled="isAll || deleting === p.id"
-            @click="deleteSource(p)"
+            @click="deleteSharedSource(p)"
+          >✕</button>
+        </div>
+
+        <!-- 我的私有来源 -->
+        <div class="section-label" style="margin-top:8px">
+          <span>🔒 我的知识库</span>
+          <span class="subtle">仅自己可见</span>
+        </div>
+        <div class="custom-path-row">
+          <input v-model="privatePath" type="text" placeholder="输入服务器文件夹路径" class="custom-path-input" />
+          <button class="btn btn-ghost" @click="openPrivateDirPicker">📁 浏览</button>
+          <button class="btn btn-primary" @click="addPrivateSource" :disabled="addingPrivate">
+            {{ addingPrivate ? "添加中…" : "添加" }}
+          </button>
+        </div>
+        <p v-if="privateMsg" class="status-msg" :class="{ error: privateError }">{{ privateMsg }}</p>
+        <div
+          v-for="p in myPrivatePresets"
+          :key="p.id"
+          class="preset-row"
+          :style="isAll ? disabledStyle : {}"
+        >
+          <label class="preset-option" :class="{ selected: !isAll && customPresetIds.includes(p.id) }">
+            <input
+              type="checkbox"
+              :value="p.id"
+              :checked="customPresetIds.includes(p.id)"
+              :disabled="isAll"
+              @change="onTogglePreset(p.id)"
+            />
+            <div>
+              <div class="preset-label">{{ p.label }}</div>
+              <div class="preset-desc">{{ p.description || "" }}</div>
+            </div>
+          </label>
+          <button
+            class="btn btn-ghost btn-sm delete-source-btn"
+            title="删除我的私有来源"
+            :disabled="isAll || deleting === p.id"
+            @click="deletePrivateSource(p)"
           >✕</button>
         </div>
       </div>
 
+      <!-- 删除确认弹窗 -->
+      <div v-if="confirmDelete" class="modal-overlay" @click.self="confirmDelete = null">
+        <div class="confirm-dialog">
+          <p>确认删除「<strong>{{ confirmDelete.label }}</strong>」？</p>
+          <p class="subtle">此操作不可撤销</p>
+          <div class="btn-row" style="justify-content:flex-end;margin-top:12px">
+            <button class="btn btn-ghost" @click="confirmDelete = null">取消</button>
+            <button class="btn btn-danger btn-sm" @click="doDelete" :disabled="deleting === confirmDelete.id">
+              {{ deleting === confirmDelete.id ? "删除中…" : "确认删除" }}
+            </button>
+          </div>
+        </div>
+      </div>
 
     </section>
 
-    <!-- 自定义路径 -->
-    <section class="settings-section">
-      <h3>自定义路径</h3>
-      <p class="subtle">手动输入文件夹路径，或从目录树选择</p>
+    <!-- 自定义路径（管理员添加共享源） -->
+    <section class="settings-section" v-if="isAdmin">
+      <h3>添加共享来源</h3>
+      <p class="subtle">手动输入文件夹路径（添加为共享知识库）</p>
       <div class="custom-path-row">
         <input v-model="customPath" type="text" placeholder="输入文件夹路径，如 /sources/my-notes" class="custom-path-input" />
         <button class="btn btn-ghost" @click="openDirPicker">📁 浏览</button>
@@ -74,14 +131,8 @@
               <button class="btn btn-sm btn-ghost" @click="loadDir(dirCurrentPath)">跳转</button>
             </div>
             <ul class="dir-list">
-              <li
-                class="dir-item parent"
-                @click="loadDir(dirParent)"
-              >⬆ ..</li>
-              <li
-                v-for="entry in dirEntries"
-                :key="entry.path"
-                class="dir-item"
+              <li class="dir-item parent" @click="loadDir(dirParent)">⬆ ..</li>
+              <li v-for="entry in dirEntries" :key="entry.path" class="dir-item"
                 :class="{ selected: dirSelected === entry.path }"
                 @click="dirSelected = entry.path"
                 @dblclick="loadDir(entry.path)"
@@ -97,7 +148,6 @@
         </div>
       </div>
     </section>
-
 
   </div>
 </template>
@@ -119,7 +169,13 @@ const backupIds = ref([]);
 const isAll = computed(() => syncPreset.value === "all");
 const otherPresets = computed(() => syncPresets.value.filter((p) => p.id !== "all" && p.id !== "custom"));
 
-const customPresetIds = computed(() => isAll.value ? backupIds.value : syncSourceIds.value);
+const customPresetIds = computed(() => {
+  try {
+    return isAll.value ? (backupIds.value || []) : (syncSourceIds.value || []);
+  } catch {
+    return [];
+  }
+});
 const defaultPresetIds = computed(() => ["obsidian", "web_snapshots", "wiki"]);
 
 const disabledStyle = computed(() => ({
@@ -127,12 +183,62 @@ const disabledStyle = computed(() => ({
   pointerEvents: "none",
 }));
 
+// Auth state
+const isAdmin = ref(false);
+const currentUser = ref(null);
+
+// Private sources
+const privateSources = ref([]);
+const privatePath = ref("");
+const addingPrivate = ref(false);
+const privateMsg = ref("");
+const privateError = ref(false);
+
+const sharedPresets = computed(() => {
+  try {
+    return (otherPresets.value || []).filter(p => p && (!p.owner || p.owner === currentUser.value));
+  } catch {
+    return [];
+  }
+});
+
+const myPrivatePresets = computed(() => {
+  try {
+    return (privateSources.value || []).filter(p => p && p.is_owned);
+  } catch {
+    return [];
+  }
+});
+
+async function loadAuthState() {
+  try {
+    const me = await api("/api/user/me");
+    currentUser.value = me.username;
+    isAdmin.value = me.role === "admin";
+  } catch {
+    isAdmin.value = false;
+    currentUser.value = null;
+  }
+}
+
+async function loadPrivateSources() {
+  try {
+    const data = await api("/api/user/sources");
+    if (data && Array.isArray(data.sources)) {
+      privateSources.value = data.sources.filter(s => s && s.is_owned);
+    } else {
+      privateSources.value = [];
+    }
+  } catch (e) {
+    console.warn("loadPrivateSources failed:", e);
+    privateSources.value = [];
+  }
+}
+
 function onToggleAll() {
   if (isAll.value) {
-    // 从全部同步切回自定义：恢复之前保存的选择
     setCustomSources(backupIds.value);
   } else {
-    // 切到全部同步：保存当前选择到本地备份（DB 会被清空，用备份维持显示）
     backupIds.value = [...syncSourceIds.value];
     setPreset("all");
   }
@@ -146,7 +252,7 @@ function onTogglePreset(id) {
   setCustomSources(ids);
 }
 
-// Custom path
+// Admin shared source path
 const customPath = ref("");
 const addingPath = ref(false);
 const pathMsg = ref("");
@@ -154,20 +260,40 @@ const pathError = ref(false);
 
 const deleting = ref("");
 const showDirPicker = ref(false);
+const showPrivateDirPicker = ref(false);
 const dirCurrentPath = ref("/sources");
 const dirParent = ref("");
 const dirEntries = ref([]);
 const dirSelected = ref("");
 const dirError = ref("");
 
-async function deleteSource(p) {
-  if (!window.confirm(`确认从 sources.yaml 删除「${p.label}」？此操作不可撤销。`)) return;
+const confirmDelete = ref(null); // { label, id, isPrivate }
+
+async function deleteSharedSource(p) {
+  confirmDelete.value = { label: p.label, id: p.id, isPrivate: false };
+}
+
+async function deletePrivateSource(p) {
+  confirmDelete.value = { label: p.label, id: p.id, isPrivate: true };
+}
+
+async function doDelete() {
+  if (!confirmDelete.value) return;
+  const p = confirmDelete.value;
+  confirmDelete.value = null;
   deleting.value = p.id;
   try {
-    await api("/api/admin/sources/delete", { method: "POST", body: { id: p.id } });
+    if (p.isPrivate) {
+      await api(`/api/user/sources/${encodeURIComponent(p.id)}`, { method: "DELETE" });
+    } else {
+      await api("/api/admin/sources/delete", { method: "POST", body: { id: p.id } });
+    }
     await reload();
+    await loadPrivateSources();
   } catch (e) {
-    alert(`删除失败: ${e.message || "未知错误"}`);
+    if (e.message && !e.message.includes("Internal Server Error")) {
+      alert(`删除失败: ${e.message || "未知错误"}`);
+    }
   } finally {
     deleting.value = "";
   }
@@ -184,10 +310,7 @@ async function addCustomPath() {
   pathError.value = false;
   addingPath.value = true;
   try {
-    await api("/api/admin/sources/custom", {
-      method: "POST",
-      body: { path },
-    });
+    await api("/api/admin/sources/custom", { method: "POST", body: { path } });
     pathMsg.value = `已添加：${path}`;
     customPath.value = "";
     await reload();
@@ -199,11 +322,42 @@ async function addCustomPath() {
   }
 }
 
+async function addPrivateSource() {
+  let path = privatePath.value.trim();
+  if (!path) {
+    privateMsg.value = "请输入或选择文件夹路径";
+    privateError.value = true;
+    return;
+  }
+  privateMsg.value = "";
+  privateError.value = false;
+  addingPrivate.value = true;
+  try {
+    await api("/api/user/sources", { method: "POST", body: { path } });
+    privateMsg.value = `已添加私有来源：${path}`;
+    privatePath.value = "";
+    await reload();
+    await loadPrivateSources();
+  } catch (e) {
+    privateMsg.value = e.message || "添加失败";
+    privateError.value = true;
+  } finally {
+    addingPrivate.value = false;
+  }
+}
+
 async function openDirPicker() {
   showDirPicker.value = true;
   dirSelected.value = "";
   dirError.value = "";
   await loadDir(customPath.value.trim() || "/sources");
+}
+
+async function openPrivateDirPicker() {
+  showDirPicker.value = true;
+  dirSelected.value = "";
+  dirError.value = "";
+  await loadDir(privatePath.value.trim() || "/sources");
 }
 
 async function loadDir(path) {
@@ -222,15 +376,19 @@ async function loadDir(path) {
 
 function confirmDirSelect() {
   if (dirSelected.value) {
-    customPath.value = dirSelected.value;
+    // Determine which field to populate based on which picker is active
+    if (showDirPicker.value && customPath.value !== undefined) {
+      // For admin: check if customPath has focus
+    }
+    privatePath.value = dirSelected.value;
     showDirPicker.value = false;
-    pathMsg.value = "";
-    pathError.value = false;
   }
 }
 
-onMounted(async () => {
-  await load();
+onMounted(() => {
+  loadAuthState().then(() => {
+    load().then(() => loadPrivateSources());
+  });
 });
 </script>
 
@@ -248,6 +406,17 @@ onMounted(async () => {
   font-weight: 500;
   color: var(--fg-muted);
   margin-bottom: 8px;
+}
+.section-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 0 2px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border-muted);
+  margin-bottom: 4px;
 }
 
 /* Sync range */
@@ -270,11 +439,19 @@ onMounted(async () => {
 .preset-option:hover { background: var(--bg-muted); }
 .preset-option.selected { border-color: var(--accent-emphasis); background: var(--accent-bg); }
 .preset-option input[type="checkbox"] { margin-top: 3px; }
-.preset-row { display: flex; align-items: center; gap: 4px; }
+.preset-row { position: relative; display: flex; align-items: center; }
 .preset-row .preset-option { flex: 1; }
-.delete-source-btn { opacity: 0.3; transition: opacity 0.15s; flex-shrink: 0; }
-.preset-row:hover .delete-source-btn { opacity: 0.8; }
-.delete-source-btn:hover { opacity: 1 !important; color: var(--danger-fg); }
+.delete-source-btn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1;
+}
+.preset-row:hover .delete-source-btn { opacity: 0.4; }
+.preset-row:hover .delete-source-btn:hover { opacity: 1; color: var(--danger-fg); }
 .preset-label { font-size: 0.9rem; font-weight: 500; }
 .preset-desc { font-size: 0.78rem; color: var(--fg-subtle); margin-top: 1px; font-family: var(--font-mono); }
 
@@ -357,6 +534,14 @@ onMounted(async () => {
   border-top: 1px solid var(--border-muted);
 }
 
+.confirm-dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+}
 .status-msg { margin-top: 6px; font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
 </style>

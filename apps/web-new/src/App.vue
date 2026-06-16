@@ -40,7 +40,7 @@
     <!-- App -->
     <template v-else-if="isLoggedIn">
       <aside class="sidebar">
-        <AppSidebar />
+        <AppSidebar :user-role="role" />
       </aside>
       <header class="topbar">
         <div class="topbar-left">
@@ -54,10 +54,9 @@
         </div>
       </header>
       <main class="content">
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
+        <router-view v-slot="{ Component, route: r }">
+          <!-- 注：之前用 <transition> 导致 route transitionend 不触发，组件挂载卡死 -->
+          <component :is="Component" :key="$route.fullPath" />
         </router-view>
       </main>
     </template>
@@ -110,6 +109,8 @@ async function handleLogin() {
 async function handleLogout() {
   await logout();
 }
+
+
 
 onMounted(async () => {
   try {

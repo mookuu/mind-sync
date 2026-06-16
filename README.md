@@ -36,7 +36,11 @@ docker compose up --build -d
 | **带证据问答** | LLM 可选；搜索结果打置信度标签（EXTRACTED / INFERRED / AMBIGUOUS / UNVERIFIED）    |
 | **知识管理**   | `wiki/summaries/`（摘要） + `wiki/queries/`（问答沉淀） + `purpose.md`（规则约束） |
 | **Wiki 质检**  | 断链检测、孤儿页、过期摘要（stale-summary）                                        |
-| **RBAC**       | admin / viewer 两角色；API Key 始终视为 admin                                      |
+| **RBAC**       | admin / member 两角色；API Key 始终视为 admin；成员可管理私有源                      |
+| **私有知识库** | 每个成员有自己的私有源（owner 隔离），仅自己可见和搜索                               |
+| **中文搜索**   | 基于 jieba 分词的 FTS5 中文全文搜索；支持自定义领域词典                              |
+| **用户管理**   | 管理员可在 API 层面创建/删除用户；新建用户自动生成专属目录                            |
+| **Wiki 隔离**  | `wiki/shared/` 共享知识库 + `wiki/users/{name}/` 私有 Wiki 页                        |
 | **安全**       | 登录限速、CSRF、审计日志、Session TTL、可配 CORS/HSTS                              |
 | **自动同步**   | 可选定时同步，展示下次同步时间与最近状态                                           |
 

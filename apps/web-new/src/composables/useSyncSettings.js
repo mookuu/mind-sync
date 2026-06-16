@@ -1,6 +1,8 @@
 import { reactive, toRefs } from "vue";
 import api from "../api/index.js";
 
+let loadPromise = null;
+
 const state = reactive({
   syncPreset: "all",
   syncSourceIds: [],
@@ -13,25 +15,30 @@ const state = reactive({
 export function useSyncSettings() {
   async function load() {
     if (state.loaded) return;
+    if (loadPromise) return loadPromise;
     state.loading = true;
-    try {
-      const st = await api("/api/settings");
-      state.syncPreset = st.sync_preset || "all";
-      state.syncSourceIds = (st.sync_source_ids || []).map(String);
-      state.syncPresets = st.sync_presets || [];
-
-      const srcData = await api("/api/sources");
-      state.availableSources = srcData.sources || [];
-      state.loaded = true;
-    } catch {
-      // ignore
-    } finally {
-      state.loading = false;
-    }
+    loadPromise = (async () => {
+      try {
+        const st = await api("/api/settings");
+        state.syncPreset = st.sync_preset || "all";
+        state.syncSourceIds = (st.sync_source_ids || []).map(String);
+        state.syncPresets = st.sync_presets || [];
+        const srcData = await api("/api/sources");
+        state.availableSources = srcData.sources || [];
+        state.loaded = true;
+      } catch {
+        // ignore
+      } finally {
+        state.loading = false;
+        loadPromise = null;
+      }
+    })();
+    return loadPromise;
   }
 
   async function reload() {
     state.loaded = false;
+    loadPromise = null;
     await load();
   }
 
