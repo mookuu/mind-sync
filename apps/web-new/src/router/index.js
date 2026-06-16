@@ -37,7 +37,7 @@ const routes = [
     path: "/sync/sources",
     name: "sync-sources",
     component: () => import("../views/SyncSources.vue"),
-    meta: { title: "仓库管理", parent: "sync" },
+    meta: { title: "素材管理", parent: "sync" },
   },
   {
     path: "/sync/vault",
