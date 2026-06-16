@@ -262,7 +262,7 @@ apps/web-new/
         ├── Graph.vue        # Wiki 图谱（Canvas 力导向图）
         ├── Account.vue      # 账户（改密码、会话管理、API Key）
         ├── SyncControl.vue  # 同步控制
-        ├── SyncSources.vue  # 素材管理（含同步范围 UI）
+        ├── SyncSources.vue  # 仓库管理（含同步范围 UI）
         ├── SyncVault.vue    # 全局（Vault Git）
         ├── SyncPurpose.vue  # 规则约束
         └── SyncAudit.vue    # 审计日志

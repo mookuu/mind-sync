@@ -1,6 +1,6 @@
 <template>
   <div class="view-pane">
-    <div class="view-header"><h2>📦 素材管理</h2></div>
+    <div class="view-header"><h2>📦 仓库管理</h2></div>
 
     <!-- 同步范围 -->
     <section class="settings-section">
