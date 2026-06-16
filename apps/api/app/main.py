@@ -456,6 +456,35 @@ def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Dep
     return {"ok": True, "source": new_source}
 
 
+@app.post("/api/admin/sources/delete")
+def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
+    from pathlib import Path
+    import yaml
+
+    source_id = (body.get("id") or "").strip()
+    if not source_id:
+        raise HTTPException(status_code=400, detail="source id is required")
+    fixed_ids = {"all", "obsidian", "web_snapshots", "wiki"}
+    if source_id in fixed_ids:
+        raise HTTPException(status_code=400, detail=f"默认来源不可删除：{source_id}")
+
+    src_file = Path(settings.sources_file)
+    if not src_file.is_file():
+        raise HTTPException(status_code=404, detail=f"sources file not found: {src_file}")
+    raw = src_file.read_text(encoding="utf-8")
+    config = yaml.safe_load(raw) or {}
+    sources: list = config.get("sources", [])
+    before = len(sources)
+    sources = [s for s in sources if isinstance(s, dict) and s.get("id") != source_id]
+    if len(sources) == before:
+        raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
+    config["sources"] = sources
+    src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+    reload_sources_config()
+    add_audit_event("sources_deleted", request, actor=resolve_actor(request), detail=f"id={source_id}")
+    return {"ok": True, "deleted": source_id}
+
+
 @app.get("/api/settings")
 def get_settings(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
     conn = get_db()

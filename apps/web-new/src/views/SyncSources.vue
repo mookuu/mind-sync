@@ -18,25 +18,33 @@
         </label>
 
         <!-- 预设分组 -->
-        <label
+        <div
           v-for="p in otherPresets"
           :key="p.id"
-          class="preset-option"
-          :class="{ selected: !isAll && customPresetIds.includes(p.id) }"
+          class="preset-row"
           :style="isAll ? disabledStyle : {}"
         >
-          <input
-            type="checkbox"
-            :value="p.id"
-            :checked="customPresetIds.includes(p.id)"
-            :disabled="isAll"
-            @change="onTogglePreset(p.id)"
-          />
-          <div>
-            <div class="preset-label">{{ p.label }}</div>
-            <div class="preset-desc">{{ p.description || "" }}</div>
-          </div>
-        </label>
+          <label class="preset-option" :class="{ selected: !isAll && customPresetIds.includes(p.id) }">
+            <input
+              type="checkbox"
+              :value="p.id"
+              :checked="customPresetIds.includes(p.id)"
+              :disabled="isAll"
+              @change="onTogglePreset(p.id)"
+            />
+            <div>
+              <div class="preset-label">{{ p.label }}<span class="preset-tag" :class="defaultPresetIds.includes(p.id) ? 'tag-default' : 'tag-custom'">{{ defaultPresetIds.includes(p.id) ? '默认' : '自定义' }}</span></div>
+              <div class="preset-desc">{{ p.description || "" }}</div>
+            </div>
+          </label>
+          <button
+            v-if="!defaultPresetIds.includes(p.id)"
+            class="btn btn-ghost btn-sm delete-source-btn"
+            title="从 sources.yaml 删除此来源"
+            :disabled="isAll || deleting === p.id"
+            @click="deleteSource(p)"
+          >✕</button>
+        </div>
       </div>
 
 
@@ -112,6 +120,7 @@ const isAll = computed(() => syncPreset.value === "all");
 const otherPresets = computed(() => syncPresets.value.filter((p) => p.id !== "all" && p.id !== "custom"));
 
 const customPresetIds = computed(() => isAll.value ? backupIds.value : syncSourceIds.value);
+const defaultPresetIds = computed(() => ["obsidian", "web_snapshots", "wiki"]);
 
 const disabledStyle = computed(() => ({
   opacity: "0.4",
@@ -143,12 +152,26 @@ const addingPath = ref(false);
 const pathMsg = ref("");
 const pathError = ref(false);
 
+const deleting = ref("");
 const showDirPicker = ref(false);
 const dirCurrentPath = ref("/sources");
 const dirParent = ref("");
 const dirEntries = ref([]);
 const dirSelected = ref("");
 const dirError = ref("");
+
+async function deleteSource(p) {
+  if (!window.confirm(`确认从 sources.yaml 删除「${p.label}」？此操作不可撤销。`)) return;
+  deleting.value = p.id;
+  try {
+    await api("/api/admin/sources/delete", { method: "POST", body: { id: p.id } });
+    await reload();
+  } catch (e) {
+    alert(`删除失败: ${e.message || "未知错误"}`);
+  } finally {
+    deleting.value = "";
+  }
+}
 
 async function addCustomPath() {
   let path = customPath.value.trim();
@@ -247,6 +270,11 @@ onMounted(async () => {
 .preset-option:hover { background: var(--bg-muted); }
 .preset-option.selected { border-color: var(--accent-emphasis); background: var(--accent-bg); }
 .preset-option input[type="checkbox"] { margin-top: 3px; }
+.preset-row { display: flex; align-items: center; gap: 4px; }
+.preset-row .preset-option { flex: 1; }
+.delete-source-btn { opacity: 0.3; transition: opacity 0.15s; flex-shrink: 0; }
+.preset-row:hover .delete-source-btn { opacity: 0.8; }
+.delete-source-btn:hover { opacity: 1 !important; color: var(--danger-fg); }
 .preset-label { font-size: 0.9rem; font-weight: 500; }
 .preset-desc { font-size: 0.78rem; color: var(--fg-subtle); margin-top: 1px; font-family: var(--font-mono); }
 

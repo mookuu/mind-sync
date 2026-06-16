@@ -14,11 +14,10 @@
         <option value="query">问答沉淀</option>
       </select>
       <button class="btn btn-primary" @click="doSearch">搜索</button>
-      <span v-if="searched" class="result-count">{{ filtered.length }} / {{ allResults.length }} 条</span>
     </div>
     <div class="search-results">
       <p v-if="filtered.length === 0 && searched" class="subtle">无结果</p>
-      <div v-for="r in filtered" :key="r.id" class="result-card" @click="openDoc(r)">
+      <div v-for="r in pageItems" :key="r.id" class="result-card" @click="openDoc(r)">
         <div class="result-head">
           <span class="result-title">{{ r.title || r.rel_path }}</span>
           <span class="cat-badge" :class="'cat-' + (r.category || 'source')">
@@ -27,6 +26,14 @@
         </div>
         <div class="result-meta">{{ r.source_id }} · {{ r.rel_path }}</div>
         <div class="result-snippet" v-html="r.snippet"></div>
+      </div>
+    </div>
+    <div v-if="filtered.length > 0" class="pagination-bar">
+      <span class="page-info">{{ (page-1)*pageSize+1 }}-{{ Math.min(page*pageSize, filtered.length) }} / {{ filtered.length }} 条</span>
+      <div class="page-controls">
+        <button class="btn btn-sm" :disabled="page <= 1" @click="page--">‹ 上一页</button>
+        <span v-for="n in pageNumbers" :key="n" class="page-num" :class="{ active: n === page }" @click="page = n">{{ n }}</span>
+        <button class="btn btn-sm" :disabled="page >= Math.ceil(filtered.length / pageSize)" @click="page++">下一页 ›</button>
       </div>
     </div>
   </div>
@@ -41,6 +48,26 @@ const sort = ref("relevance");
 const category = ref("");
 const allResults = ref([]);
 const searched = ref(false);
+const page = ref(1);
+const pageSize = 10;
+
+const totalPages = computed(() => Math.ceil(filtered.value.length / pageSize) || 1);
+
+const pageItems = computed(() => {
+  const start = (page.value - 1) * pageSize;
+  return filtered.value.slice(start, start + pageSize);
+});
+
+const pageNumbers = computed(() => {
+  const tp = totalPages.value;
+  const cur = page.value;
+  const pages = [];
+  let start = Math.max(1, cur - 3);
+  let end = Math.min(tp, start + 6);
+  if (end - start < 6) start = Math.max(1, end - 6);
+  for (let i = start; i <= end; i++) pages.push(i);
+  return pages;
+});
 
 const CAT_LABELS = { source: "原始素材", summary: "学习摘要", query: "问答沉淀" };
 function categoryLabel(cat) { return CAT_LABELS[cat] || cat || "原始素材"; }
@@ -57,6 +84,7 @@ const filtered = computed(() => {
 async function doSearch() {
   if (!query.value.trim()) return;
   searched.value = true;
+  page.value = 1;
   try {
     const data = await api(`/api/search?q=${encodeURIComponent(query.value)}&limit=200`);
     allResults.value = data.results || data.items || [];
@@ -66,7 +94,7 @@ async function doSearch() {
 }
 
 function applyLocal() {
-  // computed 自动重新计算 filtered
+  page.value = 1;
 }
 
 function openDoc(doc) {
@@ -132,4 +160,24 @@ function openDoc(doc) {
   color: var(--fg-muted);
   line-height: 1.5;
 }
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-muted);
+  margin-top: 12px;
+}
+.page-info { font-size: 0.83rem; color: var(--fg-subtle); }
+.page-controls { display: flex; align-items: center; gap: 4px; }
+.page-num {
+  display: grid; place-items: center;
+  min-width: 28px; height: 28px;
+  border-radius: var(--radius);
+  cursor: pointer; font-size: 0.82rem;
+  color: var(--fg-muted);
+  border: 1px solid transparent;
+}
+.page-num:hover { background: var(--bg-hover); color: var(--fg-default); }
+.page-num.active { background: var(--accent-emphasis); color: #fff; }
 </style>
