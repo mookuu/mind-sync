@@ -1,3 +1,5 @@
+"""Auth: server-side sessions via SQLite, API key, CSRF."""
+
 import hashlib
 import time
 
@@ -7,7 +9,9 @@ from itsdangerous import BadSignature, URLSafeSerializer
 from ..config import settings
 from ..db import get_db
 from .audit import cleanup_auth_meta
-from .permissions import Role, can_write
+from .password_util import verify_password
+from .permissions import AuthUser, Role, can_write
+from .session_store import create_session, delete_session, get_session
 
 serializer = URLSafeSerializer(settings.secret_key, salt="mind-sync")
 
@@ -16,40 +20,87 @@ def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8", errors="ignore")).hexdigest()
 
 
-def cleanup_expired_revocations(conn) -> None:
-    conn.execute("DELETE FROM session_revocations WHERE expires_at <= ?", (time.time(),))
+# ── Password / DB user management ──────────────────────────────────
 
 
-def is_token_revoked(conn, token: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM session_revocations WHERE token_hash = ? LIMIT 1",
-        (token_hash(token),),
-    ).fetchone()
-    return bool(row)
+def authenticate(username: str, password: str) -> AuthUser | None:
+    """Check DB users first, then env users as fallback."""
+    account = (username or "default").strip() or "default"
+    supplied = password or ""
 
-
-def require_auth(request: Request) -> None:
-    token = request.cookies.get("ms_token")
-    if not token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Check DB users
+    conn = get_db()
     try:
-        payload = serializer.loads(token)
-        if payload.get("ok") is not True:
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        expires_at = float(payload.get("expires_at", 0))
-        now = time.time()
-        if expires_at <= now:
-            raise HTTPException(status_code=401, detail="Session expired")
-        conn = get_db()
-        try:
-            cleanup_expired_revocations(conn)
-            if is_token_revoked(conn, token):
-                raise HTTPException(status_code=401, detail="Session revoked")
-            conn.commit()
-        finally:
-            conn.close()
-    except BadSignature as exc:
-        raise HTTPException(status_code=401, detail="Unauthorized") from exc
+        row = conn.execute(
+            "SELECT username, password_hash, role FROM users WHERE username = ?",
+            (account,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row:
+        if verify_password(supplied, row["password_hash"]):
+            role = Role.ADMIN if row["role"] == "admin" else Role.VIEWER
+            return AuthUser(username=row["username"], password=row["password_hash"], role=role)
+
+    # Fallback: env users
+    from .permissions import load_auth_users as load_env_users
+
+    for user in load_env_users():
+        if user.username == account and verify_password(supplied, user.password):
+            return user
+    return None
+
+
+def update_password(username: str, new_password_hash: str) -> bool:
+    """Update password in DB. Returns False if user not found."""
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?",
+            (new_password_hash, username),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ── Session management ────────────────────────────────────────────
+
+def login_user(
+    username: str,
+    password: str,
+    request: Request,
+    remember_me: bool = False,
+) -> tuple[str, str, str]:
+    """Authenticate and create a session. Returns (session_id, username, role)."""
+    user = authenticate(username, password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    session_id = create_session(
+        username=user.username,
+        role=user.role.value,
+        ip=client_ip(request),
+        user_agent=request.headers.get("user-agent", ""),
+        remember_me=remember_me,
+    )
+    return session_id, user.username, user.role.value
+
+
+def logout_user(session_id: str) -> None:
+    if session_id:
+        delete_session(session_id)
+
+
+# ── Request auth helpers ──────────────────────────────────────────
+
+def _get_session_id(request: Request) -> str:
+    sid = (request.cookies.get("ms_token") or "").strip()
+    # Reject old-format signed tokens (not 64-char hex) — they're from pre-auth-rewrite
+    if sid and (len(sid) != 64 or not all(c in "0123456789abcdef" for c in sid)):
+        return ""  # treated as no session, caller will 401 with clear message
+    return sid
 
 
 def parse_api_keys() -> set[str]:
@@ -70,6 +121,68 @@ def is_api_key_valid(request: Request) -> bool:
         bearer_key = auth_header[7:].strip()
     return header_key in expected_set or bearer_key in expected_set
 
+
+def require_auth(request: Request) -> None:
+    if is_api_key_valid(request):
+        return
+    session_id = _get_session_id(request)
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    sess = get_session(session_id)
+    if not sess:
+        raise HTTPException(status_code=401, detail="Session expired or revoked")
+
+
+def require_any_auth(request: Request) -> None:
+    if is_api_key_valid(request):
+        return
+    require_auth(request)
+    enforce_csrf(request)
+
+
+def resolve_role(request: Request) -> str:
+    if is_api_key_valid(request):
+        return Role.ADMIN.value
+    session_id = _get_session_id(request)
+    if not session_id:
+        return Role.VIEWER.value
+    sess = get_session(session_id)
+    if not sess:
+        return Role.VIEWER.value
+    return (sess.get("role") or Role.ADMIN.value).strip().lower()
+
+
+def require_admin(request: Request) -> None:
+    require_any_auth(request)
+    if not can_write(resolve_role(request)):
+        raise HTTPException(status_code=403, detail="Admin permission required")
+
+
+def resolve_actor(request: Request) -> str:
+    if is_api_key_valid(request):
+        key = request.headers.get("x-api-key", "").strip()
+        if not key:
+            auth = request.headers.get("authorization", "").strip()
+            if auth.lower().startswith("bearer "):
+                key = auth[7:].strip()
+        return f"api-key:{key[:8]}…" if key else "api-key"
+    session_id = _get_session_id(request)
+    if session_id:
+        sess = get_session(session_id)
+        if sess:
+            return sess.get("username", "cookie-user")
+    return "cookie-user"
+
+
+def session_account(request: Request) -> str:
+    session_id = _get_session_id(request)
+    if not session_id:
+        return ""
+    sess = get_session(session_id)
+    return sess.get("username", "") if sess else ""
+
+
+# ── Rate limiting ─────────────────────────────────────────────────
 
 def client_ip(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for", "")
@@ -131,6 +244,8 @@ def clear_login_failures(request: Request, account: str) -> None:
         conn.close()
 
 
+# ── CSRF ──────────────────────────────────────────────────────────
+
 def csrf_header_key() -> str:
     return (settings.csrf_header_name or "x-csrf-token").strip().lower()
 
@@ -150,76 +265,3 @@ def enforce_csrf(request: Request) -> None:
         raise HTTPException(status_code=403, detail="CSRF validation failed")
 
 
-def require_any_auth(request: Request) -> None:
-    if is_api_key_valid(request):
-        return
-    require_auth(request)
-    enforce_csrf(request)
-
-
-def resolve_role(request: Request) -> str:
-    if is_api_key_valid(request):
-        return Role.ADMIN.value
-    token = request.cookies.get("ms_token", "").strip()
-    if not token:
-        return Role.VIEWER.value
-    try:
-        payload = serializer.loads(token)
-        role = (payload.get("role") or Role.ADMIN.value).strip().lower()
-        if role not in {Role.ADMIN.value, Role.VIEWER.value}:
-            return Role.ADMIN.value
-        return role
-    except BadSignature:
-        return Role.VIEWER.value
-
-
-def require_admin(request: Request) -> None:
-    require_any_auth(request)
-    if not can_write(resolve_role(request)):
-        raise HTTPException(status_code=403, detail="Admin permission required")
-
-
-def session_account(request: Request) -> str:
-    token = request.cookies.get("ms_token", "").strip()
-    if not token:
-        return ""
-    try:
-        payload = serializer.loads(token)
-        return (payload.get("account") or "").strip()
-    except BadSignature:
-        return ""
-
-
-def resolve_actor(request: Request) -> str:
-    if is_api_key_valid(request):
-        key = request.headers.get("x-api-key", "").strip()
-        if not key:
-            auth = request.headers.get("authorization", "").strip()
-            if auth.lower().startswith("bearer "):
-                key = auth[7:].strip()
-        if key:
-            return f"api-key:{key[:8]}…"
-        return "api-key"
-    account = session_account(request)
-    if account:
-        return account
-    return "cookie-user"
-
-
-def revoke_session_token(token: str) -> None:
-    try:
-        payload = serializer.loads(token)
-        expires_at = float(payload.get("expires_at", time.time() + 60))
-        conn = get_db()
-        try:
-            cleanup_expired_revocations(conn)
-            conn.execute(
-                "INSERT INTO session_revocations(token_hash, expires_at) VALUES(?, ?) "
-                "ON CONFLICT(token_hash) DO UPDATE SET expires_at=excluded.expires_at",
-                (token_hash(token), expires_at),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        pass

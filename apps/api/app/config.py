@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     cookie_samesite: str = "lax"
     cookie_max_age_seconds: int = 60 * 60 * 24 * 7
     session_ttl_seconds: int = 60 * 60 * 24 * 7
+    session_idle_timeout_seconds: int = 1800  # 30 min idle timeout
     login_rate_limit_window_seconds: int = 300
     login_rate_limit_max_attempts: int = 5
     api_rate_limit_window_seconds: int = 3600

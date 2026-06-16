@@ -17,10 +17,10 @@
 
 ## 环境变量
 
-| 变量 | 说明 | 默认 |
-|------|------|------|
-| `MINDSYNC_BASE_URL` | API 地址 | `http://localhost:8000` |
-| `MINDSYNC_API_KEY` | 与 `.env` 中 `API_KEY` 相同 | `mind-sync-dev-key` |
+| 变量                | 说明                        | 默认                    |
+| ------------------- | --------------------------- | ----------------------- |
+| `MINDSYNC_BASE_URL` | API 地址                    | `http://localhost:8000` |
+| `MINDSYNC_API_KEY`  | 与 `.env` 中 `API_KEY` 相同 | `mind-sync-dev-key`     |
 
 ## 可用工具
 
@@ -37,9 +37,10 @@
 - `.cursor/skills/mind-sync-lint/` — wiki 质检
 
 Rule：`.cursor/rules/mind-sync.mdc`
+
 - `search_docs` — 全文搜索（可传 `category`、`topic`）
 - `browse_docs` — 分类浏览
-- `list_categories` / `get_purpose` / `update_purpose` — 研究方向读写
+- `list_categories` / `get_purpose` / `update_purpose` — 规则约束读写
 - `audit_events` — 最近审计事件（登录/同步/设置）
 - `vault_sync` — Vault Git 拉取/推送（需配置 `VAULT_GIT_URL`）
 - `update_wiki_page` — 更新 `wiki/` 下 Markdown

@@ -20,6 +20,28 @@ class Source:
 class LoginRequest(BaseModel):
     username: str = "default"
     password: str
+    remember_me: bool = False
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class RotateApiKeyRequest(BaseModel):
+    label: str = "default"
+
+
+class SessionInfo(BaseModel):
+    session_id: str
+    username: str
+    role: str
+    ip: str
+    user_agent: str
+    created_at: float
+    last_active_at: float
+    expires_at: float
+    remember_me: bool
 
 
 class QueryRequest(BaseModel):

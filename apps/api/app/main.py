@@ -12,12 +12,14 @@ from fastapi.responses import FileResponse
 from .config import CORS_ALLOW_CREDENTIALS, CORS_ORIGINS, settings
 from .db import LINT_DIR, WIKI_DIR, get_db, init_db, load_settings_map, read_settings
 from .models import (
+    ChangePasswordRequest,
     IngestRequest,
     LintRequest,
     LoginRequest,
     PurposeUpdateRequest,
     QueryRequest,
     RebuildRequest,
+    RotateApiKeyRequest,
     SettingsUpdateRequest,
     SyncRequest,
     VaultSyncRequest,
@@ -32,6 +34,8 @@ from .services.auth import (
     clear_login_failures,
     csrf_header_key,
     enforce_csrf,
+    login_user,
+    logout_user,
     mark_login_failure,
     parse_api_keys,
     require_admin,
@@ -39,10 +43,12 @@ from .services.auth import (
     require_auth,
     resolve_actor,
     resolve_role,
-    revoke_session_token,
-    serializer,
+    session_account,
+    update_password,
+    authenticate,
 )
-from .services.permissions import authenticate, can_write
+from .services.permissions import can_write
+from .services.session_store import delete_session, list_sessions as list_sessions_for_user
 from .services.categories import browse_documents, list_category_stats
 from .services.evidence import build_evidence_items
 from .services.fts import search_documents, search_for_query
@@ -137,43 +143,36 @@ def login(payload: LoginRequest, request: Request, response: Response) -> dict[s
         add_audit_event("login_failed", request, actor=account, detail="invalid credentials")
         raise HTTPException(status_code=401, detail="Invalid username or password")
     clear_login_failures(request, account)
-    now = time.time()
+
+    remember_me = bool(getattr(payload, "remember_me", False))
+    session_id, _, _ = login_user(account, payload.password, request, remember_me=remember_me)
+
+    # Calculate cookie max_age from session TTL
     ttl = max(60, int(settings.session_ttl_seconds))
-    token = serializer.dumps(
-        {
-            "ok": True,
-            "account": user.username,
-            "role": user.role.value,
-            "issued_at": now,
-            "expires_at": now + ttl,
-        }
-    )
+    if remember_me:
+        ttl = max(ttl, 60 * 60 * 24 * 30)
+    else:
+        ttl = min(ttl, 60 * 60 * 24)
+
     cookie_samesite = (settings.cookie_samesite or "lax").lower()
     if cookie_samesite not in {"lax", "strict", "none"}:
         cookie_samesite = "lax"
     cookie_secure = bool(settings.cookie_secure or cookie_samesite == "none")
+    # Clear any old cookies first
+    response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite, path="/")
+    response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite, path="/")
     csrf_token = secrets.token_urlsafe(24)
     response.set_cookie(
-        "ms_token",
-        token,
-        httponly=True,
-        secure=cookie_secure,
-        samesite=cookie_samesite,
-        max_age=max(60, int(settings.cookie_max_age_seconds)),
+        "ms_token", session_id,
+        httponly=True, secure=cookie_secure, samesite=cookie_samesite, max_age=ttl,
     )
     response.set_cookie(
-        "ms_csrf",
-        csrf_token,
-        httponly=False,
-        secure=cookie_secure,
-        samesite=cookie_samesite,
-        max_age=max(60, int(settings.cookie_max_age_seconds)),
+        "ms_csrf", csrf_token,
+        httponly=False, secure=cookie_secure, samesite=cookie_samesite, max_age=ttl,
     )
     add_audit_event(
-        "login_success",
-        request,
-        actor=user.username,
-        detail=f"cookie session issued role={user.role.value}",
+        "login_success", request, actor=user.username,
+        detail=f"server-side session role={user.role.value} remember_me={remember_me}",
     )
     return {
         "ok": True,
@@ -186,18 +185,17 @@ def login(payload: LoginRequest, request: Request, response: Response) -> dict[s
 
 
 @app.post("/api/logout")
-def logout(request: Request, response: Response, _: Any = Depends(require_auth)) -> dict[str, bool]:
-    enforce_csrf(request)
-    token = request.cookies.get("ms_token", "").strip()
-    if token:
-        revoke_session_token(token)
+def logout(request: Request, response: Response) -> dict[str, bool]:
+    session_id = request.cookies.get("ms_token", "").strip()
+    if session_id:
+        logout_user(session_id)
     cookie_samesite = (settings.cookie_samesite or "lax").lower()
     if cookie_samesite not in {"lax", "strict", "none"}:
         cookie_samesite = "lax"
     cookie_secure = bool(settings.cookie_secure or cookie_samesite == "none")
     response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite)
     response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite)
-    add_audit_event("logout", request, actor=resolve_actor(request), detail="session revoked and cookies cleared")
+    add_audit_event("logout", request, actor=resolve_actor(request), detail="session deleted")
     return {"ok": True}
 
 
@@ -213,7 +211,136 @@ def auth_mode(request: Request, _: Any = Depends(require_any_auth)) -> dict[str,
         "role": role,
         "can_write": can_write(role),
         "username": session_account(request) or None,
+        "authenticated": True,
     }
+
+
+@app.post("/api/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, bool]:
+    enforce_csrf(request)
+    account = session_account(request)
+    if not account:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = authenticate(account, payload.current_password)
+    if not user:
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    from .services.password_util import hash_password
+
+    new_hash = hash_password(payload.new_password)
+    if not update_password(account, new_hash):
+        raise HTTPException(status_code=500, detail="Failed to update password")
+    add_audit_event("password_changed", request, actor=account, detail="password updated")
+    return {"ok": True}
+
+
+@app.get("/api/sessions")
+def list_sessions(
+    request: Request,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    account = session_account(request)
+    if not account:
+        return {"sessions": []}
+    sessions = list_sessions_for_user(account)
+    current_sid = request.cookies.get("ms_token", "").strip()
+    return {
+        "sessions": [
+            {
+                "session_id": s["session_id"],
+                "ip": s.get("ip", ""),
+                "user_agent": s.get("user_agent", ""),
+                "created_at": s.get("created_at", 0),
+                "last_active_at": s.get("last_active_at", 0),
+                "expires_at": s.get("expires_at", 0),
+                "remember_me": bool(s.get("remember_me", 0)),
+                "current": s["session_id"] == current_sid,
+            }
+            for s in sessions
+        ]
+    }
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session_endpoint(
+    session_id: str,
+    request: Request,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, bool]:
+    enforce_csrf(request)
+    account = session_account(request)
+    if not account:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    current_sid = request.cookies.get("ms_token", "").strip()
+    if session_id == current_sid:
+        raise HTTPException(status_code=400, detail="Cannot delete current session, use logout instead")
+    delete_session(session_id)
+    add_audit_event("session_revoked", request, actor=account, detail=f"session {session_id[:12]}…")
+    return {"ok": True}
+
+
+@app.get("/api/api-keys")
+def list_api_keys(
+    _: Any = Depends(require_admin),
+) -> dict[str, Any]:
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, key_value, label, created_at, last_used_at FROM api_keys ORDER BY created_at DESC"
+        ).fetchall()
+        env_keys = parse_api_keys()
+        return {
+            "keys": [dict(r) for r in rows],
+            "env_keys": list(env_keys),
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/api/api-keys/rotate")
+def rotate_api_key(
+    payload: RotateApiKeyRequest,
+    request: Request,
+    _: Any = Depends(require_admin),
+) -> dict[str, str]:
+    enforce_csrf(request)
+    import secrets as secmod
+
+    new_key = f"msk-{secmod.token_urlsafe(32)}"
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO api_keys(key_value, label, created_at) VALUES(?, ?, ?)",
+            (new_key, payload.label or "default", time.time()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    add_audit_event("api_key_rotated", request, actor=resolve_actor(request), detail="new API key generated")
+    return {"key": new_key}
+
+
+@app.delete("/api/api-keys/{key_id}")
+def delete_api_key(
+    key_id: int,
+    request: Request,
+    _: Any = Depends(require_admin),
+) -> dict[str, bool]:
+    enforce_csrf(request)
+    conn = get_db()
+    try:
+        cur = conn.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+        conn.commit()
+        deleted = cur.rowcount > 0
+    finally:
+        conn.close()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="API Key not found")
+    add_audit_event("api_key_deleted", request, actor=resolve_actor(request), detail=f"key_id={key_id}")
+    return {"ok": True}
 
 
 @app.get("/api/audit-events")

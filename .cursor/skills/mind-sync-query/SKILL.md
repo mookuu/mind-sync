@@ -9,7 +9,7 @@ description: 基于 mind-sync 知识库带证据问答，可选保存到 wiki/qu
 
 ## 前置
 
-- `get_purpose()` 了解研究方向（问答时会注入 LLM）
+- `get_purpose()` 了解规则约束（问答时会注入 LLM）
 - 若刚改笔记/摘要，先 `sync_sources()`
 
 ## 步骤

@@ -1,13 +1,13 @@
 # mind-sync Wiki 维护规范（SCHEMA）
 
-Agent 与人工维护 `data/wiki/` 时请遵循本文件。研究方向见 `/data/purpose.md`。
+Agent 与人工维护 `data/wiki/` 时请遵循本文件。规则约束见 `/data/purpose.md`。
 
 ## 页面类型
 
-| type | 目录 | 用途 |
-|------|------|------|
+| type      | 目录                     | 用途                          |
+| --------- | ------------------------ | ----------------------------- |
 | `summary` | `summaries/{topic}/*.md` | 基于 sources 的结构化学习摘要 |
-| `query` | `queries/*.md` | 问答沉淀（`derived: true`） |
+| `query`   | `queries/*.md`           | 问答沉淀（`derived: true`）   |
 
 ## 摘要 frontmatter（必填）
 

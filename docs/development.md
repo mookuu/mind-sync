@@ -5,7 +5,7 @@
 ## 环境
 
 - **Python 3.12**（与 CI / Docker 一致；见仓库根目录 `.python-version`）
-- Node.js 22+（构建 `apps/web` vendor 包）
+- Node.js 22+（构建 Vue 3 前端 `apps/web-new/`）
 
 ### 依赖安装
 
@@ -27,10 +27,10 @@ pip install --only-binary=:all: pydantic-core
 pip install -r requirements.txt
 ```
 
-Web 前端 vendor：
+Web 前端（Vue 3 + Vite）：
 
 ```bash
-cd apps/web && npm install && npm run build:vendor
+cd apps/web-new && npm install && npm run build
 ```
 
 ## 本地 API（非 Docker）

@@ -9,11 +9,11 @@ alwaysApply: false
 
 ## Cursor Skills（推荐）
 
-| Skill | 用途 |
-|-------|------|
+| Skill               | 用途                                                 |
+| ------------------- | ---------------------------------------------------- |
 | `/mind-sync-ingest` | 素材 → 摘要（见 `.cursor/skills/mind-sync-ingest/`） |
-| `/mind-sync-query` | 带证据问答 + 可选保存 queries |
-| `/mind-sync-lint` | wiki 质检（含 stale-summary） |
+| `/mind-sync-query`  | 带证据问答 + 可选保存 queries                        |
+| `/mind-sync-lint`   | wiki 质检（含 stale-summary）                        |
 
 维护规范：`data/wiki/SCHEMA.md`
 
@@ -26,7 +26,7 @@ alwaysApply: false
 ## 目录约定（容器内 `/data/wiki`）
 
 ```
-/data/purpose.md              # 研究方向，问答时会注入 prompt
+/data/purpose.md              # 规则约束，问答时会注入 prompt
 /data/wiki/SCHEMA.md          # Agent 维护规范（ingest/query/lint）
 /data/wiki/index.md           # 自动目录（sync/query/lint 后更新）
 /data/wiki/log.md             # 自动事件日志

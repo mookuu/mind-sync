@@ -37,7 +37,7 @@ def _call_llm(
 
     purpose_block = ""
     if purpose_text.strip():
-        purpose_block = f"研究方向（优先遵循）：\n{purpose_text.strip()}\n\n"
+        purpose_block = f"规则约束（优先遵循）：\n{purpose_text.strip()}\n\n"
 
     prompt = (
         "你是 mind-sync 的知识库助手。请只基于给定上下文回答，若证据不足必须明确说明。"
@@ -61,7 +61,10 @@ def _call_llm(
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "You are a precise knowledge-base assistant."},
+            {
+                "role": "system",
+                "content": "You are a precise knowledge-base assistant.",
+            },
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
@@ -75,7 +78,10 @@ def _call_llm(
         with httpx.Client(timeout=120) as client:
             resp = client.post(url, headers=headers, json=payload)
         if resp.status_code >= 400:
-            raise HTTPException(status_code=502, detail=f"LLM request failed: {resp.status_code} {resp.text}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"LLM request failed: {resp.status_code} {resp.text}",
+            )
         data = resp.json()
         answer = data["choices"][0]["message"]["content"].strip()
         return answer, model
@@ -107,7 +113,9 @@ def generate_structured_answer(
         return answer, False, model_used
 
     if config.llm_api_key.strip():
-        answer, model_used = _call_llm(question, citations, config, purpose_text, model_override)
+        answer, model_used = _call_llm(
+            question, citations, config, purpose_text, model_override
+        )
         return answer, True, model_used
 
     ollama_url = (config.ollama_base_url or "").strip()
@@ -118,7 +126,9 @@ def generate_structured_answer(
             llm_model=model_used,
         )
         try:
-            answer, model_used = _call_llm(question, citations, ollama_config, purpose_text, model_override)
+            answer, model_used = _call_llm(
+                question, citations, ollama_config, purpose_text, model_override
+            )
             return answer, True, model_used
         except HTTPException:
             pass

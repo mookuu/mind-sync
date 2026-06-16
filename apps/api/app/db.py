@@ -1,9 +1,10 @@
 import sqlite3
+import time
 from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 1  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 2  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "mind_sync.db"
@@ -47,20 +48,41 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     if version < 1:
         # V1: add size column to documents (existing databases)
         try:
-            conn.execute("ALTER TABLE documents ADD COLUMN size INTEGER NOT NULL DEFAULT 0")
+            conn.execute(
+                "ALTER TABLE documents ADD COLUMN size INTEGER NOT NULL DEFAULT 0"
+            )
         except sqlite3.OperationalError:
             pass  # Column already exists
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "1"),
+        )
+    if version < 2:
+        # V2: add sessions, users, api_keys tables (schema already in CREATE IF NOT EXISTS)
         conn.execute(
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
             ("_schema_version", str(SCHEMA_VERSION)),
         )
 
 
+def _seed_users_to_db(conn: sqlite3.Connection) -> None:
+    """Copy users from env config to DB on first run."""
+    from .services.permissions import load_auth_users  # local import to avoid cycle
+
+    existing = conn.execute("SELECT COUNT(1) AS c FROM users").fetchone()
+    if existing and int(existing["c"]) > 0:
+        return
+    for user in load_auth_users():
+        conn.execute(
+            "INSERT OR IGNORE INTO users(username, password_hash, role, created_at) VALUES(?, ?, ?, ?)",
+            (user.username, user.password, user.role.value, time.time()),
+        )
+
+
 def init_db() -> None:
     ensure_data_dir()
     conn = get_db()
-    conn.executescript(
-        """
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_id TEXT NOT NULL,
@@ -102,12 +124,43 @@ def init_db() -> None:
             bucket TEXT NOT NULL,
             created_at REAL NOT NULL
         );
-        """
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'admin',
+            ip TEXT NOT NULL DEFAULT '',
+            user_agent TEXT NOT NULL DEFAULT '',
+            created_at REAL NOT NULL,
+            last_active_at REAL NOT NULL,
+            expires_at REAL NOT NULL,
+            remember_me INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'admin',
+            created_at REAL NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key_value TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL DEFAULT '',
+            created_at REAL NOT NULL,
+            last_used_at REAL
+        );
+        """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_api_usage_key_time ON api_usage(identity, bucket, created_at)"
     )
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_key_time ON api_usage(identity, bucket, created_at)")
-    conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(title, content, rel_path, source_id)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_login_failures_key_time ON login_failures(ip, account, failed_at)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_events_time ON audit_events(created_at)")
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(title, content, rel_path, source_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_login_failures_key_time ON login_failures(ip, account, failed_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_events_time ON audit_events(created_at)"
+    )
     for k, v in SETTINGS_DEFAULTS.items():
         conn.execute(
             "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO NOTHING",
@@ -115,6 +168,9 @@ def init_db() -> None:
         )
     # Schema migration: track version and apply upgrades
     _run_migrations(conn)
+
+    # Seed users from env config (safe after tables exist)
+    _seed_users_to_db(conn)
     conn.commit()
     conn.close()
     WIKI_DIR.mkdir(parents=True, exist_ok=True)
@@ -128,7 +184,7 @@ def init_db() -> None:
             text = example.read_text(encoding="utf-8")
         else:
             text = (
-                "# 研究方向\n\n## 核心目标\n\n- 建立可检索、可溯源的个人学习知识库\n\n"
+                "# 规则约束\n\n## 核心原则\n\n- 所有摘要必须引用可靠来源（sources），不可编造\n- 置信度分级：extracted > inferred > ambiguous > unverified\n\n"
                 "## 关键问题\n\n- （填写你正在学习的问题）\n"
             )
         purpose_path.write_text(text, encoding="utf-8")
@@ -143,7 +199,9 @@ def init_db() -> None:
     if not schema_dest.exists():
         schema_seed = SEED_DIR / "wiki" / "SCHEMA.md"
         if schema_seed.exists():
-            schema_dest.write_text(schema_seed.read_text(encoding="utf-8"), encoding="utf-8")
+            schema_dest.write_text(
+                schema_seed.read_text(encoding="utf-8"), encoding="utf-8"
+            )
     _seed_wiki_examples()
 
 

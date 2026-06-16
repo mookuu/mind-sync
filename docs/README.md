@@ -8,6 +8,7 @@
 |--------|------|
 | 启动 Docker、备份、HTTPS | [deployment.md](./deployment.md) |
 | 理解整体架构与模块 | [architecture.md](./architecture.md) |
+| Karpathy 理念对照 | [concepts/karpathy-comparison.md](./concepts/karpathy-comparison.md) |
 | 配置 `sources.yaml`、多源类型 | [reference/sources.md](./reference/sources.md) |
 | 日常维护：同步 / ingest / 问答 / lint | [workflow.md](./workflow.md) |
 | Cursor MCP 与 Skills | [reference/mcp-setup.md](./reference/mcp-setup.md) |
@@ -61,6 +62,8 @@ docs/
 ├── workflow.md          ← 数据流与工作流
 ├── deployment.md        ← 部署指南
 ├── development.md       ← 开发指南
+├── concepts/            ← 设计理念
+│   └── karpathy-comparison.md ← Karpathy 理念对照
 ├── reference/           ← 配置参考
 │   ├── sources.md       ← sources.yaml 说明
 │   └── mcp-setup.md     ← MCP 配置
