@@ -1,5 +1,20 @@
 # 变更日志
 
+## 2026-06-17
+
+- **feat**: 管理员重置用户密码（`POST /api/admin/users/{username}/reset-password`）
+- **feat**: 用户管理页面"重置密码"弹窗 + 创建用户按钮位置调整
+- **feat**: F5 刷新/重新登录保持上次打开的页面
+- **feat**: 登录自动清理过期 session，每用户上限 5 条
+- **fix**: `config.py` 增加 MSYS2 路径翻译防护（Windows Docker 兼容）
+- **fix**: `main.py` 中 `authenticate` 被 `permissions` 同名函数覆盖导致 DB 用户无法登录
+- **fix**: `update_settings` 权限从 `require_admin` 改为 `require_any_auth`（非管理员保存同步范围不生效）
+- **fix**: `sync_source_ids` 过滤时忽略预设 ID（`web_snapshots` 勾选 F5 后丢失）
+- **fix**: 列表页 `sync_presets` 加 `owner` 字段，前端 `!p.owner` 正确过滤个人/共享库
+- **fix**: 添加 `dataLoaded` 标记，防止 F5 时模板空数据闪烁
+- **refactor**: Sidebar 重写为固定顺序 + hover 展开/收起
+- **docs**: 更新踩坑记录、API 端点文档
+
 ## 2026-06-16
 
 - **feat**: Source 模型加 `owner` 字段，支持共享/私有源隔离

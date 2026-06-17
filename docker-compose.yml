@@ -5,7 +5,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATA_DIR=${DATA_DIR:-/data}
+      - DATA_DIR=/data
       - SOURCES_FILE=${SOURCES_FILE:-/workspace/sources.yaml}
       # 以下亦可通过 env_file: .env 传入（AUTH_USERS、WEB_FETCH_* 等）
       - AUTH_PASSWORD=${AUTH_PASSWORD}

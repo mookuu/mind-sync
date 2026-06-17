@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -14,6 +15,43 @@ class Settings(BaseSettings):
     secret_key: str = "replace-with-random-secret"
     api_key: str = "mind-sync-dev-key"
     data_dir: str = "/data"
+
+    @field_validator("data_dir", mode="before")
+    @classmethod
+    def fix_msys2_path(cls, v: str) -> str:
+        """Strip accidental Windows path prefix from MSYS2/Git Bash translation.
+
+        When Docker on Windows receives '/data' via Git Bash, it sometimes becomes
+        'C:/Program Files/Git/data'. This validator strips the incorrect prefix.
+        """
+        raw = (v or "").strip()
+        if ":" in raw:
+            parts = raw.split(":")
+            if len(parts) > 1:
+                candidate = parts[-1].lstrip("\\/")
+                return "/" + candidate
+        return raw or "/data"
+
+    @field_validator("sources_file", mode="before")
+    @classmethod
+    def fix_msys2_path_generic(cls, v: str) -> str:
+        raw = (v or "").strip()
+        if ":" in raw:
+            # C:/Program Files/Git/workspace/sources.yaml → /workspace/sources.yaml
+            # Extract path after the first colon and drive letter
+            import re
+            m = re.search(r":[/\\]+(.*)", raw)
+            if m:
+                rest = m.group(1)
+                # Remove Git Bash prefixes like "Program Files/Git" or similar
+                parts = rest.replace("\\", "/").split("/")
+                # Skip known MSYS2 prefixes
+                while parts and parts[0] in ("Program Files", "Git", "Users"):
+                    parts.pop(0)
+                if parts:
+                    return "/" + "/".join(parts)
+        return raw or ""
+
     sources_file: str = "/workspace/sources.yaml"
     llm_base_url: str = "https://api.siliconflow.cn/v1"
     llm_api_key: str = ""

@@ -89,8 +89,8 @@
       </div>
     </section>
 
-    <!-- API Key 管理 -->
-    <section class="settings-section">
+    <!-- API Key 管理（仅管理员） -->
+    <section v-if="isAdmin" class="settings-section">
       <h3>API Key</h3>
       <p class="subtle">管理已生成的 API Key，删除后立即失效</p>
 
@@ -126,11 +126,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import api from "../api/index.js";
 
 // User info
 const userInfo = ref(null);
+const isAdmin = computed(() => userInfo.value?.role === "admin");
 
 async function loadUserInfo() {
   try {

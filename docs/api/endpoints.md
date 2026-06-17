@@ -42,6 +42,7 @@
 | POST | `/api/admin/users`                 | 创建用户（含目录）   |
 | DELETE | `/api/admin/users/{username}`    | 删除用户及其私有数据 |
 | PUT  | `/api/admin/users/{username}/role` | 修改用户角色         |
+| POST | `/api/admin/users/{username}/reset-password` | 管理员重置用户密码 |
 | GET  | `/api/user/me`                     | 当前用户信息         |
 | POST | `/api/change-password`             | 修改密码             |
 

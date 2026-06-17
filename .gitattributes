@@ -1,0 +1,2 @@
+# Ensure line endings for config files that are parsed by Docker
+.env text eol=lf

@@ -148,6 +148,29 @@ def login(payload: LoginRequest, request: Request, response: Response) -> dict[s
     remember_me = bool(getattr(payload, "remember_me", False))
     session_id, _, _ = login_user(account, payload.password, request, remember_me=remember_me)
 
+    # 清理已过期的 session，并限制每用户最多 5 条活跃 session
+    from .services.session_store import cleanup_expired_sessions
+
+    cleanup_expired_sessions()
+    # 保留最近 5 条 session，删除更早的
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT session_id FROM sessions WHERE username = ? ORDER BY last_active_at DESC",
+            (account,),
+        ).fetchall()
+        if len(rows) > 5:
+            keep = {r["session_id"] for r in rows[:5]}
+            conn.execute(
+                "DELETE FROM sessions WHERE username = ? AND session_id NOT IN ({})".format(
+                    ",".join("?" for _ in keep)
+                ),
+                (account, *keep),
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
     # Calculate cookie max_age from session TTL
     ttl = max(60, int(settings.session_ttl_seconds))
     if remember_me:
@@ -650,6 +673,33 @@ def admin_set_user_role(request: Request, username: str, body: dict[str, Any], _
     return {"ok": True, "username": username, "role": role}
 
 
+@app.post("/api/admin/users/{username}/reset-password")
+def admin_reset_password(
+    request: Request,
+    username: str,
+    body: dict[str, Any],
+    _: Any = Depends(require_admin),
+) -> dict[str, bool]:
+    """Admin resets another user's password."""
+    from .services.password_util import hash_password
+
+    new_password = (body.get("new_password") or "").strip()
+    if len(new_password) < 4:
+        raise HTTPException(status_code=400, detail="密码至少 4 个字符")
+    conn = get_db()
+    try:
+        existing = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail=f"用户不存在：{username}")
+        new_hash = hash_password(new_password)
+        conn.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, username))
+        conn.commit()
+    finally:
+        conn.close()
+    add_audit_event("password_reset", request, actor=resolve_actor(request), detail=f"username={username}")
+    return {"ok": True}
+
+
 @app.get("/api/user/me")
 def user_me(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     """Return current user's profile."""
@@ -866,7 +916,7 @@ def get_settings(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
 def update_settings(
     payload: SettingsUpdateRequest,
     request: Request,
-    _: Any = Depends(require_admin),
+    _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
     conn = get_db()
     try:
@@ -893,7 +943,16 @@ def update_settings(
             import json
 
             all_src = load_sources()
-            ids = [str(x).strip() for x in payload.sync_source_ids if str(x).strip() and is_known_sync_key(str(x).strip(), all_src)]
+            # 也接受预设 ID（如 web_snapshots 对应实际 source example_web）
+            from .services.sync_settings import list_sync_presets
+
+            valid_preset_ids = {p["id"] for p in list_sync_presets() if p.get("source_ids")}
+            ids = [
+                str(x).strip()
+                for x in payload.sync_source_ids
+                if str(x).strip()
+                and (is_known_sync_key(str(x).strip(), all_src) or str(x).strip() in valid_preset_ids)
+            ]
             conn.execute(
                 "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 ("sync_source_ids", json.dumps(ids, ensure_ascii=False)),

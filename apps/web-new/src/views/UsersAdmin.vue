@@ -2,10 +2,13 @@
   <div class="view-pane">
     <div class="view-header">
       <h2>👥 用户管理</h2>
-      <button class="btn btn-primary btn-sm" @click="showCreate = true">＋ 创建用户</button>
     </div>
 
     <p class="subtle">管理团队用户。新用户会自动创建专属目录和默认私有源。</p>
+
+    <div class="toolbar">
+      <button class="btn btn-primary btn-sm" @click="showCreate = true">＋ 创建用户</button>
+    </div>
 
     <table class="user-table" v-if="users.length">
       <thead>
@@ -30,8 +33,9 @@
           <td>{{ formatTime(u.created_at) }}</td>
           <td>{{ u.source_count }}</td>
           <td>{{ u.has_dir ? '✅' : '❌' }}</td>
-          <td>
-            <button class="btn btn-ghost btn-sm" @click="confirmDeleteUser(u)">删除</button>
+          <td class="action-cell">
+            <button class="btn btn-ghost btn-xs" @click="showResetPwd(u)">重置密码</button>
+            <button class="btn btn-ghost btn-xs" @click="confirmDeleteUser(u)">删除</button>
           </td>
         </tr>
       </tbody>
@@ -85,6 +89,33 @@
         </div>
       </div>
     </div>
+
+    <!-- 重置密码弹窗 -->
+    <div v-if="resetTarget" class="modal-overlay" @click.self="resetTarget = null">
+      <div class="modal modal-sm">
+        <div class="modal-header">
+          <h4>重置密码 — {{ resetTarget.username }}</h4>
+          <button class="btn btn-ghost btn-sm" @click="resetTarget = null">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label>新密码</label>
+            <input v-model="resetPassword" type="password" placeholder="至少 4 个字符" @keydown.enter="doResetPassword" />
+          </div>
+          <div class="field">
+            <label>确认新密码</label>
+            <input v-model="resetPasswordConfirm" type="password" placeholder="再次输入" @keydown.enter="doResetPassword" />
+          </div>
+          <p v-if="resetMsg" class="status-msg" :class="{ error: resetError }">{{ resetMsg }}</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" @click="resetTarget = null">取消</button>
+          <button class="btn btn-primary" @click="doResetPassword" :disabled="resetting">
+            {{ resetting ? "重置中…" : "确认重置" }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -99,6 +130,12 @@ const createError = ref(false);
 const creating = ref(false);
 const deleteTarget = ref(null);
 const deleting = ref(false);
+const resetTarget = ref(null);
+const resetPassword = ref("");
+const resetPasswordConfirm = ref("");
+const resetting = ref(false);
+const resetMsg = ref("");
+const resetError = ref(false);
 
 const newUser = ref({ username: "", password: "", role: "member" });
 
@@ -170,6 +207,44 @@ async function changeRole(username, role) {
   }
 }
 
+function showResetPwd(u) {
+  resetTarget.value = u;
+  resetPassword.value = "";
+  resetPasswordConfirm.value = "";
+  resetMsg.value = "";
+  resetError.value = false;
+}
+
+async function doResetPassword() {
+  if (!resetTarget.value) return;
+  if (!resetPassword.value || resetPassword.value.length < 4) {
+    resetMsg.value = "密码至少 4 个字符";
+    resetError.value = true;
+    return;
+  }
+  if (resetPassword.value !== resetPasswordConfirm.value) {
+    resetMsg.value = "两次密码不一致";
+    resetError.value = true;
+    return;
+  }
+  resetting.value = true;
+  resetMsg.value = "";
+  resetError.value = false;
+  try {
+    await api(`/api/admin/users/${encodeURIComponent(resetTarget.value.username)}/reset-password`, {
+      method: "POST",
+      body: { new_password: resetPassword.value },
+    });
+    resetMsg.value = "密码已重置";
+    setTimeout(() => { resetTarget.value = null; }, 1200);
+  } catch (e) {
+    resetMsg.value = e.message || "重置失败";
+    resetError.value = true;
+  } finally {
+    resetting.value = false;
+  }
+}
+
 function formatTime(t) {
   if (!t) return "-";
   return new Date(t * 1000).toLocaleString();
@@ -235,5 +310,15 @@ onMounted(loadUsers);
   padding: 24px;
   max-width: 420px;
   box-shadow: var(--shadow-lg);
+}
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.action-cell {
+  white-space: nowrap;
+  display: flex;
+  gap: 4px;
 }
 </style>

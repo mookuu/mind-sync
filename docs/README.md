@@ -17,6 +17,7 @@
 | 鉴权、RBAC、限速、合规 | [SECURITY.md](../SECURITY.md) |
 | 待办事项 | [project/todo.md](./project/todo.md) |
 | 变更日志 | [project/changelog.md](./project/changelog.md) |
+| 踩坑记录 | [project/lessons.md](./project/lessons.md) |
 
 ## 概念速查
 
@@ -71,5 +72,6 @@ docs/
 │   └── endpoints.md     ← API 端点参考
 └── project/
     ├── todo.md           ← 待办事项
-    └── changelog.md      ← 变更日志
+    ├── changelog.md      ← 变更日志
+    └── lessons.md        ← 踩坑记录
 ```

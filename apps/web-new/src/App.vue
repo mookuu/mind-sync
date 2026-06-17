@@ -64,12 +64,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { ref, computed, watch, onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useAuth } from "./composables/useAuth.js";
 import AppSidebar from "./components/AppSidebar.vue";
 
 const route = useRoute();
+const router = useRouter();
 const { isLoggedIn, userRole, canWrite, login, logout, checkSession } = useAuth();
 
 const username = ref("");
@@ -77,6 +78,25 @@ const password = ref("");
 const rememberMe = ref(false);
 const loggingIn = ref(false);
 const loginError = ref("");
+
+const LAST_PAGE_KEY = "mind_sync_last_page";
+
+// 保存当前路由到 localStorage
+watch(
+  () => route.path,
+  (path) => {
+    if (path && path !== "/") {
+      localStorage.setItem(LAST_PAGE_KEY, path);
+    }
+  }
+);
+
+// 登录后跳转到上次页面
+function navigateToLastPage() {
+  const saved = localStorage.getItem(LAST_PAGE_KEY);
+  const target = saved && saved !== "/" ? saved : "/library";
+  router.push(target);
+}
 const checkingSession = ref(true);
 
 const authState = computed(() => {
@@ -99,6 +119,7 @@ async function handleLogin() {
   loginError.value = "";
   try {
     await login(username.value, password.value, rememberMe.value);
+    navigateToLastPage();
   } catch (e) {
     loginError.value = e.message || "登录失败";
   } finally {
@@ -115,6 +136,10 @@ async function handleLogout() {
 onMounted(async () => {
   try {
     await checkSession();
+    // 已登录则跳转到上次页面
+    if (isLoggedIn.value) {
+      navigateToLastPage();
+    }
   } catch {
     // not logged in
   } finally {

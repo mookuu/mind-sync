@@ -90,6 +90,7 @@ def list_sync_presets() -> list[dict[str, Any]]:
                 "source_ids": [sk],
                 "path": spath,
                 "type": stype,
+                "owner": getattr(src, "owner", None),
             }
         )
     return items

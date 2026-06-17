@@ -7,89 +7,131 @@
       <h3>同步范围</h3>
       <p class="subtle">勾选要同步的来源，修改后立即生效</p>
 
+      <template v-if="dataLoaded">
       <div class="preset-list">
         <!-- 全部来源（master toggle） -->
         <label class="preset-option" :class="{ selected: isAll }">
           <input type="checkbox" :checked="isAll" @change="onToggleAll" />
           <div>
             <div class="preset-label">全部同步</div>
-            <div class="preset-desc">同步 sources.yaml 中所有已配置来源</div>
+            <div class="preset-desc">{{ isAdmin ? '同步全部共享知识库' : '同步我的全部知识库' }}</div>
           </div>
         </label>
 
-        <!-- 共享来源（管理员配置） -->
-        <div class="section-label">
+        <!-- ===== 共享知识库（折叠） ===== -->
+        <div class="section-label collapsible" @click="toggleSection('shared')">
+          <span class="chevron">{{ sectionExpanded.shared ? '▾' : '▸' }}</span>
           <span>📚 共享知识库</span>
-          <span class="subtle">管理员配置，团队成员可见</span>
-        </div>
-        <div
-          v-for="p in sharedPresets"
-          :key="p.id"
-          class="preset-row"
-          :style="isAll ? disabledStyle : {}"
-        >
-          <label class="preset-option" :class="{ selected: !isAll && customPresetIds.includes(p.id) }">
-            <input
-              type="checkbox"
-              :value="p.id"
-              :checked="customPresetIds.includes(p.id)"
-              :disabled="isAll"
-              @change="onTogglePreset(p.id)"
-            />
-            <div>
-              <div class="preset-label">{{ p.label }}</div>
-              <div class="preset-desc">{{ p.description || "" }}</div>
-            </div>
-          </label>
-          <button
-            v-if="!defaultPresetIds.includes(p.id) && isAdmin"
-            class="btn btn-ghost btn-sm delete-source-btn"
-            title="删除此共享来源"
-            :disabled="isAll || deleting === p.id"
-            @click="deleteSharedSource(p)"
-          >✕</button>
-        </div>
-
-        <!-- 我的私有来源 -->
-        <div class="section-label" style="margin-top:8px">
-          <span>🔒 我的知识库</span>
-          <span class="subtle">仅自己可见</span>
-        </div>
-        <div class="custom-path-row">
-          <input v-model="privatePath" type="text" placeholder="输入服务器文件夹路径" class="custom-path-input" />
-          <button class="btn btn-ghost" @click="openPrivateDirPicker">📁 浏览</button>
-          <button class="btn btn-primary" @click="addPrivateSource" :disabled="addingPrivate">
-            {{ addingPrivate ? "添加中…" : "添加" }}
+          <span class="subtle">管理员配置，{{ isAdmin ? '可管理' : '只读' }}</span>
+          <button v-if="isAdmin" class="btn btn-ghost btn-xs" @click.stop="toggleSection('shared')" style="margin-left:auto">
+            {{ sectionExpanded.shared ? '收起' : '展开' }}
           </button>
         </div>
-        <p v-if="privateMsg" class="status-msg" :class="{ error: privateError }">{{ privateMsg }}</p>
-        <div
-          v-for="p in myPrivatePresets"
-          :key="p.id"
-          class="preset-row"
-          :style="isAll ? disabledStyle : {}"
-        >
-          <label class="preset-option" :class="{ selected: !isAll && customPresetIds.includes(p.id) }">
-            <input
-              type="checkbox"
-              :value="p.id"
-              :checked="customPresetIds.includes(p.id)"
-              :disabled="isAll"
-              @change="onTogglePreset(p.id)"
-            />
-            <div>
-              <div class="preset-label">{{ p.label }}</div>
-              <div class="preset-desc">{{ p.description || "" }}</div>
-            </div>
-          </label>
-          <button
-            class="btn btn-ghost btn-sm delete-source-btn"
-            title="删除我的私有来源"
-            :disabled="isAll || deleting === p.id"
-            @click="deletePrivateSource(p)"
-          >✕</button>
+        <template v-if="sectionExpanded.shared">
+          <div
+            v-for="p in sharedPresets"
+            :key="p.id"
+            class="preset-row"
+            :style="isAll || !isAdmin ? disabledStyle : {}"
+          >
+            <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id) }">
+              <input
+                type="checkbox"
+                :value="p.id"
+                :checked="customPresetIds.includes(p.id)"
+                :disabled="isAll || !isAdmin"
+                @change="onTogglePreset(p.id)"
+              />
+              <div>
+                <div class="preset-label">{{ p.label }}</div>
+                <div class="preset-desc">{{ p.description || p.path || "" }}</div>
+              </div>
+            </label>
+            <button
+              v-if="!defaultPresetIds.includes(p.id) && isAdmin"
+              class="btn btn-ghost btn-sm delete-source-btn"
+              title="删除此共享来源"
+              :disabled="isAll || deleting === p.id"
+              @click="deleteSharedSource(p)"
+            >✕</button>
+          </div>
+
+          <!-- 添加共享来源（admin only） -->
+          <div v-if="isAdmin" class="custom-path-row" style="margin-top:8px">
+            <input v-model="customPath" type="text" placeholder="输入文件夹路径，如 /sources/my-notes" class="custom-path-input" />
+            <button class="btn btn-ghost" @click="openDirPicker">📁 浏览</button>
+            <button class="btn btn-primary" @click="addCustomPath" :disabled="addingPath">{{ addingPath ? "验证中…" : "添加" }}</button>
+          </div>
+          <p v-if="pathMsg" class="status-msg" :class="{ error: pathError }">{{ pathMsg }}</p>
+        </template>
+
+        <!-- ===== 个人知识库 / 我的知识库（折叠） ===== -->
+        <div class="section-label collapsible" @click="toggleSection('private')" style="margin-top:8px">
+          <span class="chevron">{{ sectionExpanded.private ? '▾' : '▸' }}</span>
+          <span>{{ isAdmin ? '👥 个人知识库' : '🔒 我的知识库' }}</span>
+          <span class="subtle">{{ isAdmin ? '所有用户的个人目录' : '仅自己可见' }}</span>
+          <button class="btn btn-ghost btn-xs" @click.stop="toggleSection('private')" style="margin-left:auto">
+            {{ sectionExpanded.private ? '收起' : '展开' }}
+          </button>
         </div>
+        <template v-if="sectionExpanded.private">
+          <!-- 按 owner 分组的私有来源列表 -->
+          <template v-for="group in groupedPrivateSources" :key="group.owner || '__ungrouped__'">
+            <div class="owner-group-label" v-if="group.owner">
+              <span class="owner-label">{{ isAdmin ? '👤 ' : '🔒 ' }}个人知识库 {{ group.owner }}</span>
+            </div>
+            <div
+              v-for="p in group.sources"
+              :key="p.id"
+              class="preset-row"
+              :class="{ 'admin-row': isAdmin }"
+              :style="isAdmin ? {} : (isAll ? disabledStyle : {})"
+            >
+              <!-- 管理员：只查看和删除，没有 checkbox -->
+              <template v-if="isAdmin">
+                <div class="preset-info preset-info-admin">
+                  <div class="preset-label">{{ p.label }}</div>
+                  <div class="preset-desc">{{ p.path || p.description || '' }}</div>
+                </div>
+              </template>
+              <!-- 非管理员：checkbox + 信息 + 删除 -->
+              <template v-else>
+                <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id) }">
+                  <input
+                    type="checkbox"
+                    :value="p.id"
+                    :checked="customPresetIds.includes(p.id)"
+                    :disabled="isAll"
+                    @change="onTogglePreset(p.id)"
+                  />
+                  <div>
+                    <div class="preset-label">{{ p.label }}</div>
+                    <div class="preset-desc">{{ p.path || p.description || '' }}</div>
+                  </div>
+                </label>
+              </template>
+              <button
+                v-if="!p.is_default"
+                class="btn btn-ghost btn-sm delete-source-btn"
+                title="删除"
+                :disabled="isAll || deleting === p.id"
+                @click="deletePrivateSource(p)"
+              >✕</button>
+            </div>
+          </template>
+
+          <!-- 添加私有来源：仅非管理员 -->
+          <div v-if="!isAdmin" class="custom-path-row" style="margin-top:8px">
+            <input v-model="privatePath" type="text" placeholder="输入服务器文件夹路径" class="custom-path-input" />
+            <button class="btn btn-ghost" @click="openPrivateDirPicker">📁 浏览</button>
+            <button class="btn btn-primary" @click="addPrivateSource" :disabled="addingPrivate">
+              {{ addingPrivate ? "添加中…" : "添加" }}
+            </button>
+          </div>
+          <p v-if="privateMsg" class="status-msg" :class="{ error: privateError }">{{ privateMsg }}</p>
+        </template>
       </div>
+      </template>
 
       <!-- 删除确认弹窗 -->
       <div v-if="confirmDelete" class="modal-overlay" @click.self="confirmDelete = null">
@@ -107,47 +149,35 @@
 
     </section>
 
-    <!-- 自定义路径（管理员添加共享源） -->
-    <section class="settings-section" v-if="isAdmin">
-      <h3>添加共享来源</h3>
-      <p class="subtle">手动输入文件夹路径（添加为共享知识库）</p>
-      <div class="custom-path-row">
-        <input v-model="customPath" type="text" placeholder="输入文件夹路径，如 /sources/my-notes" class="custom-path-input" />
-        <button class="btn btn-ghost" @click="openDirPicker">📁 浏览</button>
-        <button class="btn btn-primary" @click="addCustomPath" :disabled="addingPath">{{ addingPath ? "验证中…" : "添加" }}</button>
-      </div>
-      <p v-if="pathMsg" class="status-msg" :class="{ error: pathError }">{{ pathMsg }}</p>
-
-      <!-- 目录选择弹窗 -->
-      <div v-if="showDirPicker" class="modal-overlay" @click.self="showDirPicker = false">
-        <div class="modal">
-          <div class="modal-header">
-            <h4>选择文件夹</h4>
-            <button class="btn btn-ghost btn-sm" @click="showDirPicker = false">✕</button>
+    <!-- 目录选择弹窗（共享于 admin 和 private） -->
+    <div v-if="showDirPicker" class="modal-overlay" @click.self="showDirPicker = false">
+      <div class="modal">
+        <div class="modal-header">
+          <h4>选择文件夹</h4>
+          <button class="btn btn-ghost btn-sm" @click="showDirPicker = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="dir-browse-row">
+            <input v-model="dirCurrentPath" type="text" class="dir-path-input" />
+            <button class="btn btn-sm btn-ghost" @click="loadDir(dirCurrentPath)">跳转</button>
           </div>
-          <div class="modal-body">
-            <div class="dir-browse-row">
-              <input v-model="dirCurrentPath" type="text" class="dir-path-input" />
-              <button class="btn btn-sm btn-ghost" @click="loadDir(dirCurrentPath)">跳转</button>
-            </div>
-            <ul class="dir-list">
-              <li class="dir-item parent" @click="loadDir(dirParent)">⬆ ..</li>
-              <li v-for="entry in dirEntries" :key="entry.path" class="dir-item"
-                :class="{ selected: dirSelected === entry.path }"
-                @click="dirSelected = entry.path"
-                @dblclick="loadDir(entry.path)"
-              >📁 {{ entry.name }}</li>
-              <li v-if="!dirEntries.length" class="dir-empty">（空目录）</li>
-            </ul>
-            <p v-if="dirError" class="status-msg error">{{ dirError }}</p>
-          </div>
-          <div class="modal-footer">
-            <span class="subtle">双击进入子目录，单击选中</span>
-            <button class="btn btn-primary btn-sm" :disabled="!dirSelected" @click="confirmDirSelect">选择此文件夹</button>
-          </div>
+          <ul class="dir-list">
+            <li class="dir-item parent" @click="loadDir(dirParent)">⬆ ..</li>
+            <li v-for="entry in dirEntries" :key="entry.path" class="dir-item"
+              :class="{ selected: dirSelected === entry.path }"
+              @click="dirSelected = entry.path"
+              @dblclick="loadDir(entry.path)"
+            >📁 {{ entry.name }}</li>
+            <li v-if="!dirEntries.length" class="dir-empty">（空目录）</li>
+          </ul>
+          <p v-if="dirError" class="status-msg error">{{ dirError }}</p>
+        </div>
+        <div class="modal-footer">
+          <span class="subtle">双击进入子目录，单击选中</span>
+          <button class="btn btn-primary btn-sm" :disabled="!dirSelected" @click="confirmDirSelect">选择此文件夹</button>
         </div>
       </div>
-    </section>
+    </div>
 
   </div>
 </template>
@@ -164,6 +194,12 @@ const {
 
 // 用于在「全部同步」灰掉时保留勾选显示
 const backupIds = ref([]);
+
+// 折叠状态
+const sectionExpanded = ref({ shared: false, private: false });
+function toggleSection(name) {
+  sectionExpanded.value[name] = !sectionExpanded.value[name];
+}
 
 // Sync range
 const isAll = computed(() => syncPreset.value === "all");
@@ -186,6 +222,7 @@ const disabledStyle = computed(() => ({
 // Auth state
 const isAdmin = ref(false);
 const currentUser = ref(null);
+const dataLoaded = ref(false);
 
 // Private sources
 const privateSources = ref([]);
@@ -194,20 +231,52 @@ const addingPrivate = ref(false);
 const privateMsg = ref("");
 const privateError = ref(false);
 
+const BACKUP_KEY = "sync_all_backup";
+
 const sharedPresets = computed(() => {
   try {
-    return (otherPresets.value || []).filter(p => p && (!p.owner || p.owner === currentUser.value));
+    // fallback: 确保默认预设始终在列表中（即使后端不全）
+    const fallbackPresets = [
+      { id: "obsidian", label: "Obsidian 剪藏", description: "Obsidian Web Clipper" },
+      { id: "web_snapshots", label: "Web 快照", description: "type: web 抓取并转换的 Markdown" },
+      { id: "wiki", label: "Wiki", description: "摘要与问答沉淀目录" },
+    ];
+    const base = (otherPresets.value || []);
+    // 合并后端预设 + fallback，去重
+    const seen = new Set(base.map(p => p.id));
+    const merged = [...base];
+    for (const fb of fallbackPresets) {
+      if (!seen.has(fb.id)) merged.push(fb);
+    }
+    // 排除有 owner 的个人库条目
+    return merged.filter(p => p && !p.owner);
   } catch {
     return [];
   }
 });
 
-const myPrivatePresets = computed(() => {
+const privateSourceList = computed(() => {
   try {
-    return (privateSources.value || []).filter(p => p && p.is_owned);
+    return (privateSources.value || []).map(p => ({
+      ...p,
+      label: (p.label || p.id || "").replace(/\s*\(local\)\s*$/i, ""),
+      path: p.path || "",
+    }));
   } catch {
     return [];
   }
+});
+
+// 按 owner 分组
+const groupedPrivateSources = computed(() => {
+  const list = privateSourceList.value;
+  const groups = {};
+  for (const p of list) {
+    const owner = p.owner || "__ungrouped__";
+    if (!groups[owner]) groups[owner] = { owner: p.owner || "", sources: [] };
+    groups[owner].sources.push(p);
+  }
+  return Object.values(groups);
 });
 
 async function loadAuthState() {
@@ -225,7 +294,12 @@ async function loadPrivateSources() {
   try {
     const data = await api("/api/user/sources");
     if (data && Array.isArray(data.sources)) {
-      privateSources.value = data.sources.filter(s => s && s.is_owned);
+      if (isAdmin.value) {
+        // 管理员看到所有用户的个人目录（有 owner 的才是个人库，共享库无 owner）
+        privateSources.value = (data.sources || []).filter(s => s && s.owner);
+      } else {
+        privateSources.value = data.sources.filter(s => s && s.is_owned);
+      }
     } else {
       privateSources.value = [];
     }
@@ -236,10 +310,21 @@ async function loadPrivateSources() {
 
 function onToggleAll() {
   if (isAll.value) {
+    // 从全部同步切回自定义：恢复之前保存的选择
     setCustomSources(backupIds.value);
+    localStorage.removeItem(BACKUP_KEY);
   } else {
     backupIds.value = [...syncSourceIds.value];
-    setPreset("all");
+    // 持久化备份，F5 刷新后仍能保持灰掉时的勾选状态
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(backupIds.value));
+    if (isAdmin.value) {
+      // 全部同步 = 同步全部共享源（后端 preset=all）
+      setPreset("all");
+    } else {
+      // 非管理员：选中所有自己的私有源
+      const myIds = privateSourceList.value.map(p => p.id).filter(Boolean);
+      setCustomSources(myIds);
+    }
   }
 }
 
@@ -267,6 +352,9 @@ const dirSelected = ref("");
 const dirError = ref("");
 
 const confirmDelete = ref(null); // { label, id, isPrivate }
+
+// 目录选择器目标标记：'admin' 或 'private'
+const pickerTarget = ref("private");
 
 async function deleteSharedSource(p) {
   confirmDelete.value = { label: p.label, id: p.id, isPrivate: false };
@@ -347,6 +435,7 @@ async function addPrivateSource() {
 
 async function openDirPicker() {
   showDirPicker.value = true;
+  pickerTarget.value = "admin";
   dirSelected.value = "";
   dirError.value = "";
   await loadDir(customPath.value.trim() || "/sources");
@@ -354,6 +443,7 @@ async function openDirPicker() {
 
 async function openPrivateDirPicker() {
   showDirPicker.value = true;
+  pickerTarget.value = "private";
   dirSelected.value = "";
   dirError.value = "";
   await loadDir(privatePath.value.trim() || "/sources");
@@ -375,18 +465,27 @@ async function loadDir(path) {
 
 function confirmDirSelect() {
   if (dirSelected.value) {
-    // Determine which field to populate based on which picker is active
-    if (showDirPicker.value && customPath.value !== undefined) {
-      // For admin: check if customPath has focus
+    if (pickerTarget.value === "admin") {
+      customPath.value = dirSelected.value;
+    } else {
+      privatePath.value = dirSelected.value;
     }
-    privatePath.value = dirSelected.value;
     showDirPicker.value = false;
   }
 }
 
 onMounted(() => {
   loadAuthState().then(() => {
-    load().then(() => loadPrivateSources());
+    load().then(() => {
+      // 如果当前是「全部同步」模式，从 localStorage 恢复备份勾选状态
+      if (syncPreset.value === "all") {
+        const saved = localStorage.getItem(BACKUP_KEY);
+        if (saved) {
+          try { backupIds.value = JSON.parse(saved); } catch { backupIds.value = []; }
+        }
+      }
+      loadPrivateSources().finally(() => { dataLoaded.value = true; });
+    });
   });
 });
 </script>
@@ -417,6 +516,18 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-muted);
   margin-bottom: 4px;
 }
+.section-label.collapsible {
+  cursor: pointer;
+  user-select: none;
+}
+.section-label.collapsible:hover {
+  color: var(--fg-default);
+}
+.section-label .chevron {
+  font-size: 0.7rem;
+  width: 14px;
+  flex-shrink: 0;
+}
 
 /* Sync range */
 .preset-list {
@@ -440,6 +551,18 @@ onMounted(() => {
 .preset-option input[type="checkbox"] { margin-top: 3px; }
 .preset-row { position: relative; display: flex; align-items: center; }
 .preset-row .preset-option { flex: 1; }
+.preset-row.admin-row { padding: 8px 0; min-height: 36px; }
+.preset-info {
+  flex: 1;
+  padding: 2px 0;
+}
+.preset-info-admin {
+  padding: 2px 12px;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius);
+  background: var(--bg-muted);
+  margin-right: 8px;
+}
 .delete-source-btn {
   position: absolute;
   right: 2px;
@@ -453,6 +576,18 @@ onMounted(() => {
 .preset-row:hover .delete-source-btn:hover { opacity: 1; color: var(--danger-fg); }
 .preset-label { font-size: 0.9rem; font-weight: 500; }
 .preset-desc { font-size: 0.78rem; color: var(--fg-subtle); margin-top: 1px; font-family: var(--font-mono); }
+
+.owner-group-label {
+  padding: 6px 2px 2px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--fg-muted);
+}
+.owner-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* Custom path */
 .custom-path-row {
