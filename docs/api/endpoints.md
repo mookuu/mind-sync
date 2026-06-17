@@ -10,8 +10,8 @@
 | 方法 | 路径             | 说明                                       |
 | ---- | ---------------- | ------------------------------------------ |
 | GET  | `/api/health`    | 系统健康检查，返回各源状态和安全警告       |
-| GET  | `/api/auth-mode` | 查看当前认证模式                           |
-| POST | `/api/login`     | 密码登录，返回 session cookie + CSRF token |
+| GET  | `/api/auth-mode` | 查看当前认证模式（返回 `display_name`、`role`、`username`）|
+| POST | `/api/login`     | 密码登录，返回 session cookie + CSRF token + `display_name` |
 | POST | `/api/logout`    | 登出                                       |
 
 ## 知识源管理
@@ -28,23 +28,25 @@
 
 ## 用户私有源管理
 
-| 方法 | 路径                           | 说明                             |
-| ---- | ------------------------------ | -------------------------------- |
-| GET  | `/api/user/sources`            | 列出当前用户可见的源（含 owner） |
-| POST | `/api/user/sources`            | 添加自己的私有源                 |
-| DELETE | `/api/user/sources/{id}`     | 删除自己的私有源                 |
+| 方法   | 路径                              | 说明                                        |
+| ------ | --------------------------------- | ------------------------------------------- |
+| GET    | `/api/user/sources`               | 列出当前用户可见的源（含 owner、shared 标记）|
+| POST   | `/api/user/sources`               | 添加自己的私有源                            |
+| DELETE | `/api/user/sources/{id}`          | 删除自己的私有源                            |
+| PUT    | `/api/user/sources/{id}/share`    | 切换共享状态（🔒→🔓），返回 `{shared: bool}` |
 
 ## 用户管理
 
-| 方法 | 路径                               | 说明                 |
-| ---- | ---------------------------------- | -------------------- |
-| GET  | `/api/admin/users`                 | 列出所有用户         |
-| POST | `/api/admin/users`                 | 创建用户（含目录）   |
-| DELETE | `/api/admin/users/{username}`    | 删除用户及其私有数据 |
-| PUT  | `/api/admin/users/{username}/role` | 修改用户角色         |
-| POST | `/api/admin/users/{username}/reset-password` | 管理员重置用户密码 |
-| GET  | `/api/user/me`                     | 当前用户信息         |
-| POST | `/api/change-password`             | 修改密码             |
+| 方法   | 路径                                      | 说明                                                |
+| ------ | ----------------------------------------- | --------------------------------------------------- |
+| GET    | `/api/admin/users`                        | 列出所有用户（含 display_name、status、source_count）|
+| POST   | `/api/admin/users`                        | 创建用户（支持 `display_name` 参数）                |
+| DELETE | `/api/admin/users/{username}`             | 删除用户（保留目录）                                |
+| PUT    | `/api/admin/users/{username}/role`        | 修改用户角色（member→创建目录，admin→目录休眠）    |
+| POST   | `/api/admin/users/{username}/reset-password` | 管理员重置用户密码                               |
+| GET    | `/api/user/me`                            | 当前用户信息（含 `display_name`）                   |
+| PUT    | `/api/user/display-name`                  | 修改自己的表示名                                    |
+| POST   | `/api/change-password`                    | 修改密码                                            |
 
 ## 检索与问答
 
@@ -76,7 +78,9 @@
 | POST | `/api/lint`               | Wiki 健康检查（断链/孤岛/过期）                       |
 | POST | `/api/ingest`             | 增量索引（不拉取远程）                                |
 
-> **注意**：Wiki 路径 `shared/xxx` 为共享知识库（仅 admin 可写），`users/{username}/xxx` 为用户私有（仅本人可写）。
+> **注意**：Wiki 路径 `shared/xxx` 为全局知识库（仅 admin 可写），`users/{username}/xxx` 为用户私有（仅本人可写）。
+
+> **注意**：用户状态分为 `normal`（正常）和 `locked`（登录失败超限锁定 5 分钟）。
 
 ## 规则约束 (Purpose)
 
