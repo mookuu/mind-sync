@@ -39,9 +39,20 @@ def _get_jieba():
 # CJK character ranges
 _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]")
 
-# Try to load user dictionary
-_DEFAULT_DICT = Path(__file__).resolve().parent.parent / "data" / "jieba_dict.txt"
-_USER_DICT_PATH = str(_DEFAULT_DICT) if _DEFAULT_DICT.exists() else None
+# Try to load user dictionary (优先持久卷 /data/jieba_dict.txt，其次内置文件)
+try:
+    from ..config import settings
+    _DATA_DICT = Path(settings.data_dir) / "jieba_dict.txt"
+except Exception:
+    _DATA_DICT = None
+
+if _DATA_DICT and _DATA_DICT.exists():
+    _USER_DICT_PATH = str(_DATA_DICT)
+elif Path("/data/config/jieba_dict.txt").exists():
+    _USER_DICT_PATH = "/data/config/jieba_dict.txt"
+else:
+    _DEFAULT_DICT = Path(__file__).resolve().parent.parent / "data" / "jieba_dict.txt"
+    _USER_DICT_PATH = str(_DEFAULT_DICT) if _DEFAULT_DICT.exists() else None
 
 # Auto-load dictionary at import time
 _auto_loaded = False

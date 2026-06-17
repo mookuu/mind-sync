@@ -237,6 +237,14 @@ Phase 5 ── UI + 管理功能                ✅ 已完成
   ├─ P6-2 批量重索引 API + 按钮         ✅ /api/admin/reindex
   └─ P6-3 数据备份脚本                  ✅ scripts/backup.py
 
+基础设施变更（2025-06 执行）：
+  ├─ 数据目录迁移：`./data/` → `${DATA_ROOT:-/home/moku/data/mind-sync-data}`
+  ├─ Docker 卷映射：通配 `/home/moku:/home/moku:ro`，代替逐个源映射
+  ├─ sources.yaml：精简为仅保留默认源（obsidian, web, wiki）
+  ├─ 目录浏览器默认路径：`/home/moku/`
+  ├─ jieba 词典移至持久卷 `/data/jieba_dict.txt`
+  └─ 用户目录：`<DATA_ROOT>/<username>/default/`
+
 待办（需服务器环境）：
   └─ 运行 scripts/reindex.py（需 jieba 已安装）
 ```

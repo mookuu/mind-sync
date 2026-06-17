@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     secret_key: str = "replace-with-random-secret"
     api_key: str = "mind-sync-dev-key"
     data_dir: str = "/data"
+    data_root: str = ""
 
     @field_validator("data_dir", mode="before")
     @classmethod

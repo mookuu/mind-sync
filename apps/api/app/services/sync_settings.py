@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Any
 
 from ..models import Source
@@ -58,13 +59,15 @@ def list_sync_presets() -> list[dict[str, Any]]:
     items = []
     fixed_ids = {"all", "obsidian", "web_snapshots", "wiki"}
     for key, meta in SYNC_PRESETS.items():
+        presets_path = meta.get("path", "")
         items.append(
             {
                 "id": key,
                 "label": meta["label"],
                 "description": meta.get("description", ""),
                 "source_ids": meta.get("source_ids"),
-                "path": meta.get("path", ""),
+                "path": presets_path,
+                "path_exists": Path(presets_path).exists() if presets_path else None,
             }
         )
     from .source_sync_key import source_sync_key
@@ -89,6 +92,7 @@ def list_sync_presets() -> list[dict[str, Any]]:
                 "description": spath,
                 "source_ids": [sk],
                 "path": spath,
+                "path_exists": Path(spath).exists() if spath and not spath.startswith(('http://', 'https://', 'git@')) else None,
                 "type": stype,
                 "owner": getattr(src, "owner", None),
             }

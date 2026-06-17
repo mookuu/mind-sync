@@ -108,9 +108,19 @@ Shallow clone / pull 到 `path`（默认 `/sources/<id>`），需可写挂载；
   include: ["**/*.md"]
 ```
 
-## Docker 卷映射
+## 路径规则（重要）
 
-`.env` / `docker-compose` 中常见变量：
+所有路径均为 **服务器（Docker 宿主机）绝对路径**，而非容器内路径。容器通过以下卷映射访问：
+
+| 宿主机路径 | 容器内路径 | 用于 |
+|-----------|-----------|------|
+| `${DATA_ROOT:-/home/moku/data/mind-sync-data}` | `/data` | DB、Wiki、user_sources.yaml |
+| `/home/moku` | `/home/moku` | 用户通过 UI 添加的自定义源 |
+| `./sources/obsidian` | `/sources/obsidian` | 默认 obsidian 剪藏（向后兼容） |
+
+示例：源 `id: wiki` 的 `path: "/home/moku/data/mind-sync-data/wiki"` 在容器内通过 `/data/wiki` 访问。
+
+## Docker 卷映射
 
 | 变量 | 挂载到 |
 |------|--------|

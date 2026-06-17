@@ -7,13 +7,15 @@
     <p class="subtle">管理团队用户。新用户会自动创建专属目录和默认私有源。</p>
 
     <div class="toolbar">
-      <button class="btn btn-primary btn-sm" @click="showCreate = true">＋ 创建用户</button>
+      <button class="btn btn-primary btn-sm" @click="openCreate">＋ 创建用户</button>
     </div>
 
     <table class="user-table" v-if="users.length">
       <thead>
         <tr>
           <th>用户名</th>
+          <th>表示名</th>
+          <th>状态</th>
           <th>角色</th>
           <th>创建时间</th>
           <th>源数量</th>
@@ -24,8 +26,14 @@
       <tbody>
         <tr v-for="u in users" :key="u.username">
           <td><strong>{{ u.username }}</strong></td>
+          <td>{{ u.display_name || u.username }}</td>
           <td>
-            <select :value="u.role" @change="changeRole(u.username, $event.target.value)" class="role-select">
+            <span class="status-badge" :class="u.status === 'locked' ? 'status-locked' : 'status-normal'">
+              {{ u.status === 'locked' ? '🔒 锁定' : '✅ 正常' }}
+            </span>
+          </td>
+          <td>
+            <select :value="u.role" @change="doChangeRole(u.username, $event.target.value)" class="role-select">
               <option value="member">member</option>
               <option value="admin">admin</option>
             </select>
@@ -53,6 +61,10 @@
           <div class="field">
             <label>用户名</label>
             <input v-model="newUser.username" type="text" placeholder="如 alice" />
+          </div>
+          <div class="field">
+            <label>表示名</label>
+            <input v-model="newUser.display_name" type="text" placeholder="如 爱丽丝（可选）" />
           </div>
           <div class="field">
             <label>密码</label>
@@ -116,11 +128,32 @@
         </div>
       </div>
     </div>
+
+    <!-- 角色变更确认弹窗 -->
+    <div v-if="roleConfirm" class="modal-overlay" @click.self="roleConfirm = null">
+      <div class="confirm-dialog">
+        <p>确认将「<strong>{{ roleConfirm.username }}</strong>」的角色改为 <strong>{{ roleConfirm.role }}</strong>？</p>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:12px">
+          <button class="btn btn-ghost" @click="roleConfirm = null">取消</button>
+          <button class="btn btn-primary btn-sm" @click="confirmChangeRole">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 提示弹窗 -->
+    <div v-if="alertMsg" class="modal-overlay" @click.self="alertMsg = ''">
+      <div class="confirm-dialog">
+        <p>{{ alertMsg }}</p>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:12px">
+          <button class="btn btn-primary btn-sm" @click="alertMsg = ''">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import api from "../api/index.js";
 
 const users = ref([]);
@@ -136,8 +169,14 @@ const resetPasswordConfirm = ref("");
 const resetting = ref(false);
 const resetMsg = ref("");
 const resetError = ref(false);
+const roleConfirm = ref(null);
+const alertMsg = ref("");
 
-const newUser = ref({ username: "", password: "", role: "member" });
+function showAlert(msg) {
+  alertMsg.value = msg;
+}
+
+const newUser = ref({ username: "", password: "", role: "member", display_name: "" });
 
 async function loadUsers() {
   try {
@@ -161,11 +200,11 @@ async function doCreateUser() {
   try {
     await api("/api/admin/users", {
       method: "POST",
-      body: { username: username.trim(), password, role },
+      body: { username: username.trim(), password, role, display_name: newUser.value.display_name?.trim() || '' },
     });
     createMsg.value = `用户 ${username} 创建成功`;
     showCreate.value = false;
-    newUser.value = { username: "", password: "", role: "member" };
+    newUser.value = { username: "", password: "", role: "member", display_name: "" };
     await loadUsers();
   } catch (e) {
     createMsg.value = e.message || "创建失败";
@@ -175,7 +214,15 @@ async function doCreateUser() {
   }
 }
 
+function openCreate() {
+  deleteTarget.value = null;
+  resetTarget.value = null;
+  showCreate.value = true;
+}
+
 function confirmDeleteUser(u) {
+  showCreate.value = false;
+  resetTarget.value = null;
   deleteTarget.value = u;
 }
 
@@ -188,14 +235,20 @@ async function doDeleteUser() {
     await api(`/api/admin/users/${encodeURIComponent(u.username)}`, { method: "DELETE" });
     await loadUsers();
   } catch (e) {
-    alert(`删除失败: ${e.message || "未知错误"}`);
+    showAlert(`删除失败: ${e.message || "未知错误"}`);
   } finally {
     deleting.value = false;
   }
 }
 
-async function changeRole(username, role) {
-  if (!confirm(`确认将 ${username} 的角色改为 ${role}？`)) return;
+function doChangeRole(username, role) {
+  roleConfirm.value = { username, role };
+}
+
+async function confirmChangeRole() {
+  if (!roleConfirm.value) return;
+  const { username, role } = roleConfirm.value;
+  roleConfirm.value = null;
   try {
     await api(`/api/admin/users/${encodeURIComponent(username)}/role`, {
       method: "PUT",
@@ -203,11 +256,13 @@ async function changeRole(username, role) {
     });
     await loadUsers();
   } catch (e) {
-    alert(`修改失败: ${e.message || "未知错误"}`);
+    showAlert(`修改失败: ${e.message || "未知错误"}`);
   }
 }
 
 function showResetPwd(u) {
+  showCreate.value = false;
+  deleteTarget.value = null;
   resetTarget.value = u;
   resetPassword.value = "";
   resetPasswordConfirm.value = "";
@@ -250,7 +305,24 @@ function formatTime(t) {
   return new Date(t * 1000).toLocaleString();
 }
 
-onMounted(loadUsers);
+function onGlobalKeydown(e) {
+  if (e.key === 'Escape') {
+    showCreate.value = false;
+    deleteTarget.value = null;
+    resetTarget.value = null;
+    roleConfirm.value = null;
+    alertMsg.value = '';
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onGlobalKeydown);
+  loadUsers();
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onGlobalKeydown);
+});
 </script>
 
 <style scoped>
@@ -303,6 +375,9 @@ onMounted(loadUsers);
 }
 .status-msg { margin-top: 8px; font-size: 0.85rem; }
 .status-msg.error { color: var(--danger-fg); }
+.status-badge { font-size: 0.75rem; font-weight: 600; padding: 2px 6px; border-radius: 3px; }
+.status-normal { color: #16a34a; background: rgba(22,163,74,0.1); }
+.status-locked { color: #dc2626; background: rgba(220,38,38,0.1); }
 .confirm-dialog {
   background: var(--bg-card);
   border: 1px solid var(--border-default);
@@ -320,5 +395,46 @@ onMounted(loadUsers);
   white-space: nowrap;
   display: flex;
   gap: 4px;
+}
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+}
+.modal-sm {
+  width: 400px;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-muted);
+}
+.modal-header h4 { font-size: 1rem; font-weight: 600; }
+.modal-body {
+  padding: 12px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-muted);
 }
 </style>

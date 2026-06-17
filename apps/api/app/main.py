@@ -198,9 +198,22 @@ def login(payload: LoginRequest, request: Request, response: Response) -> dict[s
         "login_success", request, actor=user.username,
         detail=f"server-side session role={user.role.value} remember_me={remember_me}",
     )
+    # 获取 display_name
+    display_name = user.username
+    conn2 = get_db()
+    try:
+        row = conn2.execute(
+            "SELECT display_name FROM users WHERE username = ?", (user.username,)
+        ).fetchone()
+        if row and row["display_name"]:
+            display_name = row["display_name"]
+    finally:
+        conn2.close()
+
     return {
         "ok": True,
         "username": user.username,
+        "display_name": display_name,
         "role": user.role.value,
         "can_write": can_write(user.role),
         "csrf_header": settings.csrf_header_name,
@@ -227,6 +240,20 @@ def logout(request: Request, response: Response) -> dict[str, bool]:
 def auth_mode(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     role = resolve_role(request)
     from .services.auth import session_account
+    username = session_account(request) or None
+
+    # 获取 display_name
+    display_name = username
+    if username:
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT display_name FROM users WHERE username = ?", (username,)
+            ).fetchone()
+            if row and row["display_name"]:
+                display_name = row["display_name"]
+        finally:
+            conn.close()
 
     return {
         "cookie_enabled": True,
@@ -234,7 +261,8 @@ def auth_mode(request: Request, _: Any = Depends(require_any_auth)) -> dict[str,
         "csrf_header": csrf_header_key(),
         "role": role,
         "can_write": can_write(role),
-        "username": session_account(request) or None,
+        "username": username,
+        "display_name": display_name,
         "authenticated": True,
     }
 
@@ -383,13 +411,15 @@ def _build_sources_response(username: str | None = None, role: str | None = None
     items = []
     for source in load_ordered_sources(settings_map, username=username, role=role):
         root = resolve_source_root(source)
+        path_str = str(root)
         items.append(
             {
                 "id": source.id,
                 "sync_key": source_sync_key(source),
                 "label": source_display_label(source),
                 "type": source.source_type,
-                "path": str(root),
+                "path": path_str,
+                "path_exists": root.exists(),
                 "url": source.url,
                 "branch": source.branch,
                 "paths": source.paths,
@@ -425,7 +455,12 @@ def admin_reload_sources(request: Request, _: Any = Depends(require_admin)) -> d
 
 
 @app.get("/api/admin/browse-dir")
-def browse_directory(path: str = "/home/moku", _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def browse_directory(path: str = "", _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    if not path:
+        # 默认浏览路径：优先 DATA_ROOT，否则 ~/
+        from pathlib import Path as PPath
+        default = getattr(settings, "data_root", None) or str(PPath.home())
+        path = default
     from pathlib import Path
     base = Path(path).expanduser().resolve()
     if not base.is_dir():
@@ -444,6 +479,7 @@ def browse_directory(path: str = "/home/moku", _: Any = Depends(require_any_auth
 def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
     from pathlib import Path
     import yaml
+    from .services.user_manager import get_user_sources_path
 
     path_str = (body.get("path") or "").strip()
     if not path_str:
@@ -457,12 +493,15 @@ def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Dep
     if not source_id or source_id.startswith("."):
         raise HTTPException(status_code=400, detail=f"文件夹名称无效：{source_id}")
 
-    src_file = Path(settings.sources_file)
-    if not src_file.is_file():
-        raise HTTPException(status_code=404, detail=f"sources file not found: {src_file}")
-    raw = src_file.read_text(encoding="utf-8")
-    config = yaml.safe_load(raw) or {}
-    sources: list = config.get("sources", [])
+    # 写入 user_sources.yaml（非只读的 sources.yaml）
+    user_src = get_user_sources_path()
+    user_src.parent.mkdir(parents=True, exist_ok=True)
+    if user_src.is_file():
+        raw = user_src.read_text(encoding="utf-8")
+        config = yaml.safe_load(raw) or {}
+    else:
+        config = {}
+    sources: list = config.get("sources", []) or []
     existing_ids = {s.get("id") for s in sources if isinstance(s, dict)}
     if source_id in existing_ids:
         raise HTTPException(status_code=409, detail=f"同步源已存在：{source_id}（{path}）")
@@ -476,7 +515,7 @@ def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Dep
     }
     sources.append(new_source)
     config["sources"] = sources
-    src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+    user_src.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
     reload_sources_config()
     add_audit_event("sources_custom_added", request, actor=resolve_actor(request), detail=f"id={source_id} path={path}")
     return {"ok": True, "source": new_source}
@@ -536,24 +575,42 @@ def admin_list_users(request: Request, _: Any = Depends(require_admin)) -> dict[
     """List all users with their role, creation time, and source count."""
     from .services.user_manager import get_user_dir
 
+    from .services.user_manager import load_user_sources as _load_user_sources
+    from .services.sync_settings import list_sync_presets
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT username, role, created_at FROM users ORDER BY created_at"
+            "SELECT username, role, created_at, display_name, locked_until FROM users ORDER BY created_at"
         ).fetchall()
+        user_sources = _load_user_sources()
+        # 管理员源数量 = 全局预设中无 owner 的条目数
+        all_presets = list_sync_presets()
+        admin_source_count = sum(1 for p in all_presets if p.get("owner") is None and p.get("id") not in ("all", "custom"))
+        user_map = {}
+        for s in user_sources:
+            if isinstance(s, dict):
+                user_map.setdefault(s.get("owner"), 0)
+                user_map[s.get("owner")] += 1
         items = []
+        now = time.time()
         for row in rows:
             username = row["username"]
+            role = row["role"]
             udir = get_user_dir(username)
-            source_count = conn.execute(
-                "SELECT COUNT(1) AS c FROM documents WHERE source_owner = ?", (username,)
-            ).fetchone()["c"]
+            if role == "admin":
+                source_count = admin_source_count
+            else:
+                source_count = user_map.get(username, 0)
+            locked_until = row["locked_until"] or 0
+            status = "locked" if locked_until > now else "normal"
             items.append({
                 "username": username,
-                "role": row["role"],
+                "display_name": row["display_name"] or username,
+                "role": role,
                 "created_at": row["created_at"],
                 "has_dir": udir.exists(),
                 "source_count": source_count,
+                "status": status,
             })
         return {"users": items}
     finally:
@@ -571,6 +628,7 @@ def admin_create_user(request: Request, body: dict[str, Any], _: Any = Depends(r
     username = (body.get("username") or "").strip()
     password = body.get("password") or ""
     role = (body.get("role") or "member").strip().lower()
+    display_name = (body.get("display_name") or "").strip()
     if role not in ("admin", "member"):
         raise HTTPException(status_code=400, detail="角色必须是 admin 或 member")
     if not username or len(username) < 2:
@@ -586,8 +644,8 @@ def admin_create_user(request: Request, body: dict[str, Any], _: Any = Depends(r
             raise HTTPException(status_code=409, detail=f"用户已存在：{username}")
         password_hash = hash_password(password)
         conn.execute(
-            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-            (username, password_hash, role, time.time()),
+            "INSERT INTO users(username, password_hash, role, created_at, display_name) VALUES (?, ?, ?, ?, ?)",
+            (username, password_hash, role, time.time(), display_name or username),
         )
         conn.commit()
     except HTTPException:
@@ -624,10 +682,9 @@ def admin_create_user(request: Request, body: dict[str, Any], _: Any = Depends(r
 
 @app.delete("/api/admin/users/{username}")
 def admin_delete_user(request: Request, username: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Delete a user, their private sources, and indexed data."""
+    """Delete a user — 移除 DB、索引数据、私有源配置，但保留用户目录（复用）。"""
     from .services.user_manager import (
         delete_user_index_data,
-        remove_user_dir,
         remove_user_source_from_yaml,
     )
     from .services.indexer import reload_sources_config
@@ -648,15 +705,26 @@ def admin_delete_user(request: Request, username: str, _: Any = Depends(require_
     # Clean up data
     delete_user_index_data(username)
     remove_user_source_from_yaml(username)
-    remove_user_dir(username)
     reload_sources_config()
-    add_audit_event("user_deleted", request, actor=resolve_actor(request), detail=f"username={username}")
+    add_audit_event("user_deleted", request, actor=resolve_actor(request), detail=f"username={username} (directory kept)")
     return {"ok": True, "username": username}
 
 
 @app.put("/api/admin/users/{username}/role")
 def admin_set_user_role(request: Request, username: str, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Change a user's role."""
+    """Change a user's role.
+
+    - member → admin: 目录保留（休眠），移除私有源注册
+    - admin → member: 创建/确保目录存在，注册私有源
+    """
+    from .services.user_manager import (
+        append_user_source_to_yaml,
+        build_user_source_entry,
+        ensure_user_dir,
+        remove_user_source_from_yaml,
+    )
+    from .services.indexer import reload_sources_config
+
     role = (body.get("role") or "").strip().lower()
     if role not in ("admin", "member"):
         raise HTTPException(status_code=400, detail="角色必须是 admin 或 member")
@@ -669,6 +737,25 @@ def admin_set_user_role(request: Request, username: str, body: dict[str, Any], _
         conn.commit()
     finally:
         conn.close()
+
+    if role == "member":
+        # 切换为普通用户 → 创建/确保用户目录存在，注册私有源
+        try:
+            ensure_user_dir(username)
+        except Exception as e:
+            logger.error("创建用户目录失败: %s", traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"创建目录失败: {e}")
+        try:
+            entry = build_user_source_entry(username)
+            append_user_source_to_yaml(entry)
+        except Exception as e:
+            logger.error("写入 user_sources.yaml 失败: %s", traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"写入源配置失败: {e}")
+    else:
+        # 切换为管理员 → 仅移除私有源注册，目录保留（休眠状态）
+        remove_user_source_from_yaml(username)
+
+    reload_sources_config()
     add_audit_event("user_role_changed", request, actor=resolve_actor(request), detail=f"username={username} role={role}")
     return {"ok": True, "username": username, "role": role}
 
@@ -711,7 +798,7 @@ def user_me(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, A
     conn = get_db()
     try:
         row = conn.execute(
-            "SELECT username, role, created_at FROM users WHERE username = ?",
+            "SELECT username, role, created_at, display_name FROM users WHERE username = ?",
             (username,),
         ).fetchone()
         if not row:
@@ -722,6 +809,7 @@ def user_me(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, A
         udir = get_user_dir(username)
         return {
             "username": row["username"],
+            "display_name": row["display_name"] or row["username"],
             "role": row["role"],
             "created_at": row["created_at"],
             "has_dir": udir.exists(),
@@ -736,22 +824,62 @@ def user_me(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, A
 # ──────────────────────────────────────────────
 
 
+@app.put("/api/user/display-name")
+def user_set_display_name(request: Request, body: dict[str, Any], _: Any = Depends(require_any_auth)) -> dict[str, bool]:
+    """Update current user's display name."""
+    username, _ = resolve_current_user(request)
+    if not username:
+        raise HTTPException(status_code=401, detail="请先登录")
+    display_name = (body.get("display_name") or "").strip()
+    if not display_name:
+        raise HTTPException(status_code=400, detail="表示名不能为空")
+    if len(display_name) > 50:
+        raise HTTPException(status_code=400, detail="表示名过长（最多 50 字符）")
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE users SET display_name = ? WHERE username = ?",
+            (display_name, username),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
 @app.get("/api/user/sources")
 def user_list_sources(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     """Return sources visible to the current user (shared + own)."""
+    from pathlib import Path
     username, role = resolve_current_user(request)
     sources_enriched = load_ordered_sources(username=username, role=role)
     items = []
     for source in sources_enriched:
+        spath = str(source.path or "")
+        # 获取 owner 的 display_name
+        owner_display_name = None
+        if source.owner:
+            conn = get_db()
+            try:
+                row = conn.execute(
+                    "SELECT display_name FROM users WHERE username = ?", (source.owner,)
+                ).fetchone()
+                if row and row["display_name"]:
+                    owner_display_name = row["display_name"]
+            finally:
+                conn.close()
         items.append({
             "id": source.id,
             "sync_key": source_sync_key(source),
             "label": source_display_label(source),
             "type": source.source_type,
-            "path": str(source.path or ""),
+            "path": spath,
+            "path_exists": Path(spath).exists() if spath else False,
             "owner": source.owner,
+            "owner_display_name": owner_display_name,
             "is_shared": source.owner is None,
             "is_owned": source.owner == username,
+            "shared": source.shared,
         })
     return {"sources": items}
 
@@ -807,6 +935,25 @@ def user_add_source(request: Request, body: dict[str, Any], _: Any = Depends(req
     reload_sources_config()
     add_audit_event("user_source_added", request, actor=resolve_actor(request), detail=f"id={source_id} owner={username}")
     return {"ok": True, "source": new_source}
+
+
+@app.put("/api/user/sources/{source_id}/share")
+def user_toggle_source_share(request: Request, source_id: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    """Toggle the shared flag of a user's personal source."""
+    from .services.user_manager import toggle_source_shared
+    from .services.auth import require_own_source
+    from .services.indexer import reload_sources_config
+
+    require_own_source(source_id, request)
+    username, _ = resolve_current_user(request)
+    try:
+        new_state = toggle_source_shared(username, source_id)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    reload_sources_config()
+    add_audit_event("user_source_share_toggle", request, actor=resolve_actor(request),
+                    detail=f"id={source_id} owner={username} shared={new_state}")
+    return {"ok": True, "shared": new_state}
 
 
 @app.delete("/api/user/sources/{source_id}")

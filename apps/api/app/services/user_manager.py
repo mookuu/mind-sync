@@ -11,7 +11,10 @@ from ..db import get_db
 
 
 # 私有源独立存储文件（sources.yaml 可能只读，私有源写到此文件）
-_USER_SOURCES_FILE = Path(settings.data_dir) / "user_sources.yaml"
+_USER_SOURCES_FILE = Path(settings.data_dir) / "config" / "user_sources.yaml"
+
+# 用户专属目录根路径（宿主机视角：~/data/mind-sync-data/users/ 对应容器内 /data/users/）
+_USER_ROOT = Path(settings.data_root) / "users" if settings.data_root else Path(settings.data_dir) / "users"
 
 
 def get_user_sources_path() -> Path:
@@ -33,7 +36,7 @@ def load_user_sources() -> list[dict[str, Any]]:
 
 def get_user_dir(username: str) -> Path:
     """Return the user's personal directory path."""
-    return Path(settings.data_dir) / "users" / username
+    return _USER_ROOT / username / "default"
 
 
 def ensure_user_dir(username: str) -> Path:
@@ -60,6 +63,7 @@ def build_user_source_entry(username: str) -> dict[str, Any]:
     udir = get_user_dir(username)
     return {
         "id": f"{username}-default",
+        "label": "默认",
         "type": "local",
         "owner": username,
         "path": str(udir),
@@ -84,6 +88,24 @@ def append_user_source_to_yaml(source_entry: dict[str, Any]) -> None:
     sources.append(source_entry)
     config["sources"] = sources
     _USER_SOURCES_FILE.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+
+
+def toggle_source_shared(username: str, source_id: str) -> bool:
+    """Toggle the shared flag of a user's source. Returns new shared state."""
+    import yaml
+    if not _USER_SOURCES_FILE.is_file():
+        raise FileNotFoundError(f"User sources file not found: {_USER_SOURCES_FILE}")
+    raw = _USER_SOURCES_FILE.read_text(encoding="utf-8")
+    config = yaml.safe_load(raw) or {}
+    sources: list = config.get("sources", []) or []
+    for s in sources:
+        if isinstance(s, dict) and s.get("id") == source_id and s.get("owner") == username:
+            current = bool(s.get("shared", False))
+            s["shared"] = not current
+            config["sources"] = sources
+            _USER_SOURCES_FILE.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            return not current
+    raise ValueError(f"Source not found or not owned by user: {source_id}")
 
 
 def remove_user_source_from_yaml(username: str) -> None:

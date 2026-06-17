@@ -1,14 +1,10 @@
 <template>
-  <nav class="sidebar-nav" @mouseleave="onNavLeave">
+  <nav class="sidebar-nav">
     <!-- 按指定顺序渲染：每个父级紧接其子菜单 -->
     <template v-for="item in orderedItems" :key="item.path">
       <!-- 父级菜单（带子项） -->
       <template v-if="item.children">
-        <div
-          class="nav-group"
-          @mouseenter="onParentEnter(item.path)"
-          @mouseleave="onParentLeave(item.path)"
-        >
+        <div class="nav-group">
           <router-link
             :to="item.path"
             class="nav-item parent"
@@ -17,12 +13,9 @@
           >
             <span class="nav-icon">{{ item.icon }}</span>
             <span class="nav-label">{{ item.label }}</span>
-            <span class="nav-chevron">{{ hovered === item.path || expanded[item.path] ? "▾" : "▸" }}</span>
+            <span class="nav-chevron">{{ expanded[item.path] ? "▾" : "▸" }}</span>
           </router-link>
-          <div
-            v-if="hovered === item.path || expanded[item.path]"
-            class="sub-nav"
-          >
+          <div v-if="expanded[item.path]" class="sub-nav">
             <router-link
               v-for="child in item.children"
               :key="child.path"
@@ -59,16 +52,32 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 
 const route = useRoute();
 
-// hovered: 鼠标悬停展开的父级（自动收起）
-// expanded: 点击锁定的父级（点其他父级或切页面时解锁）
-const hovered = ref(null);
+// expanded: 当前展开的父级（同一时间只有一个）
 const expanded = ref({});
-const leaveTimer = ref(null);
+
+// 根据当前路由自动展开对应父级
+function expandForRoute(path) {
+  if (path.startsWith('/sync/')) return { '/sync/control': true };
+  if (path.startsWith('/admin/')) return { '/admin/dashboard': true };
+  if (path === '/library') return { '/library': true };
+  return {};
+}
+expanded.value = expandForRoute(route.path);
+
+// 路由变化时自动展开对应父级
+watch(() => route.path, (path) => {
+  const target = expandForRoute(path);
+  if (Object.keys(target).length) {
+    expanded.value = target;
+  } else {
+    expanded.value = {};
+  }
+});
 
 const props = defineProps({
   userRole: { type: String, default: "" },
@@ -123,43 +132,13 @@ function isActive(path) {
   return route.path === path || route.path.startsWith(path + "/");
 }
 
-function onParentEnter(path) {
-  if (leaveTimer.value) clearTimeout(leaveTimer.value);
-  // 关闭其他父级的 hover
-  if (hovered.value && hovered.value !== path) {
-    hovered.value = null;
-  }
-  hovered.value = path;
-}
-
-function onParentLeave(path) {
-  // 延迟收起，避免移入子菜单时闪烁
-  leaveTimer.value = setTimeout(() => {
-    if (hovered.value === path && !expanded.value[path]) {
-      hovered.value = null;
-    }
-  }, 200);
-}
-
 function onParentClick(path) {
-  // 点击锁定展开，同时清除 hover 状态
-  const isCurrentlyLocked = expanded.value[path];
-  // 清除所有锁定
-  expanded.value = {};
-  hovered.value = null;
-  if (!isCurrentlyLocked) {
-    expanded.value[path] = true;
+  // 单击父级：展开/收起切换，同一时间只能有一个父级展开
+  if (expanded.value[path]) {
+    expanded.value = {};
+  } else {
+    expanded.value = { [path]: true };
   }
-}
-
-function onNavLeave() {
-  if (leaveTimer.value) clearTimeout(leaveTimer.value);
-  // 没有锁定时收起所有 hover 展开
-  for (const key of Object.keys(expanded.value)) {
-    if (!expanded.value[key]) continue;
-    return; // 有锁定项，不收起
-  }
-  hovered.value = null;
 }
 </script>
 

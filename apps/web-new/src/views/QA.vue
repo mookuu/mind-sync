@@ -45,7 +45,14 @@ async function ask() {
     answer.value = data.answer || data.content || "";
     evidences.value = data.evidences || [];
   } catch (e) {
-    answer.value = `**错误**: ${e.message}`;
+    const msg = e.message || "";
+    if (msg.includes("401") || msg.includes("Authentication failed") || msg.includes("token")) {
+      answer.value = "⚠️ **LLM 服务未配置**\n\n请在 `.env` 中设置有效的 `LLM_API_KEY`，或联系管理员配置后重试。";
+    } else if (msg.includes("timeout") || msg.includes("timed out")) {
+      answer.value = "⏱️ **请求超时**\n\nLLM 服务响应超时，请稍后重试。";
+    } else {
+      answer.value = `❌ **查询失败**: ${msg}`;
+    }
     evidences.value = [];
   } finally {
     asking.value = false;

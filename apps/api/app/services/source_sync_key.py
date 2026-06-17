@@ -80,4 +80,6 @@ def is_known_sync_key(key: str, sources: list[Source]) -> bool:
 
 def source_display_label(source: Source) -> str:
     st = (source.source_type or "local").strip().lower()
+    if source.id.endswith("-default"):
+        return "默认"
     return f"{source.id} ({st})"

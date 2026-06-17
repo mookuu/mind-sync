@@ -53,6 +53,7 @@ def _load_sources_cached(cache_key: float) -> list[Source]:
                         fetch_confirmed=bool(item.get("fetch_confirmed", False)),
                         respect_robots=item.get("respect_robots"),
                         owner=item.get("owner"),
+                        shared=bool(item.get("shared", False)),
                     )
                 )
             except (KeyError, TypeError):
@@ -65,7 +66,7 @@ def _load_sources_cached(cache_key: float) -> list[Source]:
         _parse_items(raw.get("sources", []))
 
     # 2) Load user-specific sources (private sources, always writable)
-    user_src_file = Path(settings.data_dir) / "user_sources.yaml"
+    user_src_file = Path(settings.data_dir) / "config" / "user_sources.yaml"
     if user_src_file.exists():
         raw = yaml.safe_load(user_src_file.read_text(encoding="utf-8")) or {}
         _parse_items(raw.get("sources", []))
@@ -83,6 +84,7 @@ def load_sources_for_user(username: str | None = None, role: str | None = None) 
 
     - admin → 全部源（含私有）
     - member/viewer → 共享源（owner=None） + 自己的私有源（owner=username）
+       + 其他用户设为共享的源（shared=True 且 owner≠username）
     - 未登录（username=None） → 仅共享源
     """
     all_sources = load_sources()
@@ -90,7 +92,10 @@ def load_sources_for_user(username: str | None = None, role: str | None = None) 
         return all_sources
     if not username:
         return [s for s in all_sources if s.owner is None]
-    return [s for s in all_sources if s.owner is None or s.owner == username]
+    return [
+        s for s in all_sources
+        if s.owner is None or s.owner == username or (s.shared and s.owner is not None)
+    ]
 
 
 def resolve_source_root(source: Source) -> Path:

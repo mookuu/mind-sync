@@ -13,6 +13,23 @@
           <span class="user-info-value"><strong>{{ userInfo.username }}</strong></span>
         </div>
         <div class="user-info-row">
+          <span class="user-info-label">表示名</span>
+          <span class="user-info-value">
+            <template v-if="editDisplayName">
+              <input v-model="displayNameInput" type="text" class="display-name-input" placeholder="输入表示名" maxlength="50" />
+              <button class="btn btn-primary btn-xs" @click="saveDisplayName" :disabled="displayNameSaving">
+                {{ displayNameSaving ? "保存中…" : "保存" }}
+              </button>
+              <button class="btn btn-ghost btn-xs" @click="editDisplayName = false">取消</button>
+              <p v-if="displayNameMsg" class="status-msg" :class="{ error: displayNameError }" style="margin:4px 0 0">{{ displayNameMsg }}</p>
+            </template>
+            <template v-else>
+              <strong>{{ userInfo.display_name || userInfo.username }}</strong>
+              <button class="btn btn-ghost btn-xs" style="margin-left:8px" @click="startEditDisplayName">修改</button>
+            </template>
+          </span>
+        </div>
+        <div class="user-info-row">
           <span class="user-info-label">角色</span>
           <span class="user-info-value">
             <span class="role-badge" :class="userInfo.role === 'admin' ? 'badge-admin' : 'badge-member'">
@@ -122,16 +139,80 @@
       </div>
       <p v-if="keyMsg" class="status-msg">{{ keyMsg }}</p>
     </section>
+
+    <!-- 确认弹窗 -->
+    <div v-if="confirmTarget" class="modal-overlay" @click.self="confirmTarget = null">
+      <div class="confirm-dialog">
+        <p>{{ confirmTarget.label }}</p>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:12px">
+          <button class="btn btn-ghost" @click="confirmTarget = null">取消</button>
+          <button class="btn btn-danger btn-sm" @click="doDeleteKey" :disabled="deleting === confirmTarget.id">
+            {{ deleting === confirmTarget.id ? '删除中…' : '确认删除' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 提示弹窗 -->
+    <div v-if="alertMsg" class="modal-overlay" @click.self="alertMsg = ''">
+      <div class="confirm-dialog">
+        <p>{{ alertMsg }}</p>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:12px">
+          <button class="btn btn-primary btn-sm" @click="alertMsg = ''">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import api from "../api/index.js";
+import { useAuth } from "../composables/useAuth.js";
+
+const { displayName, updateDisplayName } = useAuth();
 
 // User info
 const userInfo = ref(null);
 const isAdmin = computed(() => userInfo.value?.role === "admin");
+
+// Display name editing
+const editDisplayName = ref(false);
+const displayNameInput = ref("");
+const displayNameSaving = ref(false);
+const displayNameMsg = ref("");
+const displayNameError = ref(false);
+
+async function saveDisplayName() {
+  const name = displayNameInput.value.trim();
+  if (!name) {
+    displayNameMsg.value = "表示名不能为空";
+    displayNameError.value = true;
+    return;
+  }
+  displayNameSaving.value = true;
+  displayNameMsg.value = "";
+  displayNameError.value = false;
+  try {
+    await updateDisplayName(name);
+    displayNameMsg.value = "已更新";
+    editDisplayName.value = false;
+    // 刷新 userInfo 中的 display_name
+    if (userInfo.value) userInfo.value.display_name = name;
+  } catch (e) {
+    displayNameMsg.value = e.message || "更新失败";
+    displayNameError.value = true;
+  } finally {
+    displayNameSaving.value = false;
+  }
+}
+
+function startEditDisplayName() {
+  displayNameInput.value = displayName.value || userInfo.value?.username || "";
+  editDisplayName.value = true;
+  displayNameMsg.value = "";
+  displayNameError.value = false;
+}
 
 async function loadUserInfo() {
   try {
@@ -204,7 +285,7 @@ async function revokeSession(sid) {
     await api(`/api/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" });
     sessions.value = sessions.value.filter((s) => s.session_id !== sid);
   } catch (e) {
-    alert(e.message);
+    showAlert(e.message || "踢下线失败");
   } finally {
     revoking.value = "";
   }
@@ -244,7 +325,13 @@ async function rotateKey() {
 }
 
 async function deleteKey(id) {
-  if (!confirm("确定删除此 API Key？该 Key 将立即失效。")) return;
+  confirmTarget.value = { id, label: "确定删除此 API Key？该 Key 将立即失效。" };
+}
+
+async function doDeleteKey() {
+  if (!confirmTarget.value) return;
+  const id = confirmTarget.value.id;
+  confirmTarget.value = null;
   deleting.value = id;
   keyMsg.value = "";
   try {
@@ -252,7 +339,7 @@ async function deleteKey(id) {
     apiKeys.value = apiKeys.value.filter((k) => k.id !== id);
     keyMsg.value = "已删除";
   } catch (e) {
-    keyMsg.value = e.message || "删除失败";
+    showAlert(e.message || "删除失败");
   } finally {
     deleting.value = null;
   }
@@ -264,6 +351,14 @@ function copyKey() {
   }).catch(() => {
     keyMsg.value = "复制失败，请手动复制";
   });
+}
+
+// Confirm / Alert modal state
+const confirmTarget = ref(null);
+const alertMsg = ref("");
+
+function showAlert(msg) {
+  alertMsg.value = msg;
 }
 
 // Helpers
@@ -278,10 +373,22 @@ function fmtTime(ts) {
   return new Date(n * 1000).toLocaleString();
 }
 
+function onGlobalKeydown(e) {
+  if (e.key === 'Escape') {
+    confirmTarget.value = null;
+    alertMsg.value = "";
+  }
+}
+
 onMounted(() => {
+  document.addEventListener('keydown', onGlobalKeydown);
   loadUserInfo();
   loadSessions();
   loadApiKeys();
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onGlobalKeydown);
 });
 </script>
 
@@ -323,6 +430,19 @@ onMounted(() => {
 }
 .user-info-value {
   font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.display-name-input {
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--bg-default);
+  color: var(--fg-default);
+  width: 180px;
 }
 .role-badge {
   display: inline-block;
@@ -446,5 +566,22 @@ onMounted(() => {
 }
 .api-key-actions {
   margin-top: 8px;
+}
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.confirm-dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  max-width: 420px;
+  box-shadow: var(--shadow-lg);
 }
 </style>

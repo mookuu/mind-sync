@@ -6,8 +6,8 @@
 
 | 路径 | 说明 |
 |------|------|
-| `./data` | SQLite、`wiki/`、`purpose.md`（持久化） |
-| `./sources.yaml` | 索引来源配置 |
+| `${DATA_ROOT:-./data}` | SQLite、`wiki/`、`user_sources.yaml`、`purpose.md`（持久化） |
+| `./sources.yaml` | 共享索引来源配置（默认库） |
 | `./sources/<id>` | local / github clone 目录 |
 | `./sources/obsidian` | Obsidian Web Clipper 导出 |
 | `./sources/web_snapshots/<id>` | Web 源抓取快照（API 写入，需可写） |

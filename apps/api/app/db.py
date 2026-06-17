@@ -4,10 +4,10 @@ from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 3  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 5  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
-DB_PATH = DATA_DIR / "mind_sync.db"
+DB_PATH = DATA_DIR / "db" / "mind_sync.db"
 WIKI_DIR = DATA_DIR / "wiki"
 LINT_DIR = DATA_DIR / "lint-reports"
 SEED_DIR = Path(__file__).resolve().parent / "seed"
@@ -22,6 +22,8 @@ SETTINGS_DEFAULTS = {
 
 def ensure_data_dir() -> Path:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / "db").mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / "config").mkdir(parents=True, exist_ok=True)
     return DATA_DIR
 
 
@@ -86,6 +88,26 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
             ("_schema_version", "3"),
+        )
+    if version < 4:
+        # V4: add display_name column to users
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "4"),
+        )
+    if version < 5:
+        # V5: add locked_until column to users
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN locked_until REAL NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "5"),
         )
 
 
@@ -164,7 +186,9 @@ def init_db() -> None:
             username TEXT PRIMARY KEY,
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'admin',
-            created_at REAL NOT NULL
+            created_at REAL NOT NULL,
+            display_name TEXT NOT NULL DEFAULT '',
+            locked_until REAL NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS api_keys (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

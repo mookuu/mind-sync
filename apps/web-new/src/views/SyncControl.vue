@@ -35,14 +35,18 @@
     </div>
   </div>
 
-  <!-- 文件缺失警告 -->
-  <div v-if="missingFiles.length" class="settings-section">
-    <h3>⚠️ 文件缺失警告</h3>
-    <p class="subtle">以下文件上次同步后已被删除或移动：</p>
-    <div v-for="mf in missingFiles" :key="mf.source_id + mf.path" class="missing-file-row">
-      <span class="missing-source">{{ mf.source_id }}</span>
-      <span class="missing-path">{{ mf.path }}</span>
+  <!-- 路径有效性警告 -->
+  <div class="settings-section">
+    <h3>📁 路径有效性</h3>
+    <p class="subtle">同步范围中各知识库的文件夹路径状态</p>
+    <div v-if="missingFiles.length" class="missing-list">
+      <div v-for="mf in missingFiles" :key="mf.source_id" class="missing-file-row">
+        <span class="missing-source">{{ mf.source_id }}</span>
+        <span class="missing-path">{{ mf.path }}</span>
+        <span class="path-invalid-tag">⚠ 路径无效</span>
+      </div>
     </div>
+    <p v-else class="subtle" style="padding:8px 0">✅ 所有源路径均有效</p>
   </div>
 </template>
 
@@ -70,10 +74,9 @@ async function loadMissingFiles() {
     const data = await api("/api/sources");
     const items = [];
     for (const src of (data.sources || [])) {
-      // Check each source for missing files by listing and comparing
-      // This is a simplified check; detailed check happens server-side
-      if (src.path) {
-        items.push({ source_id: src.id, path: src.path, action: "check" });
+      // 只显示路径无效的源
+      if (src.path && src.path_exists === false) {
+        items.push({ source_id: src.id, path: src.path });
       }
     }
     missingFiles.value = items;

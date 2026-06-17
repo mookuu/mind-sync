@@ -1,5 +1,28 @@
 # 变更日志
 
+## 2026-06-17 (续)
+
+- **feat**: 表示名（display_name）字段 — DB 迁移 V4 + 用户可编辑 + 右上角显示 + F5 持久化
+- **feat**: 个人源共享 — `PUT /api/user/sources/{id}/share` 切换共享 + 共享知识库区域
+- **feat**: 登录锁定 — DB 迁移 V5，失败超限自动锁定 5 分钟 + 状态列显示
+- **feat**: 创建用户支持表示名输入
+- **feat**: 非管理员「全局知识库」只显示管理员选中的源
+- **feat**: 共享源名旁显示「共享中」标签
+- **fix**: `user_sources.yaml` 写入路径与读取路径不一致（`/data/config/` vs `/data/`）
+- **fix**: `_USER_ROOT` 遗漏 `users` 段导致路径错误
+- **fix**: 非管理员「全部同步」状态未持久化 localStorage，F5 丢失
+- **fix**: 前端 enrichment 覆盖后端 `path_exists` 导致路径有效性检测失效
+- **fix**: 管理员源数量统计口径（改用 `list_sync_presets` 排除 all/custom）
+- **fix**: 被共享源重复出现在「我的知识库」和「共享知识库」
+- **fix**: 非管理员 `loadUserDisplayNames` 调 admin API 返回 403
+- **fix**: 文件缺失警告逻辑修复（仅显示 `path_exists=false` 的源）
+- **fix**: 侧边栏子菜单点击后父级收起
+- **fix**: `.env` 删除重复的 `DATA_DIR=/data` 行
+- **refactor**: 所有 alert/confirm → 居中模态弹窗（ESC/点击遮罩关闭）
+- **refactor**: 侧边栏重写（同一时间只有一个父级展开 + 路由自动展开）
+- **rename**: 「共享知识库」→「全局知识库」
+- **docs**: lessons.md 归档今日踩坑记录
+
 ## 2026-06-17
 
 - **feat**: 管理员重置用户密码（`POST /api/admin/users/{username}/reset-password`）
@@ -34,6 +57,11 @@
 - **feat**: 账户页扩展用户信息卡片
 - **fix**: 删除按钮悬浮布局修复
 - **fix**: 删除 API 复合 key 匹配（`PythonBasic:local`）
+- **infra**: 数据目录迁移到独立位置 `${DATA_ROOT}`，与代码仓库分离
+- **infra**: docker-compose.yml 通配映射 `/home/moku:/home/moku:ro`，简化卷管理
+- **infra**: sources.yaml 精简为仅保留默认库，用户源移入 `user_sources.yaml`
+- **infra**: 目录浏览器默认路径改为 `/home/moku/`
+- **infra**: jieba 词典移至持久卷
 - **docs**: 更新 ROADMAP.md、API 端点文档、sources.yaml 配置参考
 
 ## 2026-06-15

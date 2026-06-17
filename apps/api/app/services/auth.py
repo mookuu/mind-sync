@@ -23,16 +23,37 @@ def token_hash(token: str) -> str:
 # ── Password / DB user management ──────────────────────────────────
 
 
+def is_user_locked(account: str) -> bool:
+    """Check if account is currently locked due to too many login failures."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT locked_until FROM users WHERE username = ?", (account,)
+        ).fetchone()
+        if row and row["locked_until"] and row["locked_until"] > time.time():
+            return True
+        return False
+    finally:
+        conn.close()
+
+
 def authenticate(username: str, password: str) -> AuthUser | None:
     """Check DB users first, then env users as fallback."""
     account = (username or "default").strip() or "default"
     supplied = password or ""
 
+    # Check if account is locked
+    if is_user_locked(account):
+        raise HTTPException(
+            status_code=423,
+            detail="账户已锁定，请 5 分钟后再试",
+        )
+
     # Check DB users
     conn = get_db()
     try:
         row = conn.execute(
-            "SELECT username, password_hash, role FROM users WHERE username = ?",
+            "SELECT username, password_hash, role, locked_until FROM users WHERE username = ?",
             (account,),
         ).fetchone()
     finally:
@@ -258,13 +279,27 @@ def check_login_rate_limit(request: Request, account: str) -> None:
 
 
 def mark_login_failure(request: Request, account: str) -> None:
+    now = time.time()
     conn = get_db()
     try:
         cleanup_auth_meta(conn)
         conn.execute(
             "INSERT INTO login_failures(ip, account, failed_at) VALUES(?, ?, ?)",
-            (client_ip(request), account.lower()[:128], time.time()),
+            (client_ip(request), account.lower()[:128], now),
         )
+        # 检查该账户在窗口内总失败次数，超过阈值则锁定 5 分钟
+        window = max(10, int(settings.login_rate_limit_window_seconds))
+        limit = max(1, int(settings.login_rate_limit_max_attempts))
+        cutoff = now - window
+        fail_row = conn.execute(
+            "SELECT COUNT(1) AS c FROM login_failures WHERE account = ? AND failed_at > ?",
+            (account.lower()[:128], cutoff),
+        ).fetchone()
+        if fail_row and int(fail_row["c"] or 0) >= limit:
+            conn.execute(
+                "UPDATE users SET locked_until = ? WHERE username = ?",
+                (now + 300, account.lower()[:128]),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -276,6 +311,14 @@ def clear_login_failures(request: Request, account: str) -> None:
     conn = get_db()
     try:
         conn.execute("DELETE FROM login_failures WHERE ip = ? AND account = ?", (ip, account_key))
+        # 清除所有失败记录后，如果该账户失败总数为 0，解锁
+        row = conn.execute(
+            "SELECT COUNT(1) AS c FROM login_failures WHERE account = ?", (account_key,)
+        ).fetchone()
+        if row and int(row["c"] or 0) == 0:
+            conn.execute(
+                "UPDATE users SET locked_until = 0 WHERE username = ?", (account_key,)
+            )
         conn.commit()
     finally:
         conn.close()

@@ -49,7 +49,7 @@
         </div>
         <div class="topbar-right">
           <span class="badge" :class="badgeClass">{{ badgeLabel }}</span>
-          <router-link to="/account" class="btn btn-ghost btn-sm">账户</router-link>
+          <router-link to="/account" class="btn btn-ghost btn-sm">{{ displayName || '账户' }}</router-link>
           <button class="btn btn-ghost btn-sm" @click="handleLogout">登出</button>
         </div>
       </header>
@@ -71,7 +71,7 @@ import AppSidebar from "./components/AppSidebar.vue";
 
 const route = useRoute();
 const router = useRouter();
-const { isLoggedIn, userRole, canWrite, login, logout, checkSession } = useAuth();
+const { isLoggedIn, userRole, canWrite, displayName, login, logout, checkSession } = useAuth();
 
 const username = ref("");
 const password = ref("");

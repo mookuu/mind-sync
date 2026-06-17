@@ -16,6 +16,7 @@ class Source:
     fetch_confirmed: bool = False
     respect_robots: bool | None = None
     owner: str | None = None
+    shared: bool = False
 
 
 class LoginRequest(BaseModel):

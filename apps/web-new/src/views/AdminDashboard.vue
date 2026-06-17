@@ -1,8 +1,12 @@
 <template>
   <div class="view-pane">
-    <div class="view-header">
+    <div class="view-header" style="display:flex;align-items:center">
       <h2>📊 系统概览</h2>
-      <button class="btn btn-primary btn-sm" @click="refresh">刷新</button>
+      <div style="margin-left:auto">
+        <button class="btn btn-ghost btn-sm refresh-btn" @click="refresh" :disabled="refreshing" :class="{ spinning: refreshing }" title="刷新统计数据">
+          <span class="refresh-icon">↻</span>
+        </button>
+      </div>
     </div>
 
     <!-- 统计卡片 -->
@@ -52,6 +56,7 @@ import api from "../api/index.js";
 
 const stats = ref({});
 const reindexing = ref(false);
+const refreshing = ref(false);
 const reindexMsg = ref("");
 const reindexError = ref(false);
 
@@ -80,8 +85,10 @@ async function reindex() {
   }
 }
 
-function refresh() {
-  loadStats();
+async function refresh() {
+  refreshing.value = true;
+  await loadStats();
+  setTimeout(() => { refreshing.value = false; }, 400);
 }
 
 function formatBytes(bytes) {
@@ -132,6 +139,10 @@ onMounted(loadStats);
   gap: 12px;
   flex-wrap: wrap;
 }
+.refresh-btn { font-size: 1.1rem; padding: 4px 10px; }
+.refresh-icon { display: inline-block; }
+.refresh-btn.spinning .refresh-icon { animation: spin 0.6s linear; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .status-msg { font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
 </style>
