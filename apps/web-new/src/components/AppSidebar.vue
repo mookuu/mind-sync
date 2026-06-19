@@ -22,10 +22,24 @@
                 :to="child.path"
                 class="sub-nav-item"
                 :class="{ active: isActive(child.path) }"
+                @click.stop="child.loadTree && loadLibTree(child.loadTree)"
               >
               <span class="nav-icon">{{ child.icon }}</span>
               <span class="nav-label">{{ child.label }}</span>
             </router-link>
+            </template>
+            <!-- 文档库动态子目录 -->
+            <template v-if="libSubItems.length">
+              <div class="nav-separator"></div>
+              <router-link
+                v-for="si in libSubItems"
+                :key="si.path"
+                :to="si.path"
+                class="sub-nav-item sub-nav-item-deeper"
+              >
+                <span class="nav-icon">{{ si.icon }}</span>
+                <span class="nav-label">{{ si.label }}</span>
+              </router-link>
             </template>
           </div>
         </div>
@@ -55,8 +69,46 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import { useRoute } from "vue-router";
+import api from "../api/index.js";
 
 const route = useRoute();
+
+// 文档库子菜单的动态树数据
+const libTree = ref(null);
+const libTreeLoading = ref(false);
+const libTreeCategory = ref('');
+
+async function loadLibTree(category) {
+  if (libTreeLoading.value && libTreeCategory.value === category) return;
+  libTreeLoading.value = true;
+  libTreeCategory.value = category;
+  try {
+    const data = await api(`/api/library?category=${encodeURIComponent(category)}`);
+    libTree.value = data.sections || [];
+  } catch {
+    libTree.value = [];
+  } finally {
+    libTreeLoading.value = false;
+  }
+}
+
+// 将 library tree section 转为扁平的子菜单项
+const libSubItems = computed(() => {
+  if (!libTree.value) return [];
+  const items = [];
+  for (const section of libTree.value) {
+    for (const group of (section.groups || [])) {
+      if (group.source) {
+        items.push({
+          label: group.source,
+          icon: group.type === 'web' ? '🌐' : '📁',
+          path: `/library?category=${encodeURIComponent(libTreeCategory.value)}&source=${encodeURIComponent(group.source || '')}`,
+        });
+      }
+    }
+  }
+  return items;
+});
 
 // expanded: 当前展开的父级（同一时间只有一个）
 const expanded = ref({});
@@ -94,9 +146,9 @@ const orderedItems = computed(() => {
       icon: "📚",
       path: "/library",
       children: [
-        { label: "原始素材", icon: "📦", path: "/library?category=source" },
-        { label: "学习摘要", icon: "📝", path: "/library?category=summary" },
-        { label: "问答沉淀", icon: "💬", path: "/library?category=query" },
+        { label: "原始素材", icon: "📦", path: "/library?category=source", loadTree: "source" },
+        { label: "学习摘要", icon: "📝", path: "/library?category=summary", loadTree: "summary" },
+        { label: "问答沉淀", icon: "💬", path: "/library?category=query", loadTree: "query" },
       ],
     },
     { label: "知识查询", icon: "💡", path: "/qa" },
@@ -229,6 +281,15 @@ function onParentClick(path) {
 .sub-nav-item.active {
   color: var(--accent-fg);
   background: var(--accent-bg);
+}
+.sub-nav-item-deeper {
+  padding-left: 48px;
+  font-size: 0.78rem;
+}
+.nav-separator {
+  height: 1px;
+  background: var(--border-muted);
+  margin: 2px 8px;
 }
 
 .sidebar-spacer {
