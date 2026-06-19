@@ -4,11 +4,11 @@
 
     <!-- 同步范围 -->
     <section class="settings-section">
-      <h3>同步范围 <span class="shared-tag">勾选要同步的来源，修改后立即生效</span></h3>
+      <h3>同步范围 <span class="shared-tag">勾选要同步的库，修改后立即生效</span></h3>
 
       <template v-if="dataLoaded">
       <div class="preset-list">
-        <!-- 全部来源（master toggle） -->
+        <!-- 全部知识库（master toggle） -->
         <label class="preset-option" :class="{ selected: isAll }">
           <input type="checkbox" :checked="isAll" @change="onToggleAll" />
           <div>
@@ -53,7 +53,7 @@
             <button
               v-if="!defaultPresetIds.includes(p.id) && isAdmin"
               class="btn btn-ghost btn-sm delete-source-btn"
-              title="删除此来源"
+              title="删除此库"
               :disabled="isAll || deleting === p.id"
               @click="deleteSharedSource(p)"
             >✕</button>
@@ -66,7 +66,7 @@
             >✕</button>
           </div>
 
-          <!-- 添加共享来源（admin only） -->
+          <!-- 添加全局库（admin only） -->
           <div v-if="isAdmin" class="custom-path-row" style="margin-top:8px">
             <input v-model="customPath" type="text" placeholder="输入文件夹路径，如 /sources/my-notes" class="custom-path-input" />
             <button class="btn btn-ghost" @click="openDirPicker">📁 浏览</button>
@@ -85,7 +85,7 @@
           </button>
         </div>
         <template v-if="sectionExpanded.private">
-          <!-- 按 owner 分组的私有来源列表，每个分组可独立展开/折叠 -->
+          <!-- 按 owner 分组的私有库列表，每个分组可独立展开/折叠 -->
           <template v-for="group in groupedPrivateSources" :key="group.owner || '__ungrouped__'">
             <div v-if="group.owner && isAdmin" class="owner-group-label collapsible" @click="togglePrivateGroup(group.owner)">
               <span class="chevron">{{ privateGroupExpanded[group.owner] !== false ? '▾' : '▸' }}</span>
@@ -154,7 +154,7 @@
             </div>
           </template>
 
-          <!-- 添加私有来源：仅非管理员 -->
+          <!-- 添加私有库：仅非管理员 -->
           <div v-if="!isAdmin" class="custom-path-row" style="margin-top:8px">
             <input v-model="privatePath" type="text" placeholder="输入服务器文件夹路径" class="custom-path-input" />
             <button class="btn btn-ghost" @click="openPrivateDirPicker">📁 浏览</button>
@@ -169,7 +169,7 @@
         <div v-if="!isAdmin" class="section-label collapsible" @click="toggleSection('shared_public')" style="margin-top:8px">
           <span class="chevron">{{ sectionExpanded.shared_public ? '▾' : '▸' }}</span>
           <span>🌐 共享知识库</span>
-          <span class="subtle">其他用户共享的个人源</span>
+          <span class="subtle">其他用户共享的个人库</span>
           <button class="btn btn-ghost btn-xs" @click.stop="toggleSection('shared_public')" style="margin-left:auto">
             {{ sectionExpanded.shared_public ? '收起' : '展开' }}
           </button>
@@ -304,7 +304,7 @@ const otherPresets = computed(() => syncPresets.value.filter((p) => p.id !== "al
 const customPresetIds = computed(() => {
   try {
     if (isAll.value) return (backupIds.value || []);
-    // 非管理员且管理员设为全部同步时：显示全部源为预勾选
+    // 非管理员且管理员设为全部同步时：显示全部库为预勾选
     if (!isAdmin.value && syncPreset.value === "all") {
       return (sharedPresets.value || []).map(p => p.id);
     }
@@ -408,14 +408,14 @@ const sharedPresets = computed(() => {
     const seen = new Set(base.map(p => p.id));
     const merged = [...base];
 
-    // 非管理员：只显示被管理员选中的源
+    // 非管理员：只显示被管理员选中的库
     let filtered = merged.filter(p => p && !p.owner);
     if (!isAdmin.value) {
       if (syncPreset.value === "all") {
-        // 管理员选了全部同步 → 显示全部源
+        // 管理员选了全部同步 → 显示全部库
         // 保持原样（filtered 不缩减）
       } else {
-        // 管理员选了特定源 → 只显示那些源
+        // 管理员选了特定库 → 只显示那些库
         const activeKeys = new Set(syncSourceIds.value || []);
         filtered = filtered.filter(p => activeKeys.has(p.id));
       }
@@ -458,9 +458,9 @@ const privateSourceList = computed(() => {
   }
 });
 
-// 按 owner 分组（个人源）
+// 按 owner 分组（个人库）
 const groupedPrivateSources = computed(() => {
-  // 非管理员：只显示自己的源（其他人的共享源仅出现在共享知识库中）
+  // 非管理员：只显示自己的库（其他人的共享库仅出现在共享知识库中）
   const list = isAdmin.value
     ? privateSourceList.value
     : privateSourceList.value.filter(p => p.owner === currentUser.value);
@@ -470,14 +470,14 @@ const groupedPrivateSources = computed(() => {
     if (!groups[owner]) groups[owner] = { owner: p.owner || "", sources: [] };
     groups[owner].sources.push(p);
   }
-  // 每个分组内的源按 label 字母序排列
+  // 每个分组内的库按 label 字母序排列
   for (const g of Object.values(groups)) {
     g.sources.sort((a, b) => naturalSort(a.label || a.id, b.label || b.id));
   }
   return Object.values(groups);
 });
 
-// 共享知识库：非管理员可见的其他用户共享源
+// 共享知识库：非管理员可见的其他用户共享库
 const groupedSharedPublicSources = computed(() => {
   if (isAdmin.value) return [];
   const allSources = privateSources.value || [];
@@ -492,7 +492,7 @@ const groupedSharedPublicSources = computed(() => {
       path: p.path || "",
     });
   }
-  // 每个分组内的源按 label 字母序排列
+  // 每个分组内的库按 label 字母序排列
   for (const g of Object.values(groups)) {
     g.sources.sort((a, b) => naturalSort(a.label || a.id, b.label || b.id));
   }
@@ -518,7 +518,7 @@ async function loadPrivateSources() {
         // 管理员看到所有用户的个人目录（有 owner 的才是个人库，共享库无 owner）
         privateSources.value = (data.sources || []).filter(s => s && s.owner);
       } else {
-        // 非管理员：自己的源 + 其他用户共享的源
+        // 非管理员：自己的库 + 其他用户共享的库
         privateSources.value = data.sources.filter(s => s && (s.is_owned || s.shared));
       }
     } else {
@@ -660,7 +660,7 @@ async function addPrivateSource() {
   addingPrivate.value = true;
   try {
     await api("/api/user/sources", { method: "POST", body: { path } });
-    privateMsg.value = `已添加私有来源：${path}`;
+    privateMsg.value = `已添加私有库：${path}`;
     privatePath.value = "";
     await reload();
     await loadPrivateSources();

@@ -57,7 +57,7 @@
         <button class="btn btn-ghost btn-xs" :disabled="page >= totalPages" @click="nextPage">下一页 ›</button>
       </div>
     </div>
-    <p v-else class="subtle" style="padding:8px 0">✅ 所有源路径均有效</p>
+    <p v-else class="subtle" style="padding:8px 0">✅ 所有库路径均有效</p>
   </div>
 </template>
 
@@ -112,7 +112,7 @@ async function loadMissingFiles() {
     const items = [];
     for (const src of (data.sources || [])) {
       if (src.path && src.path_exists === false) {
-        // 权限过滤：管理员全看，个人只看全局源+自己的源
+        // 权限过滤：管理员全看，个人只看全局库+自己的库
         if (!isAdmin && src.owner && src.owner !== currentUser) continue;
         items.push({
           source_id: src.id,
@@ -122,7 +122,7 @@ async function loadMissingFiles() {
         });
       }
     }
-    // 排序：共享库（无 owner）排最前按名称序，有 owner 的按 用户名+源名 排序
+    // 排序：共享库（无 owner）排最前按名称序，有 owner 的按 用户名+库名 排序
     const ns = (x, y) => String(x || '').localeCompare(String(y || ''), undefined, { numeric: true, sensitivity: 'base' });
     items.sort((a, b) => {
       if (!a.owner && !b.owner) return ns(a.source_id, b.source_id);

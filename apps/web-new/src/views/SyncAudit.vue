@@ -39,7 +39,7 @@ const LABELS = {
   settings_updated: "设置变更", purpose_updated: "规则约束更新",
   password_reset: "密码重置",
   sync_requested: "同步请求", sync_completed: "同步完成",
-  sources_reloaded: "重载 sources.yaml", sources_custom_added: "添加自定义源",
+  sources_reloaded: "重载 sources.yaml", sources_custom_added: "添加自定义库",
   rebuild_requested: "全量重建请求", rebuild_completed: "全量重建完成",
 };
 

@@ -2,7 +2,7 @@
   <div class="view-pane library-pane">
     <div class="view-header">
       <h2>文档库</h2>
-      <p class="subtle">按来源与语言分类浏览，点击文件阅读</p>
+      <p class="subtle">按知识库与语言分类浏览，点击文件阅读</p>
     </div>
     <div class="library-layout">
       <aside class="tree-panel" v-if="!isSingleDoc">
@@ -58,7 +58,7 @@
               </template>
             </TreeBranch>
           </TreeView>
-          <p v-if="!sections.length && loaded" class="subtle" style="padding: 20px; text-align: center;">暂无文档，请先同步来源</p>
+          <p v-if="!sections.length && loaded" class="subtle" style="padding: 20px; text-align: center;">暂无文档，请先同步知识库</p>
           <p v-if="!loaded" class="subtle" style="padding: 20px; text-align: center;">加载中…</p>
         </div>
       </aside>

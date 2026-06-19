@@ -42,8 +42,8 @@
           <span class="user-info-value">{{ fmtTime(userInfo.created_at) }}</span>
         </div>
         <div class="user-info-row">
-          <span class="user-info-label">私有源</span>
-          <span class="user-info-value">{{ userInfo.source_count }} 个来源</span>
+          <span class="user-info-label">私有库</span>
+          <span class="user-info-value">{{ userInfo.source_count }} 个库</span>
         </div>
         <div class="user-info-row">
           <span class="user-info-label">专属目录</span>

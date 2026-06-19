@@ -23,7 +23,7 @@
           <span class="cat-badge" :class="'cat-' + (r.category || 'source')">
             {{ categoryLabel(r.category) }}
           </span>
-          <span v-if="r.source_owner && r.source_owner !== '__shared__'" class="owner-badge" title="私有来源">🔒 私有</span>
+          <span v-if="r.source_owner && r.source_owner !== '__shared__'" class="owner-badge" title="私有库">🔒 私有</span>
         </div>
         <div class="result-meta">{{ r.source_id }} · {{ r.rel_path }}</div>
         <div class="result-snippet" v-html="r.snippet"></div>

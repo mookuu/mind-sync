@@ -4,7 +4,7 @@
       <h2>👥 用户管理</h2>
     </div>
 
-    <p class="subtle">管理团队用户。新用户会自动创建专属目录和默认私有源。</p>
+    <p class="subtle">管理团队用户。新用户会自动创建专属目录和默认私有库。</p>
 
     <div class="toolbar">
       <button class="btn btn-primary btn-sm" @click="openCreate">＋ 创建用户</button>
@@ -88,7 +88,7 @@
     <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
       <div class="confirm-dialog">
         <p>确认删除用户「<strong>{{ deleteTarget.username }}</strong>」？</p>
-        <p class="subtle">将同时删除该用户的私有源、索引数据和专属目录。此操作不可撤销。</p>
+        <p class="subtle">将同时删除该用户的私有库、索引数据和专属目录。此操作不可撤销。</p>
         <div class="btn-row" style="justify-content:flex-end;margin-top:12px">
           <button class="btn btn-ghost" @click="deleteTarget = null">取消</button>
           <button class="btn btn-danger btn-sm" @click="doDeleteUser" :disabled="deleting">
