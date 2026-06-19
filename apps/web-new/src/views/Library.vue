@@ -94,13 +94,15 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
+import { useRoute } from 'vue-router';
 import api from "../api/index.js";
 import { markdownIt } from "../markdown-it.js";
 import TreeView from "../components/TreeView.vue";
 import TreeBranch from "../components/TreeBranch.vue";
 import TreeNode from "../components/TreeNode.vue";
 
-const category = ref("all");
+const route = useRoute();
+const category = ref(route.query.category || "all");
 const sections = ref([]);
 const totalDocs = ref(0);
 const loaded = ref(false);
@@ -150,7 +152,23 @@ function onDocClick(e) {
   e.preventDefault();
 }
 
-onMounted(loadTree);
+onMounted(async () => {
+  await loadTree();
+  const docId = route.query.doc;
+  if (docId) {
+    // 从 tree 中查找并打开对应文档
+    for (const section of sections.value) {
+      for (const group of (section.groups || [])) {
+        for (const file of (group.files || [])) {
+          if (String(file.id) === String(docId)) {
+            await openDoc(docId);
+            return;
+          }
+        }
+      }
+    }
+  }
+});
 </script>
 
 <style scoped>
