@@ -18,8 +18,6 @@
           <th>状态</th>
           <th>角色</th>
           <th>创建时间</th>
-          <th>库数</th>
-          <th>专属目录</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -39,8 +37,6 @@
             </select>
           </td>
           <td>{{ formatTime(u.created_at) }}</td>
-          <td>{{ u.source_count }}<span v-if="u.role === 'admin'" class="subtle-tag">全员共享</span></td>
-          <td>{{ u.has_dir ? '✅' : '❌' }}</td>
           <td class="action-cell">
             <button class="btn btn-ghost btn-xs" @click="showResetPwd(u)">重置密码</button>
             <button class="btn btn-ghost btn-xs" @click="confirmDeleteUser(u)">删除</button>

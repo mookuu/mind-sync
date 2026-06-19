@@ -89,7 +89,7 @@
           <template v-for="group in groupedPrivateSources" :key="group.owner || '__ungrouped__'">
             <div v-if="group.owner && isAdmin" class="owner-group-label collapsible" @click="togglePrivateGroup(group.owner)">
               <span class="chevron">{{ privateGroupExpanded[group.owner] !== false ? '▾' : '▸' }}</span>
-              <span class="owner-label">👤 {{ formatOwnerLabel(group.owner) }}</span>
+              <span class="owner-label">👤 {{ formatOwnerLabel(group.owner) }}<span class="role-tag">{{ getOwnerRoleLabel(group.owner) }}</span></span>
               <span class="subtle" style="font-size:0.7rem;margin-left:4px">({{ group.sources.length }})</span>
             </div>
             <div v-if="!group.owner || !isAdmin || privateGroupExpanded[group.owner] !== false">
@@ -329,17 +329,21 @@ const dataLoaded = ref(false);
 // User display names map
 const userDisplayNames = ref({});
 function userDisplayName(username) {
-  return userDisplayNames.value[username] || username;
+  const u = userDisplayNames.value[username];
+  return u ? u.dn : username;
+}
+
+function userRole(username) {
+  const u = userDisplayNames.value[username];
+  return u ? u.role : '';
 }
 
 function formatOwnerLabel(username) {
-  // 优先从 userDisplayNames 映射，否则从 privateSources 的 owner_display_name 获取
-  const dn = userDisplayNames.value[username];
-  if (dn) {
-    if (dn === username) return username;
-    return `${dn}(${username})`;
+  const u = userDisplayNames.value[username];
+  if (u && u.dn) {
+    if (u.dn === username) return username;
+    return `${u.dn}(${username})`;
   }
-  // 从 privateSources 中查找 owner_display_name
   for (const s of (privateSources.value || [])) {
     if (s.owner === username && s.owner_display_name) {
       const dn2 = s.owner_display_name;
@@ -350,13 +354,20 @@ function formatOwnerLabel(username) {
   return username;
 }
 
+function getOwnerRoleLabel(username) {
+  if (username === currentUser.value) return '当前用户';
+  const role = userRole(username);
+  if (role === 'admin') return '管理员';
+  return '只读用户';
+}
+
 async function loadUserDisplayNames() {
   if (!isAdmin.value) return;
   try {
     const data = await api("/api/admin/users");
     const map = {};
     for (const u of (data.users || [])) {
-      map[u.username] = u.display_name || u.username;
+      map[u.username] = { dn: u.display_name || u.username, role: u.role };
     }
     userDisplayNames.value = map;
   } catch {
@@ -835,6 +846,7 @@ onUnmounted(() => {
 .preset-row:hover .share-source-btn:hover { opacity: 1; }
 .preset-label { font-size: 0.9rem; font-weight: 500; display: flex; align-items: center; gap: 6px; }
 .shared-tag { font-size: 0.7rem; color: var(--fg-subtle); font-weight: 400; opacity: 0.7; }
+.role-tag { font-size: 0.7rem; color: var(--fg-subtle); font-weight: 400; opacity: 0.6; margin-left: 4px; }
 .preset-desc { font-size: 0.78rem; color: var(--fg-subtle); margin-top: 1px; font-family: var(--font-mono); }
 .preset-desc.path-invalid { color: var(--danger-fg, #dc2626); opacity: 0.6; }
 .preset-row.path-invalid-row { opacity: 0.5; }

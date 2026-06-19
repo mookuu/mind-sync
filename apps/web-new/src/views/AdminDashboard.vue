@@ -21,7 +21,7 @@
       <h3>用户数据</h3>
       <table class="user-stats-table">
         <thead>
-          <tr><th>用户</th><th>角色</th><th>源数</th><th>文档数</th><th>状态</th></tr>
+          <tr><th>用户</th><th>角色</th><th>库数</th><th>文档数</th><th>专属目录</th><th>状态</th></tr>
         </thead>
         <tbody>
           <tr v-for="u in stats.users" :key="u.username">
@@ -29,6 +29,7 @@
             <td>{{ u.role === 'admin' ? '管理员' : '成员' }}</td>
             <td>{{ u.source_count }}<span v-if="u.role === 'admin'" class="subtle-tag">全员共享</span></td>
             <td>{{ u.doc_count ?? '-' }}</td>
+            <td>{{ u.has_dir ? '✅' : '❌' }}</td>
             <td><span :class="statusClass(u.status)">{{ statusLabel(u.status) }}</span></td>
           </tr>
         </tbody>
