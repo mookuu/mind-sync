@@ -1,5 +1,9 @@
 <template>
   <div class="view-pane">
+    <div v-if="!canWrite" class="view-header">
+      <p class="subtle">仅管理员可访问此页面</p>
+    </div>
+    <template v-else>
     <div class="view-header">
       <h2>📜 审计日志</h2>
     </div>
@@ -16,12 +20,16 @@
     </div>
     <p class="status-msg">{{ statusText }}</p>
     <button class="btn btn-ghost btn-sm" @click="refresh">刷新</button>
+  </template>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from "vue";
 import api from "../api/index.js";
+import { useAuth } from "../composables/useAuth.js";
+
+const { canWrite } = useAuth();
 
 const events = ref([]);
 const statusText = ref("加载中…");

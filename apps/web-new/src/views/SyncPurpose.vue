@@ -1,5 +1,9 @@
 <template>
   <div class="view-pane">
+    <div v-if="!canWrite" class="view-header">
+      <p class="subtle">仅管理员可访问此页面</p>
+    </div>
+    <template v-else>
     <div class="view-header">
       <h2>📋 规则约束</h2>
       <p class="subtle">问答时注入 LLM 的上下文约束，失焦自动保存</p>
@@ -15,6 +19,7 @@
       ></textarea>
       <p v-if="saveMsg" class="status-msg" :class="{ error: saveError }">{{ saveMsg }}</p>
     </div>
+  </template>
   </div>
 </template>
 

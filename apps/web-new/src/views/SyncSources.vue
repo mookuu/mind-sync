@@ -52,9 +52,9 @@
               </div>
             </label>
             <button
-              v-if="!defaultPresetIds.includes(p.id) && isAdmin"
+              v-if="(!defaultPresetIds.includes(p.id) && isAdmin) || (p.path_exists === false && isAdmin)"
               class="btn btn-ghost btn-sm delete-source-btn"
-              title="删除此共享来源"
+              title="删除此来源"
               :disabled="isAll || deleting === p.id"
               @click="deleteSharedSource(p)"
             >✕</button>
@@ -128,7 +128,7 @@
                 @click="toggleShare(p)"
               >{{ p.shared ? '🔓' : '🔒' }}</button>
               <button
-                v-if="!p.is_default"
+                v-if="!p.is_default || p.path_exists === false"
                 class="btn btn-ghost btn-sm delete-source-btn"
                 title="删除"
                 :disabled="isAll || deleting === p.id"
@@ -376,12 +376,23 @@ const sharedPresets = computed(() => {
       }
     }
 
+    // 排序：Obsidian/Web快照/Wiki 固定在最前，其余按 label 字母序
+    const pinIds = ["obsidian", "web_snapshots", "wiki"];
+    const pinned = [];
+    const rest = [];
+    for (const p of filtered) {
+      if (pinIds.includes(p.id)) pinned.push(p);
+      else rest.push(p);
+    }
+    rest.sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+    const sorted = [...pinned, ...rest];
+
     // 仅在后端未提供 path_exists 时从 availableSources 补充
     const srcMap = {};
     for (const s of (availableSources.value || [])) {
       srcMap[s.id] = s;
     }
-    return filtered.map(p => ({
+    return sorted.map(p => ({
       ...p,
       path_exists: p.path_exists !== undefined ? p.path_exists : (srcMap[p.id] ? srcMap[p.id].path_exists : undefined),
     }));
