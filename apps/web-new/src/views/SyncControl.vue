@@ -40,10 +40,16 @@
     <h3>📁 路径有效性</h3>
     <p class="subtle">同步范围中各知识库的文件夹路径状态</p>
     <div v-if="missingFiles.length" class="missing-list">
-      <div v-for="mf in missingFiles" :key="mf.source_id" class="missing-file-row">
+      <div v-for="mf in pagedFiles" :key="mf.source_id" class="missing-file-row">
         <span class="missing-source">{{ mf.source_id }}</span>
+        <span class="missing-owner" v-if="mf.owner">{{ formatOwner(mf) }}</span>
         <span class="missing-path">{{ mf.path }}</span>
         <span class="path-invalid-tag">⚠ 路径无效</span>
+      </div>
+      <div v-if="totalPages > 1" class="pagination-row">
+        <button class="btn btn-ghost btn-xs" :disabled="page <= 1" @click="prevPage">‹ 上一页</button>
+        <span class="page-info">{{ page }} / {{ totalPages }}</span>
+        <button class="btn btn-ghost btn-xs" :disabled="page >= totalPages" @click="nextPage">下一页 ›</button>
       </div>
     </div>
     <p v-else class="subtle" style="padding:8px 0">✅ 所有源路径均有效</p>
@@ -51,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import api from "../api/index.js";
 import { useAuth } from "../composables/useAuth.js";
 
@@ -68,18 +74,52 @@ const autoSyncEnabled = ref(false);
 const autoSyncInterval = ref(60);
 const nextSyncAt = ref("");
 const missingFiles = ref([]);
+const currentUsername = ref("");
+
+// 分页
+const pageSize = 10;
+const page = ref(1);
+
+const totalPages = computed(() => Math.max(1, Math.ceil(missingFiles.value.length / pageSize)));
+
+const pagedFiles = computed(() => {
+  const start = (page.value - 1) * pageSize;
+  return missingFiles.value.slice(start, start + pageSize);
+});
+
+function prevPage() { if (page.value > 1) page.value--; }
+function nextPage() { if (page.value < totalPages.value) page.value++; }
+
+function formatOwner(src) {
+  if (!src.owner) return "";
+  const dn = src.owner_display_name;
+  if (!dn || dn === src.owner) return src.owner;
+  return `${dn}(${src.owner})`;
+}
 
 async function loadMissingFiles() {
   try {
-    const data = await api("/api/sources");
+    const [me, data] = await Promise.all([
+      api("/api/user/me"),
+      api("/api/sources"),
+    ]);
+    currentUsername.value = me.username || "";
+    const isAdmin = me.role === "admin";
     const items = [];
     for (const src of (data.sources || [])) {
-      // 只显示路径无效的源
       if (src.path && src.path_exists === false) {
-        items.push({ source_id: src.id, path: src.path });
+        // 权限过滤：管理员全看，个人只看全局源+自己的源
+        if (!isAdmin && src.owner && src.owner !== currentUsername.value) continue;
+        items.push({
+          source_id: src.id,
+          path: src.path,
+          owner: src.owner,
+          owner_display_name: src.owner_display_name,
+        });
       }
     }
     missingFiles.value = items;
+    page.value = 1;
   } catch {
     missingFiles.value = [];
   }
@@ -213,6 +253,23 @@ onMounted(() => {
   color: var(--fg-subtle);
   font-family: var(--font-mono);
   font-size: 0.8rem;
+  flex: 1;
+}
+.missing-owner {
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+  min-width: 100px;
+}
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+.page-info {
+  font-size: 0.82rem;
+  color: var(--fg-subtle);
 }
 .status-msg { margin-top: 8px; font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
