@@ -37,14 +37,19 @@
 
   <!-- 路径有效性警告 -->
   <div class="settings-section">
-    <h3>📁 路径有效性</h3>
-    <p class="subtle">同步范围中各知识库的文件夹路径状态</p>
+    <h3>📁 知识库状态 <span class="shared-tag">同步范围中各知识库的文件夹路径状态</span></h3>
     <div v-if="missingFiles.length" class="missing-list">
+      <div class="missing-file-header">
+        <span class="missing-source">库名</span>
+        <span class="missing-owner">拥有者</span>
+        <span class="missing-path">路径</span>
+        <span class="missing-status">状态</span>
+      </div>
       <div v-for="mf in pagedFiles" :key="mf.source_id" class="missing-file-row">
         <span class="missing-source">{{ mf.source_id }}</span>
-        <span class="missing-owner">{{ mf.owner ? formatOwner(mf) : '-' }}</span>
+        <span class="missing-owner">{{ mf.owner ? formatOwner(mf) : '管理员' }}</span>
         <span class="missing-path">{{ mf.path }}</span>
-        <span class="path-invalid-tag">⚠ 路径无效</span>
+        <span class="missing-status"><span class="path-invalid-tag">⚠ 路径无效</span></span>
       </div>
       <div v-if="totalPages > 1" class="pagination-row">
         <button class="btn btn-ghost btn-xs" :disabled="page <= 1" @click="prevPage">‹ 上一页</button>
@@ -117,6 +122,16 @@ async function loadMissingFiles() {
         });
       }
     }
+    // 排序：共享库（无 owner）排最前按名称序，有 owner 的按 用户名+源名 排序
+    const ns = (x, y) => String(x || '').localeCompare(String(y || ''), undefined, { numeric: true, sensitivity: 'base' });
+    items.sort((a, b) => {
+      if (!a.owner && !b.owner) return ns(a.source_id, b.source_id);
+      if (!a.owner) return -1;
+      if (!b.owner) return 1;
+      const byOwner = ns(a.owner, b.owner);
+      if (byOwner !== 0) return byOwner;
+      return ns(a.source_id, b.source_id);
+    });
     missingFiles.value = items;
     page.value = 1;
   } catch {
@@ -236,6 +251,20 @@ onMounted(() => {
 .settings-section h3 { font-size: 1rem; margin-bottom: 8px; }
 .field-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .input-sm { width: 80px; }
+.missing-file-header {
+  display: flex;
+  gap: 12px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  border-bottom: 2px solid var(--border-default);
+  align-items: center;
+}
+.missing-status {
+  min-width: 80px;
+  text-align: center;
+}
 .missing-file-row {
   display: flex;
   gap: 12px;
@@ -270,6 +299,7 @@ onMounted(() => {
   font-size: 0.82rem;
   color: var(--fg-subtle);
 }
+.shared-tag { font-size: 0.7rem; color: var(--fg-subtle); font-weight: 400; opacity: 0.7; margin-left: 6px; }
 .status-msg { margin-top: 8px; font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
 </style>

@@ -1,8 +1,8 @@
 # Lessons Learned — mind-sync 开发踩坑记录
 
-> **归档日期**：2026-06-17  
-> **整理缘由**：开发过程中遇到的问题、根因与修复方案，供后续维护参考。  
-> **概要**：涵盖认证重写、权限边界、路径一致性、状态持久化、跨用户隔离、前端数据流、UI 交互、Docker/环境兼容性等多个方面，共 31 条踩坑记录 + 通用原则总结。
+> **归档日期**：2026-06-17
+> **整理缘由**：开发过程中遇到的问题、根因与修复方案，供后续维护参考。
+> **概要**：涵盖认证重写、权限边界、路径一致性、状态持久化、跨用户隔离、前端数据流、UI 交互、Docker/环境兼容性等多个方面，共 34 条踩坑记录 + 通用原则总结。
 
 ---
 
@@ -154,6 +154,7 @@ if sess.get("remember_me", 0) != 1:
 **根因**：每次登录创建新 session，旧的 session 不会被清理。开发测试过程中反复登录，session 表不断累积。
 
 **修复**：在 `login` 端点中，创建新 session 后：
+
 1. `cleanup_expired_sessions()` — 清理已过期的 session
 2. 对每个用户保留最近 5 条 session，删除更早的
 
@@ -405,6 +406,7 @@ async function loadUserDisplayNames() {
 ```
 
 **教训**：
+
 - 非管理员不能调用 `/api/admin/*` 端点
 - 如果需要公共用户信息，要么创建公开 API，要么在已有的公开响应中附带该数据
 
@@ -510,6 +512,7 @@ from .services.permissions import authenticate    # ← 覆盖！只检查 .env
 **症状**：Docker 容器中 `settings.data_dir` 值为 `C:/Program Files/Git/data` 而非预期的 `/data`。
 
 **根因**：
+
 1. `.env` 文件是 Windows `CRLF` 换行符：`DATA_DIR=/data\r`
 2. Docker Compose 读入后 `\r` 被保留
 3. MSYS2/Git Bash 的路径翻译（`/data` → `C:/Program Files/Git/data`）
@@ -658,6 +661,7 @@ def update_settings(..., request: Request, ...):
 **症状**：用户 kan 添加路径 `/home/moku/data/mind-sync-data/users/kan/kdir2`，后端返回「只能在你的用户目录下添加源」。
 
 **根因**：容器内有两个 mount 映射到同一物理目录：
+
 - `/data` → `/home/moku/data/mind-sync-data`
 - `/home/moku` → `/home/moku` (ro)
 
@@ -711,6 +715,57 @@ if user_segment not in str(path):
 ```
 
 **教训**：`pointer-events: none` 是核武器——它会禁用该元素及其所有子元素的一切鼠标交互。如果子元素需要 hover/click，必须单独恢复。
+
+---
+
+### 37. localeCompare 默认字典序导致 dir10 排在 dir2 前面
+
+**症状**：素材管理页面和同步控制页面中，`dir10` 排在 `dir2` 前面，不符合自然阅读习惯。
+
+**根因**：`String.localeCompare()` 默认按字典序（lexicographic）排序，"1" < "2"，所以 "dir10" < "dir2"。
+
+**修复**：传入 `{ numeric: true }` 选项启用自然排序。
+
+```javascript
+// 错误：字典序
+a.localeCompare(b)
+
+// 正确：自然序
+a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+```
+
+**教训**：凡是涉及数字编号的字符串排序，默认字典序会让 `10 < 2`。必须显式启用 `numeric: true`。
+
+---
+
+### 38. 同步设置 global vs per-user 作用域混淆
+
+**症状**：将 `sync_preset`/`sync_source_ids` 改为 per-user 后，管理员勾选的全局知识库无法同步给个人用户。个人用户看到的全局知识库状态与管理员不一致。
+
+**根因**：全局知识库的选中状态应该是「管理员配置，所有用户继承」。个人用户的个性化同步选择只适用于个人源。将两者都 per-user 化，切断继承关系。
+
+**修复**：回退 per-user 化。`sync_preset`/`sync_source_ids` 保持全局 key，管理员可写，个人用户只读。个人用户不能修改共享源 checkbox（`disabled: !isAdmin`）。跨用户 localStorage 污染问题通过 `backupKey()` 按用户名隔离即可。
+
+**教训**：不是所有设置都需要 per-user 作用域。全局配置（如管理员选择哪些共享源）应该保持全局 key；只有真正 per-user 的数据（如个人源的勾选偏好）才需要用户隔离。先分析数据归属，再做作用域设计。
+
+---
+
+### 39. 页面描述文字布局调整
+
+**症状**：多处页面标题下方的描述文字（如「勾选要同步的来源，修改后立即生效」）使用独立的 `<p class="subtle">` 标签，占用额外空间。
+
+**修复**：将描述文字改为 `<span class="shared-tag">` 内嵌在 `<h3>` 内，小号灰色字体。
+
+```html
+<!-- 之前 -->
+<h3>同步范围</h3>
+<p class="subtle">勾选要同步的来源，修改后立即生效</p>
+
+<!-- 之后 -->
+<h3>同步范围 <span class="shared-tag">勾选要同步的来源，修改后立即生效</span></h3>
+```
+
+**教训**：页面内的辅助描述文字应尽量贴合主标题，通过字号/颜色区分层次，减少垂直空间的浪费。
 
 ---
 

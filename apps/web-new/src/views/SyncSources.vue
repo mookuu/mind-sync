@@ -4,8 +4,7 @@
 
     <!-- 同步范围 -->
     <section class="settings-section">
-      <h3>同步范围</h3>
-      <p class="subtle">勾选要同步的来源，修改后立即生效</p>
+      <h3>同步范围 <span class="shared-tag">勾选要同步的来源，修改后立即生效</span></h3>
 
       <template v-if="dataLoaded">
       <div class="preset-list">
@@ -86,11 +85,14 @@
           </button>
         </div>
         <template v-if="sectionExpanded.private">
-          <!-- 按 owner 分组的私有来源列表 -->
+          <!-- 按 owner 分组的私有来源列表，每个分组可独立展开/折叠 -->
           <template v-for="group in groupedPrivateSources" :key="group.owner || '__ungrouped__'">
-            <div class="owner-group-label" v-if="group.owner && isAdmin">
+            <div v-if="group.owner && isAdmin" class="owner-group-label collapsible" @click="togglePrivateGroup(group.owner)">
+              <span class="chevron">{{ privateGroupExpanded[group.owner] !== false ? '▾' : '▸' }}</span>
               <span class="owner-label">👤 {{ formatOwnerLabel(group.owner) }}</span>
+              <span class="subtle" style="font-size:0.7rem;margin-left:4px">({{ group.sources.length }})</span>
             </div>
+            <div v-if="!group.owner || !isAdmin || privateGroupExpanded[group.owner] !== false">
             <div
               v-for="p in group.sources"
               :key="p.id"
@@ -148,6 +150,7 @@
                 :disabled="isAll || deleting === p.id"
                 @click="deletePrivateSource(p)"
               >✕</button>
+            </div>
             </div>
           </template>
 
@@ -284,6 +287,16 @@ function toggleSection(name) {
   sectionExpanded.value[name] = !sectionExpanded.value[name];
 }
 
+// 个人知识库分组展开/折叠状态
+const privateGroupExpanded = ref(JSON.parse(localStorage.getItem('sync_private_groups') || '{}'));
+watch(privateGroupExpanded, (val) => {
+  localStorage.setItem('sync_private_groups', JSON.stringify(val));
+}, { deep: true });
+function togglePrivateGroup(owner) {
+  const current = privateGroupExpanded.value[owner];
+  privateGroupExpanded.value[owner] = current === false ? true : false;
+}
+
 // Sync range
 const isAll = computed(() => isAdmin.value ? syncPreset.value === "all" : localAllMode.value);
 const otherPresets = computed(() => syncPresets.value.filter((p) => p.id !== "all" && p.id !== "custom"));
@@ -362,6 +375,10 @@ function backupKey() {
   return `sync_all_backup_${currentUser.value || 'anon'}`;
 }
 
+function naturalSort(a, b) {
+  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
 function displayPath(path) {
   if (!path) return "";
   // /home/moku/... → ~/...
@@ -401,7 +418,7 @@ const sharedPresets = computed(() => {
       if (pinIds.includes(p.id)) pinned.push(p);
       else rest.push(p);
     }
-    rest.sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+    rest.sort((a, b) => naturalSort(a.label || a.id, b.label || b.id));
     const sorted = [...pinned, ...rest];
 
     // 仅在后端未提供 path_exists 时从 availableSources 补充
@@ -444,7 +461,7 @@ const groupedPrivateSources = computed(() => {
   }
   // 每个分组内的源按 label 字母序排列
   for (const g of Object.values(groups)) {
-    g.sources.sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+    g.sources.sort((a, b) => naturalSort(a.label || a.id, b.label || b.id));
   }
   return Object.values(groups);
 });
@@ -466,7 +483,7 @@ const groupedSharedPublicSources = computed(() => {
   }
   // 每个分组内的源按 label 字母序排列
   for (const g of Object.values(groups)) {
-    g.sources.sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+    g.sources.sort((a, b) => naturalSort(a.label || a.id, b.label || b.id));
   }
   return Object.values(groups);
 });

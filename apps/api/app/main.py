@@ -1112,24 +1112,11 @@ def get_settings(request: Request, _: Any = Depends(require_any_auth)) -> dict[s
     username, role = resolve_current_user(request)
     conn = get_db()
     st = read_settings(conn)
-    # 用户作用域的同步设置
-    if username:
-        st["sync_preset"] = _user_setting(conn, username, "sync_preset") or st.get("sync_preset", "all")
-        st["sync_source_ids"] = _user_setting(conn, username, "sync_source_ids") or st.get("sync_source_ids", "[]")
     conn.close()
     return enrich_settings_response(st, SCHEDULER.build_meta(st))
 
 
-def _user_setting(conn, username: str, key: str) -> str | None:
-    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (f"{username}:{key}",)).fetchone()
-    return row["value"] if row else None
 
-
-def _save_user_setting(conn, username: str, key: str, value: str) -> None:
-    conn.execute(
-        "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        (f"{username}:{key}", value),
-    )
 
 
 @app.post("/api/settings")
@@ -1138,7 +1125,6 @@ def update_settings(
     request: Request,
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
-    updater_username, _ = resolve_current_user(request)
     conn = get_db()
     try:
         if payload.auto_sync_enabled is not None:
@@ -1156,7 +1142,10 @@ def update_settings(
             preset = (payload.sync_preset or "all").strip() or "all"
             if preset != "custom" and preset not in SYNC_PRESETS:
                 preset = "all"
-            _save_user_setting(conn, updater_username, "sync_preset", preset)
+            conn.execute(
+                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("sync_preset", preset),
+            )
         if payload.sync_source_ids is not None:
             import json
 
@@ -1171,7 +1160,10 @@ def update_settings(
                 if str(x).strip()
                 and (is_known_sync_key(str(x).strip(), all_src) or str(x).strip() in valid_preset_ids)
             ]
-            _save_user_setting(conn, updater_username or "default", "sync_source_ids", json.dumps(ids, ensure_ascii=False))
+            conn.execute(
+                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("sync_source_ids", json.dumps(ids, ensure_ascii=False)),
+            )
         if payload.sync_source_order is not None:
             import json
 
