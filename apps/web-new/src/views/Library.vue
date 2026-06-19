@@ -156,17 +156,7 @@ onMounted(async () => {
   await loadTree();
   const docId = route.query.doc;
   if (docId) {
-    // 从 tree 中查找并打开对应文档
-    for (const section of sections.value) {
-      for (const group of (section.groups || [])) {
-        for (const file of (group.files || [])) {
-          if (String(file.id) === String(docId)) {
-            await openDoc(docId);
-            return;
-          }
-        }
-      }
-    }
+    await openDoc(docId);
   }
 });
 </script>

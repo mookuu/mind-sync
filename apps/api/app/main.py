@@ -1059,10 +1059,10 @@ def admin_stats(_: Any = Depends(require_admin)) -> dict[str, Any]:
     try:
         doc_count = conn.execute("SELECT COUNT(1) AS c FROM documents").fetchone()["c"]
         user_count = conn.execute("SELECT COUNT(1) AS c FROM users").fetchone()["c"]
-        # 全局库（无 owner 的源，全局库只计一次）
+        # 库总数：所有用户库的总和（全局库只计一次）
         from .services.sync_settings import list_sync_presets
         _presets = list_sync_presets()
-        src_count = sum(1 for p in _presets if p.get("owner") is None and p.get("id") not in ("all", "custom"))
+        src_count = len(_presets) - 2  # 排除 all 和 custom
         wiki_pages = sum(1 for _ in WIKI_DIR.rglob("*.md")) if WIKI_DIR.exists() else 0
         # 按用户统计文档数
         user_doc_counts = {}

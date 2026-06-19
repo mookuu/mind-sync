@@ -94,7 +94,6 @@ const orderedItems = computed(() => {
       icon: "📚",
       path: "/library",
       children: [
-        { label: "全部文档", icon: "📄", path: "/library" },
         { label: "原始素材", icon: "📦", path: "/library?category=source" },
         { label: "学习摘要", icon: "📝", path: "/library?category=summary" },
         { label: "问答沉淀", icon: "💬", path: "/library?category=query" },
