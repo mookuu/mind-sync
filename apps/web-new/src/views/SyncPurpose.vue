@@ -36,6 +36,7 @@ const saveError = ref(false);
 let saveTimer = null;
 
 async function load() {
+  if (!canWrite.value) return;
   try {
     const data = await api("/api/purpose");
     content.value = data.content || data.preview || "";

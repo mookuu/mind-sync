@@ -428,9 +428,25 @@ def _build_sources_response(username: str | None = None, role: str | None = None
                 "exists": root.exists(),
                 "fetch_confirmed": source.fetch_confirmed,
                 "respect_robots": source.respect_robots,
+                "owner": source.owner,
+                "owner_display_name": _resolve_owner_display_name(source.owner),
             }
         )
     return {"sources": items, "web_fetch_policy": web_fetch_policy_summary()}
+
+def _resolve_owner_display_name(owner: str | None) -> str | None:
+    if not owner:
+        return None
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT display_name FROM users WHERE username = ?", (owner,)
+        ).fetchone()
+        if row and row["display_name"]:
+            return row["display_name"]
+        return None
+    finally:
+        conn.close()
 
 
 @app.post("/api/admin/sources/reload")
@@ -533,33 +549,67 @@ def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends
     if source_id in fixed_ids:
         raise HTTPException(status_code=400, detail=f"默认来源不可删除：{source_id}")
 
-    src_file = Path(settings.sources_file)
-    if not src_file.is_file():
-        raise HTTPException(status_code=404, detail=f"sources file not found: {src_file}")
-    raw = src_file.read_text(encoding="utf-8")
-    config = yaml.safe_load(raw) or {}
-    sources: list = config.get("sources", [])
-    before = len(sources)
     parsed_id, parsed_type = parse_sync_key(source_id)
 
     def _source_matches(s: dict) -> bool:
         sid = s.get("id")
         if not sid:
             return False
-        # 裸 ID 匹配
         if sid == source_id:
             return True
-        # 复合 key 匹配（PythonBasic:local → id + type）
         if parsed_type:
             stype = (s.get("type") or "local").strip().lower()
             return sid == parsed_id and stype == parsed_type
         return False
 
-    sources = [s for s in sources if isinstance(s, dict) and not _source_matches(s)]
-    if len(sources) == before:
+    # 1) 尝试从 sources.yaml（主文件，可能只读）删除
+    src_file = Path(settings.sources_file)
+    deleted = False
+    if src_file.is_file():
+        raw = src_file.read_text(encoding="utf-8")
+        config = yaml.safe_load(raw) or {}
+        sources: list = config.get("sources", [])
+        before = len(sources)
+        sources = [s for s in sources if isinstance(s, dict) and not _source_matches(s)]
+        if len(sources) < before:
+            config["sources"] = sources
+            try:
+                src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+                deleted = True
+            except OSError:
+                # sources.yaml 只读 → 在 user_sources.yaml 中记录已删除
+                from .services.user_manager import get_user_sources_path
+                usr_file = get_user_sources_path()
+                _config = {}
+                if usr_file.is_file():
+                    _config = yaml.safe_load(usr_file.read_text(encoding="utf-8")) or {}
+                _deleted: set = set(_config.get("_deleted", []))
+                _deleted.add(source_id)
+                _config["_deleted"] = list(_deleted)
+                usr_file.parent.mkdir(parents=True, exist_ok=True)
+                usr_file.write_text(yaml.dump(_config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+                deleted = True
+
+    # 2) 尝试从 user_sources.yaml（自定义源文件，始终可写）删除
+    if not deleted:
+        from .services.user_manager import get_user_sources_path
+        usr_file = get_user_sources_path()
+        if usr_file.is_file():
+            raw = usr_file.read_text(encoding="utf-8")
+            config = yaml.safe_load(raw) or {}
+            sources: list = config.get("sources", [])
+        before = len(sources)
+        sources = [s for s in sources if isinstance(s, dict) and not _source_matches(s)]
+        if len(sources) < before:
+            config["sources"] = sources
+            usr_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            deleted = True
+
+    if not deleted:
+        if src_found:
+            raise HTTPException(status_code=405, detail=f"sources.yaml 为只读，无法删除：{source_id}")
         raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
-    config["sources"] = sources
-    src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+
     reload_sources_config()
     add_audit_event("sources_deleted", request, actor=resolve_actor(request), detail=f"id={source_id}")
     return {"ok": True, "deleted": source_id}
@@ -905,6 +955,12 @@ def user_add_source(request: Request, body: dict[str, Any], _: Any = Depends(req
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"路径不是文件夹：{path}")
 
+    # 确保路径在用户自己的目录下
+    # 检查路径中是否包含 /users/<username>/ 段
+    user_segment = f"/users/{username}/"
+    if user_segment not in str(path):
+        raise HTTPException(status_code=400, detail=f"只能在你的用户目录下添加源")
+
     source_id = path.name
     if not source_id or source_id.startswith("."):
         raise HTTPException(status_code=400, detail=f"文件夹名称无效：{source_id}")
@@ -1052,11 +1108,28 @@ def admin_reindex(request: Request, _: Any = Depends(require_admin)) -> dict[str
 
 
 @app.get("/api/settings")
-def get_settings(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def get_settings(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    username, role = resolve_current_user(request)
     conn = get_db()
     st = read_settings(conn)
+    # 用户作用域的同步设置
+    if username:
+        st["sync_preset"] = _user_setting(conn, username, "sync_preset") or st.get("sync_preset", "all")
+        st["sync_source_ids"] = _user_setting(conn, username, "sync_source_ids") or st.get("sync_source_ids", "[]")
     conn.close()
     return enrich_settings_response(st, SCHEDULER.build_meta(st))
+
+
+def _user_setting(conn, username: str, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (f"{username}:{key}",)).fetchone()
+    return row["value"] if row else None
+
+
+def _save_user_setting(conn, username: str, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (f"{username}:{key}", value),
+    )
 
 
 @app.post("/api/settings")
@@ -1065,6 +1138,7 @@ def update_settings(
     request: Request,
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
+    updater_username, _ = resolve_current_user(request)
     conn = get_db()
     try:
         if payload.auto_sync_enabled is not None:
@@ -1082,10 +1156,7 @@ def update_settings(
             preset = (payload.sync_preset or "all").strip() or "all"
             if preset != "custom" and preset not in SYNC_PRESETS:
                 preset = "all"
-            conn.execute(
-                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                ("sync_preset", preset),
-            )
+            _save_user_setting(conn, updater_username, "sync_preset", preset)
         if payload.sync_source_ids is not None:
             import json
 
@@ -1100,10 +1171,7 @@ def update_settings(
                 if str(x).strip()
                 and (is_known_sync_key(str(x).strip(), all_src) or str(x).strip() in valid_preset_ids)
             ]
-            conn.execute(
-                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                ("sync_source_ids", json.dumps(ids, ensure_ascii=False)),
-            )
+            _save_user_setting(conn, updater_username or "default", "sync_source_ids", json.dumps(ids, ensure_ascii=False))
         if payload.sync_source_order is not None:
             import json
 

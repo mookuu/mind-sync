@@ -16,16 +16,17 @@
             <span class="nav-chevron">{{ expanded[item.path] ? "▾" : "▸" }}</span>
           </router-link>
           <div v-if="expanded[item.path]" class="sub-nav">
-            <router-link
-              v-for="child in item.children"
-              :key="child.path"
-              :to="child.path"
-              class="sub-nav-item"
-              :class="{ active: isActive(child.path) }"
-            >
+            <template v-for="child in item.children" :key="child.path">
+              <router-link
+                v-if="!child.admin || isAdmin"
+                :to="child.path"
+                class="sub-nav-item"
+                :class="{ active: isActive(child.path) }"
+              >
               <span class="nav-icon">{{ child.icon }}</span>
               <span class="nav-label">{{ child.label }}</span>
             </router-link>
+            </template>
           </div>
         </div>
       </template>
@@ -105,8 +106,8 @@ const orderedItems = computed(() => {
         { label: "同步控制", icon: "📊", path: "/sync/control" },
         { label: "素材管理", icon: "📦", path: "/sync/sources" },
         { label: "仓库管理", icon: "🏪", path: "/sync/vault" },
-        { label: "规则约束", icon: "📋", path: "/sync/purpose" },
-        { label: "审计", icon: "📜", path: "/sync/audit" },
+        { label: "规则约束", icon: "📋", path: "/sync/purpose", admin: true },
+        { label: "审计", icon: "📜", path: "/sync/audit", admin: true },
       ],
     },
     { label: "Wiki 图谱", icon: "🕸", path: "/graph" },

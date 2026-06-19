@@ -2,7 +2,7 @@
 
 > **归档日期**：2026-06-17  
 > **整理缘由**：开发过程中遇到的问题、根因与修复方案，供后续维护参考。  
-> **概要**：涵盖认证重写、权限边界、路径一致性、状态持久化、前端数据流、UI 交互、Docker/环境兼容性等多个方面，共 25 条踩坑记录 + 通用原则总结。
+> **概要**：涵盖认证重写、权限边界、路径一致性、状态持久化、跨用户隔离、前端数据流、UI 交互、Docker/环境兼容性等多个方面，共 31 条踩坑记录 + 通用原则总结。
 
 ---
 
@@ -583,6 +583,134 @@ ids = [x for x in ids if is_known_sync_key(x, all_src) or x in valid_preset_ids]
 ```
 
 **教训**：预设 ID 和实际来源 ID 是两个不同的命名空间。后端在做 ID 合法性校验时，两个命名空间都要考虑。
+
+---
+
+### 31. localStorage key 跨用户污染
+
+**症状**：用户 moku 设置"全部同步"后，用户 kan 在同一浏览器登录，看到 moku 的勾选状态。moku 取消某个源勾选，kan 刷新后该源也被取消。
+
+**根因**：`BACKUP_KEY = "sync_all_backup"` 是固定字符串，localStorage 按 origin 隔离，同一浏览器不同用户共享同一个 localStorage key。
+
+**修复**：`backupKey()` 改为 `"sync_all_backup_" + username`，按用户作用域。
+
+```javascript
+// 错误：全局共享
+const BACKUP_KEY = "sync_all_backup";
+
+// 正确：按用户隔离
+function backupKey() {
+  return `sync_all_backup_${currentUser.value || 'anon'}`;
+}
+```
+
+**教训**：localStorage 是 per-origin，不是 per-user。所有用户作用域的数据必须在 key 中包含用户标识。
+
+---
+
+### 32. app_settings 全局表导致同步设置跨用户覆盖
+
+**症状**：kan 勾选复选框后，moku 的同步设置在刷新后也被覆盖为 kan 的选择。所有用户的 `sync_preset`/`sync_source_ids` 互相影响。
+
+**根因**：`app_settings` 表中 `sync_preset` 和 `sync_source_ids` 的 key 是全局的（无用户前缀）。任何用户保存同步设置时，都写入同一个 key。
+
+```
+DB schema:
+app_settings(key TEXT PRIMARY KEY, value TEXT)
+  key = "sync_preset"        -- 全局，所有用户共享！
+  key = "sync_source_ids"    -- 全局，所有用户共享！
+```
+
+**修复**：读写时在 key 前加用户名前缀 `{username}:sync_preset` / `{username}:sync_source_ids`。
+
+```python
+# 读取（get_settings）
+st["sync_preset"] = _user_setting(conn, username, "sync_preset") or st.get("sync_preset", "all")
+
+# 写入（update_settings）
+_save_user_setting(conn, updater_username, "sync_preset", preset)
+```
+
+**教训**：凡是需要 per-user 状态的配置，表设计时必须包含用户维度。全局 key 只适合真正全局的配置。
+
+---
+
+### 33. 同一请求内两次 get_db() 导致 database locked
+
+**症状**：`POST /api/settings` 返回 500 Internal Server Error，日志显示 `sqlite3.OperationalError: database is locked`。
+
+**根因**：`update_settings` 先打开一个 DB 连接（`conn = get_db()`），然后在函数内部调用 `resolve_current_user(request)`，后者又调用 `get_session()` → `get_db()` 打开第二个连接。SQLite 的默认锁模式不允许同一进程中两个连接同时写入。
+
+**修复**：将 `resolve_current_user(request)` 移到 `conn = get_db()` 之前执行，确保 session 读取的 DB 连接在进入主函数时已关闭。
+
+```python
+def update_settings(..., request: Request, ...):
+    updater_username, _ = resolve_current_user(request)  # ← 先解析用户（内部 get_db → close）
+    conn = get_db()                                       # ← 再打开主连接
+```
+
+**教训**：FastAPI 的 Dependency 链和业务函数内不要交叉使用 `get_db()`。在函数体 opening connection 之前，所有需要 DB 的依赖解析应已完成。
+
+---
+
+### 34. bind mount 路径映射导致 Path.is_relative_to() 验证假阳性
+
+**症状**：用户 kan 添加路径 `/home/moku/data/mind-sync-data/users/kan/kdir2`，后端返回「只能在你的用户目录下添加源」。
+
+**根因**：容器内有两个 mount 映射到同一物理目录：
+- `/data` → `/home/moku/data/mind-sync-data`
+- `/home/moku` → `/home/moku` (ro)
+
+`get_user_dir("kan")` 返回 `/data/users/kan/default`（容器路径），用户输入的路径是 `/home/moku/...`（宿主机路径）。`Path.resolve()` + `.is_relative_to()` 跨 mount 点比较失败。
+
+**修复**：放弃绝对路径比较，改为字符串匹配 `/users/<username>/` 段。
+
+```python
+user_segment = f"/users/{username}/"
+if user_segment not in str(path):
+    raise HTTPException(400, "只能在你的用户目录下添加源")
+```
+
+**教训**：Docker bind mount 会让同一磁盘位置有多个入口路径。路径验证不要依赖 `resolve()` 或 `is_relative_to()`，用语义化的路径段匹配更可靠。
+
+---
+
+### 35. Vue 3 中 v-if 优先级高于 v-for 导致子菜单全隐藏
+
+**症状**：侧边栏所有子菜单项（规则约束、审计等）对所有用户不可见。
+
+**根因**：`<router-link v-for="child in items" v-if="!child.admin || isAdmin">`。Vue 3 中 `v-if` 优先级高于 `v-for`，`v-if` 求值时 `child` 变量尚未被 `v-for` 赋值，表达式 `!child.admin` 抛出但不阻断，整体求值为 falsy。
+
+**修复**：用 `<template v-for>` 包裹，`v-if` 放在内部元素上。
+
+```html
+<!-- 错误 -->
+<router-link v-for="child in items" v-if="!child.admin || isAdmin">
+
+<!-- 正确 -->
+<template v-for="child in items">
+  <router-link v-if="!child.admin || isAdmin">
+```
+
+**教训**：Vue 2 → Vue 3 迁移时 `v-if`/`v-for` 优先级反转是常见陷阱。永远用 `<template v-for>` + 内部 `v-if`。
+
+---
+
+### 36. pointer-events: none 阻止了 hover 触发的悬浮按钮
+
+**症状**：失效源（`path_invalid`）的删除按钮 hover 时不出现。
+
+**根因**：`.preset-row.path-invalid-row { pointer-events: none; }` 阻止了所有鼠标事件，包括 hover。删除按钮通过 CSS hover 显示（`opacity: 0 → 0.4`），无法触发。
+
+**修复**：移除 `path-invalid-row` 的 `pointer-events: none`，仅对按钮内部设置 `pointer-events: auto`。
+
+```css
+.preset-row.path-invalid-row { opacity: 0.5; }
+.preset-row.path-invalid-row .delete-source-btn,
+.preset-row.path-invalid-row .share-source-btn { pointer-events: auto; }
+```
+
+**教训**：`pointer-events: none` 是核武器——它会禁用该元素及其所有子元素的一切鼠标交互。如果子元素需要 hover/click，必须单独恢复。
 
 ---
 

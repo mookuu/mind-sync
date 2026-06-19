@@ -53,6 +53,7 @@ function formatTime(ts) {
 }
 
 async function refresh() {
+  if (!canWrite.value) return;
   statusText.value = "加载中…";
   try {
     const data = await api("/api/audit-events?limit=30");

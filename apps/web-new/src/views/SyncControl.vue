@@ -42,7 +42,7 @@
     <div v-if="missingFiles.length" class="missing-list">
       <div v-for="mf in pagedFiles" :key="mf.source_id" class="missing-file-row">
         <span class="missing-source">{{ mf.source_id }}</span>
-        <span class="missing-owner" v-if="mf.owner">{{ formatOwner(mf) }}</span>
+        <span class="missing-owner">{{ mf.owner ? formatOwner(mf) : '-' }}</span>
         <span class="missing-path">{{ mf.path }}</span>
         <span class="path-invalid-tag">⚠ 路径无效</span>
       </div>
@@ -61,7 +61,7 @@ import { ref, computed, onMounted } from "vue";
 import api from "../api/index.js";
 import { useAuth } from "../composables/useAuth.js";
 
-const { canWrite } = useAuth();
+const { canWrite, isLoggedIn, userRole } = useAuth();
 
 const running = ref(false);
 const currentSource = ref("");
@@ -74,7 +74,6 @@ const autoSyncEnabled = ref(false);
 const autoSyncInterval = ref(60);
 const nextSyncAt = ref("");
 const missingFiles = ref([]);
-const currentUsername = ref("");
 
 // 分页
 const pageSize = 10;
@@ -103,13 +102,13 @@ async function loadMissingFiles() {
       api("/api/user/me"),
       api("/api/sources"),
     ]);
-    currentUsername.value = me.username || "";
-    const isAdmin = me.role === "admin";
+    const isAdmin = userRole.value === "admin";
+    const currentUser = me.username || "";
     const items = [];
     for (const src of (data.sources || [])) {
       if (src.path && src.path_exists === false) {
         // 权限过滤：管理员全看，个人只看全局源+自己的源
-        if (!isAdmin && src.owner && src.owner !== currentUsername.value) continue;
+        if (!isAdmin && src.owner && src.owner !== currentUser) continue;
         items.push({
           source_id: src.id,
           path: src.path,

@@ -67,9 +67,15 @@ def _load_sources_cached(cache_key: float) -> list[Source]:
 
     # 2) Load user-specific sources (private sources, always writable)
     user_src_file = Path(settings.data_dir) / "config" / "user_sources.yaml"
+    _deleted_sources: set = set()
     if user_src_file.exists():
         raw = yaml.safe_load(user_src_file.read_text(encoding="utf-8")) or {}
         _parse_items(raw.get("sources", []))
+        _deleted_sources = set(raw.get("_deleted", []))
+
+    # 过滤掉已标记删除的源
+    if _deleted_sources:
+        result = [s for s in result if s.id not in _deleted_sources]
 
     return result
 

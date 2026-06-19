@@ -52,9 +52,16 @@
               </div>
             </label>
             <button
-              v-if="(!defaultPresetIds.includes(p.id) && isAdmin) || (p.path_exists === false && isAdmin)"
+              v-if="!defaultPresetIds.includes(p.id) && isAdmin"
               class="btn btn-ghost btn-sm delete-source-btn"
               title="删除此来源"
+              :disabled="isAll || deleting === p.id"
+              @click="deleteSharedSource(p)"
+            >✕</button>
+            <button
+              v-if="p.path_exists === false && isAdmin"
+              class="btn btn-ghost btn-sm delete-source-btn"
+              title="此路径无效，点击删除"
               :disabled="isAll || deleting === p.id"
               @click="deleteSharedSource(p)"
             >✕</button>
@@ -100,6 +107,13 @@
                     <span v-if="p.path && p.path_exists === false" class="path-invalid-tag" title="此路径在服务器上不存在">⚠ 路径无效</span>
                   </div>
                 </div>
+                <button
+                  v-if="p.path_exists === false"
+                  class="btn btn-ghost btn-sm delete-source-btn"
+                  title="此路径无效，点击删除"
+                  :disabled="isAll || deleting === p.id"
+                  @click="deletePrivateSource(p)"
+                >✕</button>
               </template>
               <!-- 非管理员：checkbox + 信息 + 删除 -->
               <template v-else>
@@ -324,6 +338,7 @@ function formatOwnerLabel(username) {
 }
 
 async function loadUserDisplayNames() {
+  if (!isAdmin.value) return;
   try {
     const data = await api("/api/admin/users");
     const map = {};
@@ -343,7 +358,9 @@ const addingPrivate = ref(false);
 const privateMsg = ref("");
 const privateError = ref(false);
 
-const BACKUP_KEY = "sync_all_backup";
+function backupKey() {
+  return `sync_all_backup_${currentUser.value || 'anon'}`;
+}
 
 function displayPath(path) {
   if (!path) return "";
@@ -425,6 +442,10 @@ const groupedPrivateSources = computed(() => {
     if (!groups[owner]) groups[owner] = { owner: p.owner || "", sources: [] };
     groups[owner].sources.push(p);
   }
+  // 每个分组内的源按 label 字母序排列
+  for (const g of Object.values(groups)) {
+    g.sources.sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+  }
   return Object.values(groups);
 });
 
@@ -442,6 +463,10 @@ const groupedSharedPublicSources = computed(() => {
       label: (p.label || p.id || "").replace(/\s*\(local\)\s*$/i, ""),
       path: p.path || "",
     });
+  }
+  // 每个分组内的源按 label 字母序排列
+  for (const g of Object.values(groups)) {
+    g.sources.sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
   }
   return Object.values(groups);
 });
@@ -482,13 +507,13 @@ function onToggleAll() {
     if (isAdmin.value) {
       setCustomSources(backupIds.value);
     }
-    localStorage.removeItem(BACKUP_KEY);
+    localStorage.removeItem(backupKey());
     if (!isAdmin.value) {
       localAllMode.value = false;
     }
   } else {
     backupIds.value = [...syncSourceIds.value];
-    localStorage.setItem(BACKUP_KEY, JSON.stringify(backupIds.value));
+    localStorage.setItem(backupKey(), JSON.stringify(backupIds.value));
     if (isAdmin.value) {
       setPreset("all");
     } else {
@@ -680,7 +705,7 @@ onMounted(() => {
     loadUserDisplayNames();
     load().then(() => {
       // 从 localStorage 恢复备份勾选状态
-      const saved = localStorage.getItem(BACKUP_KEY);
+      const saved = localStorage.getItem(backupKey());
       if (saved) {
         try { backupIds.value = JSON.parse(saved); } catch { backupIds.value = []; }
       }
@@ -795,7 +820,9 @@ onUnmounted(() => {
 .shared-tag { font-size: 0.7rem; color: var(--fg-subtle); font-weight: 400; opacity: 0.7; }
 .preset-desc { font-size: 0.78rem; color: var(--fg-subtle); margin-top: 1px; font-family: var(--font-mono); }
 .preset-desc.path-invalid { color: var(--danger-fg, #dc2626); opacity: 0.6; }
-.preset-row.path-invalid-row { opacity: 0.5; pointer-events: none; }
+.preset-row.path-invalid-row { opacity: 0.5; }
+.preset-row.path-invalid-row .delete-source-btn,
+.preset-row.path-invalid-row .share-source-btn { pointer-events: auto; }
 .path-invalid-tag {
   display: inline-block;
   margin-left: 6px;
