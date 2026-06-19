@@ -88,6 +88,7 @@ const isAdmin = computed(() => props.userRole === "admin");
 
 const orderedItems = computed(() => {
   const items = [
+    { label: "搜索", icon: "🔍", path: "/search" },
     {
       label: "文档库",
       icon: "📚",
@@ -96,7 +97,6 @@ const orderedItems = computed(() => {
         { label: "全部文档", icon: "📄", path: "/library" },
       ],
     },
-    { label: "搜索", icon: "🔍", path: "/search" },
     { label: "知识查询", icon: "💡", path: "/qa" },
     {
       label: "同步运维",

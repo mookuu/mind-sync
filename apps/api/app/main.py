@@ -1330,6 +1330,7 @@ def browse(
 @app.get("/api/search")
 def search(
     q: str,
+    request: Request,
     limit: int = 30,
     source_id: str | None = None,
     file_type: str | None = None,
