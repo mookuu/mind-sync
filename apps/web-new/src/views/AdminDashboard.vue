@@ -51,11 +51,12 @@ async function loadStats() {
       api("/api/admin/stats"),
       api("/api/admin/users"),
     ]);
-    // 合并文档统计
+    // 合并文档统计：管理员看全部，成员看自己源的文档
     const docMap = s.user_doc_counts || {};
+    const totalDocs = s.doc_count || 0;
     const merged = (users.users || []).map(u => ({
       ...u,
-      doc_count: docMap[u.username] || 0,
+      doc_count: u.role === 'admin' ? totalDocs : (docMap[u.username] || 0),
     }));
     // 按角色+用户名排序
     merged.sort((a, b) => {

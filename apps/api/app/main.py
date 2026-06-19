@@ -1064,10 +1064,19 @@ def admin_stats(_: Any = Depends(require_admin)) -> dict[str, Any]:
         _presets = list_sync_presets()
         src_count = len(_presets) - 2  # 排除 all 和 custom
         wiki_pages = sum(1 for _ in WIKI_DIR.rglob("*.md")) if WIKI_DIR.exists() else 0
-        # 按用户统计文档数
+        # 按用户统计文档数：通过 source_id 匹配 owner
         user_doc_counts = {}
-        for row in conn.execute("SELECT source_owner, COUNT(1) AS c FROM documents GROUP BY source_owner").fetchall():
-            user_doc_counts[row["source_owner"]] = row["c"]
+        # 获取所有源的 owner 映射
+        from .services.user_manager import load_user_sources as _load_usr
+        _usr_src = _load_usr()
+        _src_owner = {}
+        for s in _usr_src:
+            if isinstance(s, dict) and s.get("owner"):
+                _src_owner[s.get("id")] = s.get("owner")
+        # 查询每个 source_id 的文档数
+        for row in conn.execute("SELECT source_id, COUNT(1) AS c FROM documents GROUP BY source_id").fetchall():
+            owner = _src_owner.get(row["source_id"], "__shared__")
+            user_doc_counts[owner] = user_doc_counts.get(owner, 0) + row["c"]
     finally:
         conn.close()
 

@@ -5,7 +5,7 @@
       <p class="subtle">按来源与语言分类浏览，点击文件阅读</p>
     </div>
     <div class="library-layout">
-      <aside class="tree-panel">
+      <aside class="tree-panel" v-if="!isSingleDoc">
         <div class="tree-toolbar">
           <select v-model="category" @change="loadTree" class="tree-category-select">
             <option value="all">全部分类</option>
@@ -102,6 +102,8 @@ import TreeBranch from "../components/TreeBranch.vue";
 import TreeNode from "../components/TreeNode.vue";
 
 const route = useRoute();
+const isSingleDoc = computed(() => !!route.query.doc);
+const searchQuery = computed(() => route.query.q || '');
 const category = ref(route.query.category || "all");
 const sections = ref([]);
 const totalDocs = ref(0);
@@ -141,6 +143,17 @@ async function openDoc(docId) {
     currentDoc.value = { source_id: "error", rel_path: e.message, content: "" };
   }
 }
+
+// 监听搜索关键词，在文档内容中高亮
+watch([currentDoc, searchQuery], ([doc, q]) => {
+  if (doc && q && doc.content) {
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escaped})`, 'gi');
+    doc.content = doc._rawContent || doc.content;
+    if (!doc._rawContent) doc._rawContent = doc.content;
+    doc.content = doc._rawContent.replace(regex, '<mark>$1</mark>');
+  }
+}, { deep: true });
 
 function onDocClick(e) {
   // Handle internal links

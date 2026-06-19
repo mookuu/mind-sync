@@ -103,7 +103,9 @@ const router = useRouter();
 
 function openDoc(doc) {
   if (doc.id) {
-    router.push(`/library?doc=${encodeURIComponent(doc.id)}`);
+    const q = keyword.value.trim();
+    const qp = q ? `&q=${encodeURIComponent(q)}` : '';
+    router.push(`/library?doc=${encodeURIComponent(doc.id)}${qp}`);
   }
 }
 </script>
