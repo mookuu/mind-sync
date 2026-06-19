@@ -153,6 +153,30 @@ def search_for_query(
     return _like_fallback(conn, question, limit=limit)
 
 
+def _boost_filename_match(items: list[dict[str, Any]], query: str) -> None:
+    """Boost items whose filename (rel_path basename) matches the query (case-insensitive)."""
+    if not query or not items:
+        return
+    q_lower = query.strip().lower()
+    if not q_lower:
+        return
+    # Assign boost: exact basename match > partial basename match > no match
+    boost_exact = 0.3
+    boost_partial = 0.1
+    for item in items:
+        fn = (item.get("rel_path") or "").lower()
+        if not fn:
+            continue
+        basename = fn.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        if q_lower == basename.replace(".md", "").replace(".py", "").replace(".txt", ""):
+            item["_filename_boost"] = boost_exact
+        elif q_lower in basename:
+            item["_filename_boost"] = boost_partial
+
+    # Re-sort: boosted items move up within their bm25 rank range
+    items.sort(key=lambda x: x.get("_filename_boost", 0), reverse=True)
+
+
 def _sort_items(items: list[dict[str, Any]], sort: str, conn: sqlite3.Connection) -> list[dict[str, Any]]:
     if sort != "mtime_desc" or not items:
         return items
@@ -222,6 +246,9 @@ def search_documents(
 
     if sort != "mtime_desc" and _weights_active(weights):
         items = _rank_with_weights(items, weights, q)
+
+    # 文件名匹配提升：搜索词与文件名相似时提升排序权重（最后应用，不被他排序覆盖）
+    _boost_filename_match(items, q)
 
     if len(items) >= limit:
         trimmed = items[:limit]

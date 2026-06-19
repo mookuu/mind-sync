@@ -98,8 +98,13 @@ function applyLocal() {
   page.value = 1;
 }
 
+import { useRouter } from 'vue-router';
+const router = useRouter();
+
 function openDoc(doc) {
-  // TODO: navigate to document view or open in library
+  if (doc.id) {
+    router.push(`/library?doc=${encodeURIComponent(doc.id)}`);
+  }
 }
 </script>
 

@@ -3,49 +3,36 @@
     <div class="view-header" style="display:flex;align-items:center">
       <h2>📊 系统概览</h2>
       <div style="margin-left:auto">
-        <button class="btn btn-ghost btn-sm refresh-btn" @click="refresh" :disabled="refreshing" :class="{ spinning: refreshing }" title="刷新统计数据">
-          <span class="refresh-icon">↻</span>
-        </button>
+        <button class="btn btn-ghost btn-sm" @click="refresh" :disabled="refreshing" title="刷新">↻</button>
       </div>
     </div>
 
-    <!-- 统计卡片 -->
+    <!-- 全局统计 -->
     <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-value">{{ stats.source_count ?? '-' }}</div>
-        <div class="stat-label">来源总数</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ stats.document_count ?? '-' }}</div>
-        <div class="stat-label">文档总数</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ stats.user_count ?? '-' }}</div>
-        <div class="stat-label">用户数</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ formatBytes(stats.db_size) }}</div>
-        <div class="stat-label">数据库大小</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ stats.wiki_page_count ?? '-' }}</div>
-        <div class="stat-label">Wiki 页面</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">{{ formatBytes(stats.source_size) }}</div>
-        <div class="stat-label">源文件占用</div>
-      </div>
+      <div class="stat-card"><div class="stat-value">{{ stats.doc_count ?? '-' }}</div><div class="stat-label">文档总数</div></div>
+      <div class="stat-card"><div class="stat-value">{{ stats.src_count ?? '-' }}</div><div class="stat-label">源总数</div></div>
+      <div class="stat-card"><div class="stat-value">{{ stats.user_count ?? '-' }}</div><div class="stat-label">用户数</div></div>
+      <div class="stat-card"><div class="stat-value">{{ stats.wiki_pages ?? '-' }}</div><div class="stat-label">Wiki 页面</div></div>
+      <div class="stat-card"><div class="stat-value">{{ formatBytes(stats.db_size) }}</div><div class="stat-label">数据库</div></div>
     </div>
 
-    <!-- 快捷操作 -->
-    <section class="settings-section">
-      <h3>快捷操作</h3>
-      <div class="action-row">
-        <button class="btn btn-primary" @click="reindex" :disabled="reindexing">
-          {{ reindexing ? '重索引中…' : '🔄 重新索引所有来源' }}
-        </button>
-        <span v-if="reindexMsg" class="status-msg" :class="{ error: reindexError }">{{ reindexMsg }}</span>
-      </div>
+    <!-- 用户统计表 -->
+    <section class="settings-section" v-if="stats.users && stats.users.length">
+      <h3>用户数据</h3>
+      <table class="user-stats-table">
+        <thead>
+          <tr><th>用户</th><th>角色</th><th>源数</th><th>文档数</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="u in stats.users" :key="u.username">
+            <td>{{ u.display_name || u.username }}</td>
+            <td>{{ u.role === 'admin' ? '管理员' : '成员' }}</td>
+            <td>{{ u.source_count }}</td>
+            <td>{{ u.doc_count ?? '-' }}</td>
+            <td><span :class="u.status === 'locked' ? 'tag-locked' : 'tag-normal'">{{ u.status === 'locked' ? '🔒' : '✅' }}</span></td>
+          </tr>
+        </tbody>
+      </table>
     </section>
   </div>
 </template>
@@ -55,40 +42,24 @@ import { ref, onMounted } from "vue";
 import api from "../api/index.js";
 
 const stats = ref({});
-const reindexing = ref(false);
 const refreshing = ref(false);
-const reindexMsg = ref("");
-const reindexError = ref(false);
 
 async function loadStats() {
   try {
-    const data = await api("/api/admin/stats");
-    stats.value = data;
+    const [s, users] = await Promise.all([
+      api("/api/admin/stats"),
+      api("/api/admin/users"),
+    ]);
+    stats.value = { ...s, users: users.users || [] };
   } catch {
     stats.value = {};
-  }
-}
-
-async function reindex() {
-  reindexing.value = true;
-  reindexMsg.value = "正在重新索引…";
-  reindexError.value = false;
-  try {
-    const data = await api("/api/admin/reindex", { method: "POST" });
-    reindexMsg.value = `索引完成：${data.results?.length || 0} 个来源`;
-    await loadStats();
-  } catch (e) {
-    reindexMsg.value = e.message || "重索引失败";
-    reindexError.value = true;
-  } finally {
-    reindexing.value = false;
   }
 }
 
 async function refresh() {
   refreshing.value = true;
   await loadStats();
-  setTimeout(() => { refreshing.value = false; }, 400);
+  refreshing.value = false;
 }
 
 function formatBytes(bytes) {
@@ -104,45 +75,25 @@ onMounted(loadStats);
 <style scoped>
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
   margin: 16px 0;
 }
 .stat-card {
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 14px;
   text-align: center;
-  background: var(--bg-card);
 }
-.stat-value {
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--fg-default);
+.stat-value { font-size: 1.4rem; font-weight: 700; }
+.stat-label { font-size: 0.75rem; color: var(--fg-muted); margin-top: 2px; }
+.settings-section { margin-top: 20px; }
+.settings-section h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+.user-stats-table { width: 100%; border-collapse: collapse; }
+.user-stats-table th, .user-stats-table td {
+  text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border-muted); font-size: 0.85rem;
 }
-.stat-label {
-  font-size: 0.78rem;
-  color: var(--fg-muted);
-  margin-top: 4px;
-}
-.settings-section {
-  margin-top: 24px;
-}
-.settings-section h3 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-.action-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.refresh-btn { font-size: 1.1rem; padding: 4px 10px; }
-.refresh-icon { display: inline-block; }
-.refresh-btn.spinning .refresh-icon { animation: spin 0.6s linear; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.status-msg { font-size: 0.85rem; color: var(--fg-muted); }
-.status-msg.error { color: var(--danger-fg); }
+.user-stats-table th { font-weight: 600; color: var(--fg-muted); font-size: 0.78rem; }
+.tag-normal { color: #16a34a; }
+.tag-locked { color: #dc2626; }
 </style>
