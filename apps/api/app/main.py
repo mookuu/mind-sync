@@ -1057,8 +1057,15 @@ def admin_stats(_: Any = Depends(require_admin)) -> dict[str, Any]:
     try:
         doc_count = conn.execute("SELECT COUNT(1) AS c FROM documents").fetchone()["c"]
         user_count = conn.execute("SELECT COUNT(1) AS c FROM users").fetchone()["c"]
-        src_count = len(load_sources())
+        # 全局库（无 owner 的源，全局库只计一次）
+        from .services.sync_settings import list_sync_presets
+        _presets = list_sync_presets()
+        src_count = sum(1 for p in _presets if p.get("owner") is None and p.get("id") not in ("all", "custom"))
         wiki_pages = sum(1 for _ in WIKI_DIR.rglob("*.md")) if WIKI_DIR.exists() else 0
+        # 按用户统计文档数
+        user_doc_counts = {}
+        for row in conn.execute("SELECT source_owner, COUNT(1) AS c FROM documents GROUP BY source_owner").fetchall():
+            user_doc_counts[row["source_owner"]] = row["c"]
     finally:
         conn.close()
 
@@ -1074,12 +1081,13 @@ def admin_stats(_: Any = Depends(require_admin)) -> dict[str, Any]:
                 source_size += sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
 
     return {
-        "document_count": doc_count,
+        "doc_count": doc_count,
         "user_count": user_count,
-        "source_count": src_count,
-        "wiki_page_count": wiki_pages,
+        "src_count": src_count,
+        "wiki_pages": wiki_pages,
         "db_size": db_size,
         "source_size": source_size,
+        "user_doc_counts": user_doc_counts,
     }
 
 

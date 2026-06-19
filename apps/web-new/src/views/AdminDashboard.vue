@@ -10,7 +10,7 @@
     <!-- 全局统计 -->
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-value">{{ stats.doc_count ?? '-' }}</div><div class="stat-label">文档总数</div></div>
-      <div class="stat-card"><div class="stat-value">{{ stats.src_count ?? '-' }}</div><div class="stat-label">源总数</div></div>
+      <div class="stat-card"><div class="stat-value">{{ stats.src_count ?? '-' }}</div><div class="stat-label">库总数</div></div>
       <div class="stat-card"><div class="stat-value">{{ stats.user_count ?? '-' }}</div><div class="stat-label">用户数</div></div>
       <div class="stat-card"><div class="stat-value">{{ stats.wiki_pages ?? '-' }}</div><div class="stat-label">Wiki 页面</div></div>
       <div class="stat-card"><div class="stat-value">{{ formatBytes(stats.db_size) }}</div><div class="stat-label">数据库</div></div>
@@ -25,11 +25,11 @@
         </thead>
         <tbody>
           <tr v-for="u in stats.users" :key="u.username">
-            <td>{{ u.display_name || u.username }}</td>
+            <td>{{ fmtUser(u) }}</td>
             <td>{{ u.role === 'admin' ? '管理员' : '成员' }}</td>
-            <td>{{ u.source_count }}</td>
+            <td>{{ u.source_count }}<span v-if="u.role === 'admin'" class="subtle-tag">全员共享</span></td>
             <td>{{ u.doc_count ?? '-' }}</td>
-            <td><span :class="u.status === 'locked' ? 'tag-locked' : 'tag-normal'">{{ u.status === 'locked' ? '🔒' : '✅' }}</span></td>
+            <td><span :class="u.status === 'locked' ? 'tag-locked' : 'tag-normal'" :title="u.status === 'locked' ? '登录失败过多，已锁定' : '正常'">{{ u.status === 'locked' ? '🔒' : '✅' }}</span></td>
           </tr>
         </tbody>
       </table>
@@ -50,7 +50,18 @@ async function loadStats() {
       api("/api/admin/stats"),
       api("/api/admin/users"),
     ]);
-    stats.value = { ...s, users: users.users || [] };
+    // 合并文档统计
+    const docMap = s.user_doc_counts || {};
+    const merged = (users.users || []).map(u => ({
+      ...u,
+      doc_count: docMap[u.username] || 0,
+    }));
+    // 按角色+用户名排序
+    merged.sort((a, b) => {
+      if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
+      return (a.username || '').localeCompare(b.username || '', undefined, { numeric: true });
+    });
+    stats.value = { ...s, users: merged };
   } catch {
     stats.value = {};
   }
@@ -67,6 +78,12 @@ function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fmtUser(u) {
+  const dn = u.display_name || u.username;
+  if (!u.display_name || u.display_name === u.username) return u.username;
+  return `${dn}(${u.username})`;
 }
 
 onMounted(loadStats);
@@ -96,4 +113,5 @@ onMounted(loadStats);
 .user-stats-table th { font-weight: 600; color: var(--fg-muted); font-size: 0.78rem; }
 .tag-normal { color: #16a34a; }
 .tag-locked { color: #dc2626; }
+.subtle-tag { font-size: 0.7rem; color: var(--fg-subtle); margin-left: 4px; }
 </style>
