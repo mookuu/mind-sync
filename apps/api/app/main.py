@@ -630,7 +630,7 @@ def admin_list_users(request: Request, _: Any = Depends(require_admin)) -> dict[
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT username, role, created_at, display_name, locked_until FROM users ORDER BY created_at"
+            "SELECT username, role, created_at, display_name, locked_until, deleted_at FROM users ORDER BY created_at"
         ).fetchall()
         user_sources = _load_user_sources()
         # 管理员源数量 = 全局预设中无 owner 的条目数
@@ -651,8 +651,14 @@ def admin_list_users(request: Request, _: Any = Depends(require_admin)) -> dict[
                 source_count = admin_source_count
             else:
                 source_count = user_map.get(username, 0)
+            deleted_at = row["deleted_at"] or 0
             locked_until = row["locked_until"] or 0
-            status = "locked" if locked_until > now else "normal"
+            if deleted_at > 0:
+                status = "deleted"
+            elif locked_until > now:
+                status = "locked"
+            else:
+                status = "normal"
             items.append({
                 "username": username,
                 "display_name": row["display_name"] or username,
@@ -732,31 +738,27 @@ def admin_create_user(request: Request, body: dict[str, Any], _: Any = Depends(r
 
 @app.delete("/api/admin/users/{username}")
 def admin_delete_user(request: Request, username: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Delete a user — 移除 DB、索引数据、私有源配置，但保留用户目录（复用）。"""
-    from .services.user_manager import (
-        delete_user_index_data,
-        remove_user_source_from_yaml,
-    )
+    """Soft-delete a user — 标记为已注销，保留目录和数据。"""
+    from .services.user_manager import remove_user_source_from_yaml
     from .services.indexer import reload_sources_config
 
     if username == resolve_actor(request):
         raise HTTPException(status_code=400, detail="不能删除自己")
     conn = get_db()
     try:
-        existing = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-        if not existing:
+        row = conn.execute("SELECT deleted_at FROM users WHERE username = ?", (username,)).fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail=f"用户不存在：{username}")
-        # Remove user from DB
-        conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        if row["deleted_at"] and row["deleted_at"] > 0:
+            raise HTTPException(status_code=400, detail="用户已注销")
+        conn.execute("UPDATE users SET deleted_at = ? WHERE username = ?", (time.time(), username))
         conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
         conn.commit()
     finally:
         conn.close()
-    # Clean up data
-    delete_user_index_data(username)
     remove_user_source_from_yaml(username)
     reload_sources_config()
-    add_audit_event("user_deleted", request, actor=resolve_actor(request), detail=f"username={username} (directory kept)")
+    add_audit_event("user_deleted", request, actor=resolve_actor(request), detail=f"username={username} (soft-delete, directory kept)")
     return {"ok": True, "username": username}
 
 

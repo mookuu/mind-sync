@@ -53,13 +53,15 @@ def authenticate(username: str, password: str) -> AuthUser | None:
     conn = get_db()
     try:
         row = conn.execute(
-            "SELECT username, password_hash, role, locked_until FROM users WHERE username = ?",
+            "SELECT username, password_hash, role, locked_until, deleted_at FROM users WHERE username = ?",
             (account,),
         ).fetchone()
     finally:
         conn.close()
 
     if row:
+        if row["deleted_at"] and row["deleted_at"] > 0:
+            return None  # 已注销用户不可登录
         if verify_password(supplied, row["password_hash"]):
             role = Role.ADMIN if row["role"] == "admin" else Role.VIEWER
             return AuthUser(username=row["username"], password=row["password_hash"], role=role)

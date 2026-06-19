@@ -29,7 +29,7 @@
             <td>{{ u.role === 'admin' ? '管理员' : '成员' }}</td>
             <td>{{ u.source_count }}<span v-if="u.role === 'admin'" class="subtle-tag">全员共享</span></td>
             <td>{{ u.doc_count ?? '-' }}</td>
-            <td><span :class="u.status === 'locked' ? 'tag-locked' : 'tag-normal'" :title="u.status === 'locked' ? '登录失败过多，已锁定' : '正常'">{{ u.status === 'locked' ? '🔒' : '✅' }}</span></td>
+            <td><span :class="statusClass(u.status)">{{ statusLabel(u.status) }}</span></td>
           </tr>
         </tbody>
       </table>
@@ -80,6 +80,8 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function statusLabel(s) { return { normal: '✅ 正常', locked: '🔒 锁定', deleted: '💤 已注销' }[s] || s; }
+function statusClass(s) { return { normal: 'tag-normal', locked: 'tag-locked', deleted: 'tag-deleted' }[s] || ''; }
 function fmtUser(u) {
   const dn = u.display_name || u.username;
   if (!u.display_name || u.display_name === u.username) return u.username;
@@ -113,5 +115,6 @@ onMounted(loadStats);
 .user-stats-table th { font-weight: 600; color: var(--fg-muted); font-size: 0.78rem; }
 .tag-normal { color: #16a34a; }
 .tag-locked { color: #dc2626; }
+.tag-deleted { color: var(--fg-subtle); opacity: 0.6; }
 .subtle-tag { font-size: 0.7rem; color: var(--fg-subtle); margin-left: 4px; }
 </style>

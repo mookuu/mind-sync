@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 5  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 6  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "db" / "mind_sync.db"
@@ -109,6 +109,16 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
             ("_schema_version", "5"),
         )
+    if version < 6:
+        # V6: add deleted_at column to users for soft delete
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN deleted_at REAL NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "6"),
+        )
 
 
 def _seed_users_to_db(conn: sqlite3.Connection) -> None:
@@ -188,7 +198,8 @@ def init_db() -> None:
             role TEXT NOT NULL DEFAULT 'admin',
             created_at REAL NOT NULL,
             display_name TEXT NOT NULL DEFAULT '',
-            locked_until REAL NOT NULL DEFAULT 0
+            locked_until REAL NOT NULL DEFAULT 0,
+            deleted_at REAL NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS api_keys (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
