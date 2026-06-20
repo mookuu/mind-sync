@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 6  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 7  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "db" / "mind_sync.db"
@@ -118,6 +118,48 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
             ("_schema_version", "6"),
+        )
+    if version < 7:
+        # V7: per-user sync settings + user_notifications table
+        # 将旧的全局 sync_* 键复制到默认 admin 用户键下
+        import json
+        old_preset = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'sync_preset'"
+        ).fetchone()
+        old_ids = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'sync_source_ids'"
+        ).fetchone()
+        # 获取所有 admin 用户
+        admin_rows = conn.execute(
+            "SELECT username FROM users WHERE role = 'admin' AND deleted_at = 0"
+        ).fetchall()
+        for row in admin_rows:
+            u = row["username"]
+            if old_preset:
+                conn.execute(
+                    "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+                    (f"{u}:sync_preset", old_preset["value"]),
+                )
+            if old_ids:
+                conn.execute(
+                    "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+                    (f"{u}:sync_source_ids", old_ids["value"]),
+                )
+        # 创建通知表
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS user_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                message TEXT NOT NULL,
+                action_link TEXT DEFAULT '',
+                highlight INTEGER DEFAULT 0,
+                created_at REAL NOT NULL,
+                read_at REAL DEFAULT 0
+            );
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "7"),
         )
 
 
@@ -278,17 +320,52 @@ def _seed_wiki_examples() -> None:
         dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
 
-def read_settings(conn: sqlite3.Connection) -> dict[str, str]:
+def _user_key(username: str, key: str) -> str:
+    """生成用户作用域 key，如 moku:sync_preset"""
+    return f"{username}:{key}"
+
+
+def _strip_user_prefix(key: str) -> str:
+    """去掉用户前缀，返回原始 key"""
+    parts = key.split(":", 1)
+    return parts[1] if len(parts) == 2 else key
+
+
+def read_settings(conn: sqlite3.Connection, username: str | None = None) -> dict[str, str]:
+    """读取设置。若提供 username 则读取该用户的设置（用户键优先，全局键兜底）。"""
     rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
     data = {row["key"]: row["value"] for row in rows}
+    if username:
+        # 用户键优先，全局键兜底
+        prefix = f"{username}:"
+        result: dict[str, str] = {}
+        for raw_key in SETTINGS_DEFAULTS:
+            user_key = f"{prefix}{raw_key}"
+            if user_key in data:
+                result[raw_key] = data[user_key]
+            elif raw_key in data:
+                result[raw_key] = data[raw_key]
+        for raw_key, default in SETTINGS_DEFAULTS.items():
+            result.setdefault(raw_key, default)
+        return result
+    # 无用户上下文：返回全局键 + 默认值
+    result = {k: v for k, v in data.items() if ":" not in k}
     for k, v in SETTINGS_DEFAULTS.items():
-        data.setdefault(k, v)
-    return data
+        result.setdefault(k, v)
+    return result
 
 
-def load_settings_map() -> dict[str, str]:
+def save_user_setting(conn: sqlite3.Connection, username: str, key: str, value: str) -> None:
+    """写入用户作用域设置。"""
+    conn.execute(
+        "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (_user_key(username, key), value),
+    )
+
+
+def load_settings_map(username: str | None = None) -> dict[str, str]:
     conn = get_db()
     try:
-        return read_settings(conn)
+        return read_settings(conn, username)
     finally:
         conn.close()

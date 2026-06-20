@@ -53,6 +53,7 @@
           <button class="btn btn-ghost btn-sm" @click="handleLogout">登出</button>
         </div>
       </header>
+      <NotifyBar />
       <main class="content">
         <router-view v-slot="{ Component, route: r }">
           <!-- 注：之前用 <transition> 导致 route transitionend 不触发，组件挂载卡死 -->
@@ -68,6 +69,7 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuth } from "./composables/useAuth.js";
 import AppSidebar from "./components/AppSidebar.vue";
+import NotifyBar from "./components/NotifyBar.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -82,6 +84,13 @@ const loginError = ref("");
 const LAST_PAGE_KEY = "mind_sync_last_page";
 
 // 保存当前路由到 localStorage
+// 路由守卫：拦截非管理员访问管理页面
+router.beforeEach((to) => {
+  if (to.meta.adminOnly && isLoggedIn.value && userRole.value !== "admin") {
+    return { path: "/library", query: { denied: to.path } };
+  }
+});
+
 watch(
   () => route.path,
   (path) => {

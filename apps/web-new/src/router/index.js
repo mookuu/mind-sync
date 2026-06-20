@@ -25,7 +25,7 @@ const routes = [
     path: "/graph",
     name: "graph",
     component: () => import("../views/Graph.vue"),
-    meta: { title: "Wiki 图谱", parent: null },
+    meta: { title: "Wiki 图谱", parent: null, adminOnly: true },
   },
   {
     path: "/sync/control",
@@ -49,13 +49,13 @@ const routes = [
     path: "/sync/purpose",
     name: "sync-purpose",
     component: () => import("../views/SyncPurpose.vue"),
-    meta: { title: "规则约束", parent: "sync" },
+    meta: { title: "规则约束", parent: "sync", adminOnly: true },
   },
   {
     path: "/sync/audit",
     name: "sync-audit",
     component: () => import("../views/SyncAudit.vue"),
-    meta: { title: "审计", parent: "sync" },
+    meta: { title: "操作记录", parent: "sync" },
   },
   {
     path: "/account",
@@ -67,13 +67,13 @@ const routes = [
     path: "/admin/users",
     name: "admin-users",
     component: () => import("../views/UsersAdmin.vue"),
-    meta: { title: "用户管理", parent: "admin" },
+    meta: { title: "用户管理", parent: "admin", adminOnly: true },
   },
   {
     path: "/admin/dashboard",
     name: "admin-dashboard",
     component: () => import("../views/AdminDashboard.vue"),
-    meta: { title: "系统概览", parent: "admin" },
+    meta: { title: "系统概览", parent: "admin", adminOnly: true },
   },
 ];
 

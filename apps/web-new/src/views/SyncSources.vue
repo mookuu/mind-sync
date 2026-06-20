@@ -120,66 +120,48 @@
           <p v-if="privateMsg" class="status-msg" :class="{ error: privateError }">{{ privateMsg }}</p>
         </template>
 
-        <!-- ===== 个人知识库 / 我的知识库（折叠） ===== -->
-        <div class="section-label collapsible" @click="toggleSection('private')" style="margin-top:8px">
+        <!-- ===== 个人知识库 / 我的知识库（折叠，管理员不显示此区） ===== -->
+        <div v-if="!isAdmin" class="section-label collapsible" @click="toggleSection('private')" style="margin-top:8px">
           <span class="chevron">{{ sectionExpanded.private ? '▾' : '▸' }}</span>
-          <span>{{ isAdmin ? '👥 个人知识库' : '🔒 我的知识库' }}</span>
-          <span class="subtle">{{ isAdmin ? '其他用户的个人目录' : '仅自己可见' }}</span>
+          <span>🔒 我的知识库</span>
+          <span class="subtle">仅自己可见</span>
           <button class="btn btn-ghost btn-xs" @click.stop="toggleSection('private')" style="margin-left:auto">
             {{ sectionExpanded.private ? '收起' : '展开' }}
           </button>
         </div>
-        <template v-if="sectionExpanded.private">
+        <template v-if="!isAdmin && sectionExpanded.private">
           <template v-for="group in groupedPrivateSources" :key="group.owner || '__ungrouped__'">
-            <div v-if="group.owner && isAdmin" class="owner-group-label collapsible" @click="togglePrivateGroup(group.owner)">
+            <div v-if="group.owner" class="owner-group-label collapsible" @click="togglePrivateGroup(group.owner)">
               <span class="chevron">{{ privateGroupExpanded[group.owner] !== false ? '▾' : '▸' }}</span>
               <span class="owner-label">👤 {{ formatOwnerLabel(group.owner) }}<span class="role-tag">{{ getOwnerRoleLabel(group.owner) }}</span></span>
               <span class="subtle" style="font-size:0.7rem;margin-left:4px">({{ group.sources.length }})</span>
             </div>
-            <div v-if="!group.owner || !isAdmin || privateGroupExpanded[group.owner] !== false">
+            <div v-if="!group.owner || privateGroupExpanded[group.owner] !== false">
             <div
               v-for="p in group.sources"
               :key="p.id"
               class="preset-row"
-              :class="{ 'admin-row': isAdmin, 'path-invalid-row': p.path_exists === false }"
-              :style="isAdmin ? (p.path_exists === false ? disabledStyle : {}) : (isAll ? disabledStyle : {})"
+              :class="{ 'path-invalid-row': p.path_exists === false }"
+              :style="isAll ? disabledStyle : {}"
             >
-              <template v-if="isAdmin">
-                <div class="preset-info preset-info-admin">
-                  <div class="preset-label">{{ p.label }}</div>
+              <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id), 'path-invalid': p.path_exists === false }">
+                <input
+                  type="checkbox"
+                  :value="p.id"
+                  :checked="customPresetIds.includes(p.id)"
+                  :disabled="isAll"
+                  @change="onTogglePreset(p.id)"
+                />
+                <div>
+                  <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
                   <div class="preset-desc" :class="{ 'path-invalid': p.path && p.path_exists === false }">
                     {{ displayPath(p.path || p.description || '') }}
-                    <span v-if="p.path && p.path_exists === false" class="path-invalid-tag" title="此路径在服务器上不存在">⚠ 路径无效</span>
+                    <span v-if="p.path && p.path_exists === false" class="path-invalid-tag">⚠ 路径无效</span>
                   </div>
                 </div>
-                <button
-                  v-if="p.path_exists === false"
-                  class="btn btn-ghost btn-sm delete-source-btn"
-                  title="此路径无效，点击删除"
-                  :disabled="isAll || deleting === p.id"
-                  @click="deletePrivateSource(p)"
-                >✕</button>
-              </template>
-              <template v-else>
-                <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id), 'path-invalid': p.path_exists === false }">
-                  <input
-                    type="checkbox"
-                    :value="p.id"
-                    :checked="customPresetIds.includes(p.id)"
-                    :disabled="isAll"
-                    @change="onTogglePreset(p.id)"
-                  />
-                  <div>
-                    <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
-                    <div class="preset-desc" :class="{ 'path-invalid': p.path && p.path_exists === false }">
-                      {{ displayPath(p.path || p.description || '') }}
-                      <span v-if="p.path && p.path_exists === false" class="path-invalid-tag">⚠ 路径无效</span>
-                    </div>
-                  </div>
-                </label>
-              </template>
+              </label>
               <button
-                v-if="!p.is_default && !isAdmin"
+                v-if="!p.is_default"
                 class="btn btn-ghost btn-sm share-source-btn"
                 :title="p.shared ? '取消共享' : '共享给其他用户'"
                 :disabled="isAll || sharing === p.id"
@@ -207,8 +189,8 @@
           <p v-if="privateMsg" class="status-msg" :class="{ error: privateError }">{{ privateMsg }}</p>
         </template>
 
-        <!-- ===== 共享知识库（非管理员可见） ===== -->
-        <div v-if="!isAdmin" class="section-label collapsible" @click="toggleSection('shared_public')" style="margin-top:8px">
+        <!-- ===== 共享知识库 ===== -->
+        <div class="section-label collapsible" @click="toggleSection('shared_public')" style="margin-top:8px">
           <span class="chevron">{{ sectionExpanded.shared_public ? '▾' : '▸' }}</span>
           <span>🌐 共享知识库</span>
           <span class="subtle">其他用户共享的个人库</span>
@@ -216,7 +198,7 @@
             {{ sectionExpanded.shared_public ? '收起' : '展开' }}
           </button>
         </div>
-        <template v-if="!isAdmin && sectionExpanded.shared_public">
+        <template v-if="sectionExpanded.shared_public">
           <template v-for="group in groupedSharedPublicSources" :key="group.owner || '__ungrouped__'">
             <div class="owner-group-label" v-if="group.owner">
               <span class="owner-label">👤 {{ formatOwnerLabel(group.owner) }}</span>
@@ -350,7 +332,12 @@ const customPresetIds = computed(() => {
     if (!isAdmin.value && syncPreset.value === "all") {
       return (sharedPresets.value || []).map(p => p.id);
     }
-    return (syncSourceIds.value || []);
+    // 默认库始终勾选
+    const ids = [...(syncSourceIds.value || [])];
+    for (const did of defaultPresetIds.value) {
+      if (!ids.includes(did)) ids.push(did);
+    }
+    return ids;
   } catch {
     return [];
   }
@@ -528,9 +515,9 @@ function groupByOwnerList(list) {
 
 // 共享知识库：非管理员可见的其他用户共享库
 const groupedSharedPublicSources = computed(() => {
-  if (isAdmin.value) return [];
   const allSources = privateSources.value || [];
   const sharedFromOthers = allSources.filter(s => s.shared && s.owner && s.owner !== currentUser.value);
+  if (!sharedFromOthers.length) return [];
   const groups = {};
   for (const p of sharedFromOthers) {
     const owner = p.owner || "__ungrouped__";

@@ -14,6 +14,7 @@
         <div class="doc-content doc-markdown" :class="{ 'image-enhance': imageEnhance }" v-html="renderedContent" ref="docContentEl" @click="onDocClick"></div>
       </template>
       <template v-else>
+        <div v-if="deniedMsg" class="denied-notice">{{ deniedMsg }}</div>
         <div class="empty-state">选择左侧文件开始阅读</div>
       </template>
     </div>
@@ -27,6 +28,15 @@ import api from "../api/index.js";
 import { markdownIt, rewriteImageUrls, hljs } from "../markdown-it.js";
 
 const route = useRoute();
+const deniedMsg = ref('');
+
+// 权限拦截后显示提示
+watch(() => route.query.denied, (path) => {
+  if (path) {
+    deniedMsg.value = `页面「${path}」仅管理员可访问`;
+  }
+}, { immediate: true });
+
 const isSingleDoc = computed(() => !!route.query.doc);
 const searchQuery = computed(() => route.query.q || '');
 const currentDoc = ref(null);
@@ -134,5 +144,13 @@ onMounted(async () => {
 .doc-content :deep(hr) { border: none; border-top: 1px solid var(--border-muted); margin: 16px 0; }
 .doc-content :deep(a) { color: var(--accent-fg); }
 .doc-content :deep(a:hover) { text-decoration: underline; }
+.denied-notice {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  background: var(--warning-bg, #fef3c7);
+  color: var(--warning-fg, #92400e);
+  font-size: 0.9rem;
+}
 .empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-subtle); font-size: 1.1rem; }
 </style>

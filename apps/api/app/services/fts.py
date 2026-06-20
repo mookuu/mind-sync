@@ -86,6 +86,36 @@ def _user_owner_filter(username: str | None = None, role: str | None = None) -> 
     return "AND (d.source_owner = ? OR d.source_owner = ?)", ["__shared__", username]
 
 
+def _user_synced_sources(username: str | None) -> list[str] | None:
+    """Return the list of source_ids the user has synced. None = all sources."""
+    if not username:
+        return []
+    from ..db import load_settings_map
+    from .sync_settings import read_sync_settings
+
+    smap = load_settings_map(username)
+    meta = read_sync_settings(smap, username=username)
+    if meta["sync_preset"] == "all":
+        return None  # all sources
+    # Resolve sync keys → source IDs (strip :type suffix)
+    selected = meta["sync_selected_keys"]
+    return list({k.split(":")[0] for k in selected})
+
+
+def _user_sync_source_filter(username: str | None, role: str | None) -> tuple[str, list[str]]:
+    """Build SQL filter for documents that belong to the user's synced sources.
+    Returns (sql_clause, args_list). Empty clause if admin or all synced."""
+    if role and role.strip().lower() == "admin":
+        return "", []
+    synced = _user_synced_sources(username)
+    if synced is None:
+        return "", []  # all synced
+    if not synced:
+        return "AND 0", []  # nothing synced → no results
+    placeholders = ", ".join("?" * len(synced))
+    return f"AND d.source_id IN ({placeholders})", synced
+
+
 def build_fts_match_query(raw: str) -> str:
     q = (raw or "").strip()
     if not q:
@@ -225,6 +255,10 @@ def search_documents(
     owner_clause, owner_args = _user_owner_filter(username, role)
     filter_sql += owner_clause
     filter_args.extend(owner_args)
+    # 只搜当前用户已同步的源
+    sync_clause, sync_args = _user_sync_source_filter(username, role)
+    filter_sql += sync_clause
+    filter_args.extend(sync_args)
 
     fts_query = build_fts_match_query(q)
     fetch_limit = _fts_fetch_limit(limit, sort, weights)

@@ -144,11 +144,11 @@ def load_ordered_sources(
     return apply_source_order(sources, settings_map)
 
 
-def read_sync_settings(settings_map: dict[str, str]) -> dict[str, Any]:
+def read_sync_settings(settings_map: dict[str, str], username: str | None = None, role: str | None = None) -> dict[str, Any]:
     preset = (settings_map.get("sync_preset") or "all").strip() or "all"
     custom_ids = _parse_source_ids(settings_map.get("sync_source_ids"))
     manual_order = _parse_source_ids(settings_map.get("sync_source_order"))
-    all_sources = load_sources()
+    all_sources = load_sources_for_user(username, role)
     known_keys = {source_sync_key(s) for s in all_sources}
     expanded_custom = expand_sync_keys(custom_ids, all_sources)
     if preset == "custom":
@@ -162,7 +162,7 @@ def read_sync_settings(settings_map: dict[str, str]) -> dict[str, Any]:
     else:
         preset = "all"
         selected_keys = list(known_keys)
-    ordered_all = load_ordered_sources(settings_map)
+    ordered_all = load_ordered_sources(settings_map, username=username, role=role)
     selected_set = set(selected_keys)
     effective_order = [source_sync_key(s) for s in ordered_all if source_sync_key(s) in selected_set]
     selected_labels = [source_display_label(s) for s in ordered_all if source_sync_key(s) in selected_set]
@@ -177,23 +177,23 @@ def read_sync_settings(settings_map: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def resolve_sync_source_ids(settings_map: dict[str, str] | None = None) -> list[str] | None:
+def resolve_sync_source_ids(settings_map: dict[str, str] | None = None, username: str | None = None, role: str | None = None) -> list[str] | None:
     """Return None to sync all sources, or a filtered ordered list of sync keys (id:type)."""
     if settings_map is None:
         from ..db import load_settings_map
 
-        settings_map = load_settings_map()
-    meta = read_sync_settings(settings_map)
+        settings_map = load_settings_map(username)
+    meta = read_sync_settings(settings_map, username=username, role=role)
     selected_keys = meta["sync_selected_keys"]
-    all_keys = [source_sync_key(s) for s in load_ordered_sources(settings_map)]
+    all_keys = [source_sync_key(s) for s in load_ordered_sources(settings_map, username=username, role=role)]
     if not selected_keys or set(selected_keys) >= set(all_keys):
         return None
     selected_set = set(selected_keys)
     return [k for k in all_keys if k in selected_set]
 
 
-def enrich_settings_response(settings_map: dict[str, str], scheduler_meta: dict[str, Any]) -> dict[str, Any]:
-    sync_meta = read_sync_settings(settings_map)
+def enrich_settings_response(settings_map: dict[str, str], scheduler_meta: dict[str, Any], username: str | None = None, role: str | None = None) -> dict[str, Any]:
+    sync_meta = read_sync_settings(settings_map, username=username, role=role)
     data = dict(scheduler_meta)
     data.update(sync_meta)
     return data

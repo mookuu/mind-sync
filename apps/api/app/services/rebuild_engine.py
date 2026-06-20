@@ -18,12 +18,12 @@ def _update_rebuild_counts(processed_files: int, indexed: int, skipped: int, del
         SYNC_STATE["cleared"] = cleared
 
 
-def run_rebuild_job(trigger: str = "manual", source_ids: list[str] | None = None) -> dict[str, Any]:
+def run_rebuild_job(trigger: str = "manual", source_ids: list[str] | None = None, *, username: str | None = None) -> dict[str, Any]:
     """Clear index for selected sources, then force a full re-scan (no remote pull)."""
     if source_ids is None and trigger in ("manual", "auto"):
         from .sync_settings import resolve_sync_source_ids
 
-        source_ids = resolve_sync_source_ids()
+        source_ids = resolve_sync_source_ids(username=username)
 
     started_at = time.time()
     with SYNC_LOCK:
@@ -50,8 +50,8 @@ def run_rebuild_job(trigger: str = "manual", source_ids: list[str] | None = None
     run_error = None
     try:
         conn = get_db()
-        settings_map = load_settings_map()
-        all_sources = load_ordered_sources(settings_map)
+        settings_map = load_settings_map(username)
+        all_sources = load_ordered_sources(settings_map, username=username)
         if source_ids:
             all_sources = apply_source_order(
                 filter_sources_by_sync_keys(all_sources, source_ids),

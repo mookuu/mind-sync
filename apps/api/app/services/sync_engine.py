@@ -137,13 +137,14 @@ def run_sync_job(
     trigger: str = "manual",
     source_ids: list[str] | None = None,
     *,
+    username: str | None = None,
     vault_pull: bool = True,
     vault_push: bool = False,
 ) -> dict[str, Any]:
     if source_ids is None and trigger in ("manual", "auto"):
         from .sync_settings import resolve_sync_source_ids
 
-        source_ids = resolve_sync_source_ids()
+        source_ids = resolve_sync_source_ids(username=username)
 
     started_at = time.time()
     with SYNC_LOCK:
@@ -177,8 +178,8 @@ def run_sync_job(
         conn = get_db()
         from ..db import load_settings_map
 
-        settings_map = load_settings_map()
-        all_sources = load_ordered_sources(settings_map)
+        settings_map = load_settings_map(username)
+        all_sources = load_ordered_sources(settings_map, username=username)
         if source_ids:
             all_sources = apply_source_order(
                 filter_sources_by_sync_keys(all_sources, source_ids),

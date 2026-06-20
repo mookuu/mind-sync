@@ -225,10 +225,10 @@ const orderedItems = computed(() => {
         { label: "素材管理", icon: "📦", path: "/sync/sources" },
         { label: "仓库管理", icon: "🏪", path: "/sync/vault" },
         { label: "规则约束", icon: "📋", path: "/sync/purpose", admin: true },
-        { label: "审计", icon: "📜", path: "/sync/audit", admin: true },
+        { label: "操作记录", icon: "📜", path: "/sync/audit" },
       ],
     },
-    { label: "Wiki 图谱", icon: "🕸", path: "/graph" },
+    { label: "Wiki 图谱", icon: "🕸", path: "/graph", admin: true },
   ];
 
   // Admin-only links

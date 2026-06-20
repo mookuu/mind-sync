@@ -48,6 +48,30 @@ async function request(path, options = {}) {
       clearAuthCookies();
       onUnauthorized();
     }
+    // CSRF 403 → 自动刷新 token：cookie 可能丢失，重试一次
+    if (res.status === 403 && detail.includes('CSRF')) {
+      try {
+        const refreshRes = await fetch('/api/auth-mode', { credentials: 'include' });
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          if (refreshData.csrf_token) {
+            document.cookie = `ms_csrf=${refreshData.csrf_token}; path=/; SameSite=Lax`;
+            // 重试原请求
+            const retryHeaders = { ...headers, 'x-csrf-token': refreshData.csrf_token };
+            const retryRes = await fetch(url, {
+              method, headers: retryHeaders, credentials: 'include',
+              body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
+            });
+            if (retryRes.ok) {
+              const retryText = await retryRes.text();
+              return retryText ? JSON.parse(retryText) : null;
+            }
+          }
+        }
+      } catch {
+        // 刷新失败，继续抛出原错误
+      }
+    }
     throw new Error(detail);
   }
   const text = await res.text();

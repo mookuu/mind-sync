@@ -238,9 +238,16 @@ def logout(request: Request, response: Response) -> dict[str, bool]:
 
 @app.get("/api/auth-mode")
 def auth_mode(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    import secrets as secmod
+
     role = resolve_role(request)
     from .services.auth import session_account
     username = session_account(request) or None
+
+    # 若 CSRF cookie 缺失，生成新 token 返回（由前端写入 cookie）
+    csrf_token = csrf_cookie_token(request)
+    if not csrf_token:
+        csrf_token = secmod.token_urlsafe(24)
 
     # 获取 display_name
     display_name = username
@@ -264,6 +271,7 @@ def auth_mode(request: Request, _: Any = Depends(require_any_auth)) -> dict[str,
         "username": username,
         "display_name": display_name,
         "authenticated": True,
+        "csrf_token": csrf_token,
     }
 
 
@@ -396,8 +404,13 @@ def delete_api_key(
 
 
 @app.get("/api/audit-events")
-def audit_events(limit: int = 50, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
-    return {"items": fetch_audit_events(limit)}
+def audit_events(request: Request, limit: int = 50, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    username, role = resolve_current_user(request)
+    items = fetch_audit_events(limit)
+    # 非管理员只看自己的操作记录
+    if role != "admin":
+        items = [i for i in items if i.get("actor") == username]
+    return {"items": items}
 
 
 @app.get("/api/sources")
@@ -616,6 +629,15 @@ def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends
             raise HTTPException(status_code=405, detail=f"sources.yaml 为只读，无法删除：{source_id}")
         raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
 
+    # 查找被删源的拥有者（用于通知）
+    deleted_owner = ""
+    deleted_label = source_id
+    for s in (sources if 'sources' in dir() else []):
+        if isinstance(s, dict) and _source_matches(s):
+            deleted_owner = s.get("owner") or ""
+            deleted_label = s.get("id") or source_id
+            break
+
     reload_sources_config()
 
     # 清理该源已索引的文档数据
@@ -633,7 +655,17 @@ def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends
         except Exception:
             pass
 
-    add_audit_event("sources_deleted", request, actor=resolve_actor(request), detail=f"id={source_id}")
+    # 若被删源有拥有者且不是当前管理员本人 → 通知拥有者
+    actor = resolve_actor(request)
+    if deleted_owner and deleted_owner != actor:
+        _add_notification(
+            deleted_owner,
+            f"{actor} 删除了 {deleted_label}，请通过同步控制页面更新库信息",
+            action_link="/sync/control",
+            highlight=True,
+        )
+
+    add_audit_event("sources_deleted", request, actor=actor, detail=f"id={source_id}")
     return {"ok": True, "deleted": source_id}
 
 
@@ -891,6 +923,52 @@ def user_me(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, A
             "has_dir": udir.exists(),
             "source_count": source_count,
         }
+    finally:
+        conn.close()
+
+
+# ── 通知 ──────────────────────────────────────────────
+
+
+@app.get("/api/user/notifications")
+def user_notifications(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    username, _ = resolve_current_user(request)
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, message, action_link, highlight, created_at FROM user_notifications WHERE username = ? AND read_at = 0 ORDER BY created_at DESC",
+            (username,),
+        ).fetchall()
+        return {"notifications": [dict(r) for r in rows]}
+    finally:
+        conn.close()
+
+
+@app.post("/api/user/notifications/{nid}/read")
+def user_notification_read(request: Request, nid: int, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    username, _ = resolve_current_user(request)
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE user_notifications SET read_at = ? WHERE id = ? AND username = ?",
+            (time.time(), nid, username),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def _add_notification(target_username: str, message: str, *, action_link: str = "", highlight: bool = False) -> None:
+    """写入通知（供其他模块调用）。"""
+    import time as _time
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO user_notifications(username, message, action_link, highlight, created_at) VALUES(?, ?, ?, ?, ?)",
+            (target_username, message, action_link, 1 if highlight else 0, _time.time()),
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -1184,9 +1262,9 @@ def admin_reindex(request: Request, _: Any = Depends(require_admin)) -> dict[str
 def get_settings(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     username, role = resolve_current_user(request)
     conn = get_db()
-    st = read_settings(conn)
+    st = read_settings(conn, username)
     conn.close()
-    return enrich_settings_response(st, SCHEDULER.build_meta(st))
+    return enrich_settings_response(st, SCHEDULER.build_meta(st), username=username, role=role)
 
 
 
@@ -1198,6 +1276,9 @@ def update_settings(
     request: Request,
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
+    from .db import save_user_setting
+
+    updater_username, _ = resolve_current_user(request)
     conn = get_db()
     try:
         if payload.auto_sync_enabled is not None:
@@ -1215,15 +1296,11 @@ def update_settings(
             preset = (payload.sync_preset or "all").strip() or "all"
             if preset != "custom" and preset not in SYNC_PRESETS:
                 preset = "all"
-            conn.execute(
-                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                ("sync_preset", preset),
-            )
+            save_user_setting(conn, updater_username, "sync_preset", preset)
         if payload.sync_source_ids is not None:
             import json
 
             all_src = load_sources()
-            # 也接受预设 ID（如 web_snapshots 对应实际 source example_web）
             from .services.sync_settings import list_sync_presets
 
             valid_preset_ids = {p["id"] for p in list_sync_presets() if p.get("source_ids")}
@@ -1233,10 +1310,7 @@ def update_settings(
                 if str(x).strip()
                 and (is_known_sync_key(str(x).strip(), all_src) or str(x).strip() in valid_preset_ids)
             ]
-            conn.execute(
-                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                ("sync_source_ids", json.dumps(ids, ensure_ascii=False)),
-            )
+            save_user_setting(conn, updater_username, "sync_source_ids", json.dumps(ids, ensure_ascii=False))
         if payload.sync_source_order is not None:
             import json
 
@@ -1246,16 +1320,13 @@ def update_settings(
                 for x in payload.sync_source_order
                 if str(x).strip() and is_known_sync_key(str(x).strip(), all_src)
             ]
-            conn.execute(
-                "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                ("sync_source_order", json.dumps(order_ids, ensure_ascii=False)),
-            )
+            save_user_setting(conn, updater_username, "sync_source_order", json.dumps(order_ids, ensure_ascii=False))
         conn.commit()
-        st = read_settings(conn)
+        st = read_settings(conn, updater_username)
     finally:
         conn.close()
     SCHEDULER.reset_last_run_now()
-    data = enrich_settings_response(st, SCHEDULER.build_meta(st))
+    data = enrich_settings_response(st, SCHEDULER.build_meta(st), username=updater_username, role=None)
     data["ok"] = True
     add_audit_event(
         "settings_updated",
@@ -1288,6 +1359,7 @@ def sync(
     _: Any = Depends(require_admin),
 ) -> dict[str, Any]:
     check_api_rate_limit(request, "sync")
+    username, role = resolve_current_user(request)
     body = payload or SyncRequest()
     source_ids: list[str] | None = None
     if body.preset and body.preset in SYNC_PRESETS:
@@ -1297,7 +1369,7 @@ def sync(
     elif body.use_saved_defaults:
         from .services.sync_settings import resolve_sync_source_ids
 
-        source_ids = resolve_sync_source_ids()
+        source_ids = resolve_sync_source_ids(username=username, role=role)
 
     with SYNC_LOCK:
         if SYNC_STATE["running"]:
@@ -1308,6 +1380,7 @@ def sync(
         lambda: run_sync_job(
             "manual",
             source_ids,
+            username=username,
             vault_pull=body.vault_pull,
             vault_push=body.vault_push,
         )
@@ -1328,6 +1401,7 @@ def rebuild_index(
 ) -> dict[str, Any]:
     """Full index rebuild: clear selected sources in SQLite, then re-scan every file."""
     check_api_rate_limit(request, "sync")
+    username, role = resolve_current_user(request)
     body = payload or RebuildRequest()
     source_ids: list[str] | None = None
     if body.preset and body.preset in SYNC_PRESETS:
@@ -1337,14 +1411,14 @@ def rebuild_index(
     elif body.use_saved_defaults:
         from .services.sync_settings import resolve_sync_source_ids
 
-        source_ids = resolve_sync_source_ids()
+        source_ids = resolve_sync_source_ids(username=username, role=role)
 
     with SYNC_LOCK:
         if SYNC_STATE["running"]:
             add_audit_event("rebuild_requested", request, actor=resolve_actor(request), detail="already running")
             return {"ok": True, "started": False, "mode": "rebuild", "message": "index job already running"}
         SYNC_STATE["running"] = True
-    background_tasks.add_task(lambda: run_rebuild_job("manual", source_ids))
+    background_tasks.add_task(lambda: run_rebuild_job("manual", source_ids, username=username))
     detail = "rebuild started"
     if source_ids:
         detail += f" sources={','.join(source_ids)}"

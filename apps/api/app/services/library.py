@@ -189,6 +189,14 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
 
 
+    # 只保留当前用户已同步的源
+    if username and role and role.strip().lower() != "admin":
+        from .fts import _user_synced_sources
+        synced = _user_synced_sources(username)
+        if synced is not None:  # None = all synced
+            synced_set = set(synced)
+            by_source = {k: v for k, v in by_source.items() if k in synced_set}
+
     sections: list[dict[str, Any]] = []
 
     wiki_docs: list[dict[str, Any]] | None = None
