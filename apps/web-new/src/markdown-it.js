@@ -46,6 +46,8 @@ export const markdownIt = new MarkdownIt({
 })
   .use(taskLists);
 
+export { hljs };
+
 // 图片路径改写：相对路径 → API asset 端点
 export function rewriteImageUrls(html, docId) {
   if (!docId) return html;

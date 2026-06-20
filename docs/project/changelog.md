@@ -1,5 +1,24 @@
 # 变更日志
 
+## 2026-07-15
+
+- **feat**: 文档库树恢复真实目录结构 — `_build_lang_groups`（按语言分组）→ `_build_lang_tree`（统一树），源目录层级原封不动展示
+- **feat**: 代码文件语法高亮 — 非 markdown 文件（.py/.java/.js 等）现在调用 hljs.highlight() 生成真实高亮
+- **feat**: 新增库在文档库树中立即可见（count=0），无需等同步
+- **feat**: etag 缓存策略 — API 返回源列表指纹，数据未变时跳过 DOM 重建
+- **feat**: 新增库 include 扩展到 18 种常见文本类型（原仅 .md/.py）
+- **feat**: 全量重建弹窗改用组件式 modal（统一 UI 风格）
+- **fix**: 全量重建后搜索结果/树缓存 404 — 多层面修复（树缓存移除 + 搜索 TTL + 同步时主动清缓存）
+- **fix**: 删除源后索引文档残留 — 删除端点增加 `clear_source_index` 级联清理
+- **fix**: 新增库后文档树不显示 — library API 传递用户上下文给 `load_ordered_sources`
+- **fix**: TreeNode 根级文件不可见 — 增加顶层文件节点渲染分支
+- **fix**: TreeBranch 展开状态不响应 activeDocId 变化 — 增加 watch
+- **fix**: 搜索跳转后侧边栏树不自动展开 — AppSidebar 增加 watch(activeDocId)
+- **fix**: 路径无效的库不再展示在文档树
+- **fix**: 新增库后自动勾选问题 — preset=all 时添加后转为 custom 并排除新库
+- **fix**: 删除/增加库后侧边栏树自动同步 — 路由 watcher 进入 library 时刷新已展开树
+- **docs**: lessons.md 新增 15 条踩坑记录（#35–#49），通用原则扩展至 28 条
+
 ## 2026-06-17 (续)
 
 - **feat**: 表示名（display_name）字段 — DB 迁移 V4 + 用户可编辑 + 右上角显示 + F5 持久化

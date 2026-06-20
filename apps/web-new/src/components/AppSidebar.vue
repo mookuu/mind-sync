@@ -27,7 +27,7 @@
                 <template v-if="catExpanded[child.catKey]">
                   <p v-if="catLoading[child.catKey]" class="subtle" style="padding:4px 10px 4px 48px;font-size:0.75rem">加载中…</p>
                   <template v-else v-for="node in (catTrees[child.catKey] || [])" :key="node.sourceId">
-                    <TreeBranch :label="node.label" :source-id="node.sourceId" :depth="2" :default-expanded="treeContains(node, activeDocId)">
+                    <TreeBranch :label="node.label" :source-id="node.sourceId" :count="node.count" :depth="2" :default-expanded="treeContains(node, activeDocId)">
                       <TreeNode v-for="titem in (node.tree || [])" :key="titem.path || titem.name" :node="titem" :depth="3" :active-doc-id="activeDocId" @select="openDocFromSidebar" />
                     </TreeBranch>
                   </template>
@@ -65,7 +65,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from "vue";
+import { ref, reactive, computed, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../api/index.js";
 import TreeBranch from "./TreeBranch.vue";
@@ -75,6 +75,7 @@ const router = useRouter();
 
 // 每个分类独立的树状态
 const catTrees = reactive({ source: null, summary: null, query: null });
+const catTreesETag = reactive({ source: '', summary: '', query: '' });
 const catLoading = reactive({ source: false, summary: false, query: false });
 const catExpanded = reactive({ source: false, summary: false, query: false });
 
@@ -88,21 +89,29 @@ async function toggleCatTree(catKey) {
   catExpanded.summary = false;
   catExpanded.query = false;
   catExpanded[catKey] = true;
-  if (catTrees[catKey]) return;
   catLoading[catKey] = true;
   try {
     const data = await api(`/api/library?category=${encodeURIComponent(catKey)}`);
+    // etag 未变且缓存存在 → 跳过 DOM 重建，直接复用
+    if (data.etag && catTrees[catKey] && data.etag === catTreesETag[catKey]) {
+      return;
+    }
     const nodes = [];
     for (const sec of (data.sections || [])) {
+      // Wiki section: single tree on the section itself
+      if (sec.flat && sec.tree) {
+        nodes.push({ label: sec.label || sec.source_id, sourceId: sec.source_id || 'wiki', type: 'source', tree: sec.tree || [], count: sec.count });
+        continue;
+      }
+      // Raw sources: tree is on each source directly（含空树，使新增库立即可见）
       for (const src of (sec.sources || [])) {
-        for (const lang of (src.languages || [])) {
-          if (lang.tree && lang.tree.length) {
-            nodes.push({ label: src.label || src.id, sourceId: src.id, type: 'source', tree: lang.tree });
-          }
+        if (src.tree) {
+          nodes.push({ label: src.label || src.id, sourceId: src.id, type: 'source', tree: src.tree || [], count: src.count });
         }
       }
     }
     catTrees[catKey] = nodes;
+    catTreesETag[catKey] = data.etag || '';
   } catch { catTrees[catKey] = []; }
   finally { catLoading[catKey] = false; }
 }
@@ -125,7 +134,30 @@ function treeContains(node, targetId) {
 const route = useRoute();
 const activeDocId = computed(() => route.query.doc ? String(route.query.doc) : null);
 
-
+// 从搜索跳转时自动加载并展开对应分类树
+watch(activeDocId, async (docId) => {
+  if (!docId) return;
+  try {
+    const doc = await api(`/api/document/${docId}`);
+    const sourceId = doc.source_id || '';
+    const relPath = doc.rel_path || '';
+    // 根据文档信息判断分类
+    let catKey = 'source';
+    if (sourceId === 'wiki' || relPath.startsWith('summaries/')) catKey = 'summary';
+    else if (relPath.startsWith('queries/') || relPath.startsWith('insight_')) catKey = 'query';
+    // 加载并展开对应分类树（如果尚未加载）
+    if (!catTrees[catKey]) {
+      await toggleCatTree(catKey);
+    } else if (!catExpanded[catKey]) {
+      catExpanded.source = false;
+      catExpanded.summary = false;
+      catExpanded.query = false;
+      catExpanded[catKey] = true;
+    }
+  } catch {
+    // 文档加载失败，忽略
+  }
+});
 
 // expanded: 当前展开的父级（同一时间只有一个）
 const expanded = ref({});
@@ -139,13 +171,28 @@ function expandForRoute(path) {
 }
 expanded.value = expandForRoute(route.path);
 
-// 路由变化时自动展开对应父级
-watch(() => route.path, (path) => {
-  const target = expandForRoute(path);
+// 路由变化时自动展开对应父级，并在进入文档库时刷新树
+watch(() => route.path, (newPath, oldPath) => {
+  const target = expandForRoute(newPath);
   if (Object.keys(target).length) {
     expanded.value = target;
   } else {
     expanded.value = {};
+  }
+
+  // 从其他页面回到 /library 时，刷新已展开的分类树（删除库后无需重建）
+  if (newPath.startsWith('/library') && oldPath && !oldPath.startsWith('/library')) {
+    nextTick(() => {
+      for (const catKey of ['source', 'summary', 'query']) {
+        if (catExpanded[catKey] && catTrees[catKey]) {
+          // 收起后立即重新展开，触发重新加载
+          catExpanded[catKey] = false;
+          nextTick(() => {
+            toggleCatTree(catKey);
+          });
+        }
+      }
+    });
   }
 });
 

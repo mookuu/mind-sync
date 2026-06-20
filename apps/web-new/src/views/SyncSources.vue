@@ -684,11 +684,21 @@ async function addCustomPath() {
   pathMsg.value = "";
   pathError.value = false;
   addingPath.value = true;
+  const oldPreset = syncPreset.value;
+  const pathParts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+  const newSourceId = pathParts[pathParts.length - 1] || '';
   try {
     await api("/api/admin/sources/custom", { method: "POST", body: { path } });
     pathMsg.value = `已添加：${path}`;
     customPath.value = "";
     await reload();
+    // 新增的库不自动勾选：如原为「全部同步」则转为自定义并排除新库
+    if (oldPreset === 'all') {
+      const allIds = syncPresets.value
+        .filter(p => p.id !== 'all' && p.id !== 'custom' && p.id !== `${newSourceId}:local`)
+        .map(p => p.id);
+      await setCustomSources(allIds);
+    }
   } catch (e) {
     pathMsg.value = e.message || "添加失败";
     pathError.value = true;
@@ -707,12 +717,22 @@ async function addPrivateSource() {
   privateMsg.value = "";
   privateError.value = false;
   addingPrivate.value = true;
+  const oldPreset = syncPreset.value;
+  const pathParts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+  const newSourceId = pathParts[pathParts.length - 1] || '';
   try {
     await api("/api/user/sources", { method: "POST", body: { path } });
     privateMsg.value = `已添加私有库：${path}`;
     privatePath.value = "";
     await reload();
     await loadPrivateSources();
+    // 新增的库不自动勾选
+    if (oldPreset === 'all') {
+      const allIds = syncPresets.value
+        .filter(p => p.id !== 'all' && p.id !== 'custom' && p.id !== `${newSourceId}:local`)
+        .map(p => p.id);
+      await setCustomSources(allIds);
+    }
   } catch (e) {
     privateMsg.value = e.message || "添加失败";
     privateError.value = true;

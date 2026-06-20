@@ -19,7 +19,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 
 const props = defineProps({
   label: { type: String, default: "" },
@@ -30,6 +30,11 @@ const props = defineProps({
 });
 
 const expanded = ref(props.depth === 0 || props.defaultExpanded);
+
+// 响应 activeDocId 变化：当文档在子树中时自动展开
+watch(() => props.defaultExpanded, (val) => {
+  if (val) expanded.value = true;
+});
 
 const icon = computed(() => {
   if (props.sourceId) return "📦";

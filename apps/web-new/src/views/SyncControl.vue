@@ -15,10 +15,22 @@
     </div>
     <div class="sync-actions">
       <button class="btn btn-primary" @click="startSync" :disabled="running">增量同步</button>
-      <button class="btn btn-danger" @click="confirmRebuild">全量重建</button>
+      <button class="btn btn-danger" @click="showRebuildConfirm = true">全量重建</button>
       <button class="btn btn-ghost" @click="runLint">Wiki Lint</button>
     </div>
     <p v-if="statusText" class="status-msg" :class="{ error: statusError }">{{ statusText }}</p>
+
+    <!-- 全量重建确认弹窗 -->
+    <div v-if="showRebuildConfirm" class="modal-overlay" @click.self="showRebuildConfirm = false">
+      <div class="confirm-dialog">
+        <p>确认执行<strong>全量重建</strong>？</p>
+        <p class="subtle">将清空全部索引并强制重扫所有文件，期间搜索功能可能暂时不可用。</p>
+        <div class="btn-row" style="justify-content:flex-end;margin-top:12px">
+          <button class="btn btn-ghost" @click="showRebuildConfirm = false">取消</button>
+          <button class="btn btn-danger btn-sm" @click="doRebuild" :disabled="running">确认重建</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 自动同步设置 -->
     <div class="settings-section">
@@ -79,6 +91,7 @@ const autoSyncEnabled = ref(false);
 const autoSyncInterval = ref(60);
 const nextSyncAt = ref("");
 const missingFiles = ref([]);
+const showRebuildConfirm = ref(false);
 
 // 分页
 const pageSize = 10;
@@ -170,6 +183,8 @@ async function startSync() {
   if (!canWrite.value) return;
   statusText.value = "同步中…";
   statusError.value = false;
+  // 增量同步后文档 ID 可能变化，清空搜索缓存
+  localStorage.removeItem('mind_sync_last_search');
   try {
     await api("/api/sync", { method: "POST", body: { use_saved_defaults: true } });
     statusText.value = "同步完成";
@@ -180,10 +195,13 @@ async function startSync() {
   }
 }
 
-async function confirmRebuild() {
-  if (!canWrite.value || !confirm("全量重建将清空索引并强制重扫所有文件，确定？")) return;
+async function doRebuild() {
+  if (!canWrite.value) return;
+  showRebuildConfirm.value = false;
   statusText.value = "全量重建中…";
   statusError.value = false;
+  // 全量重建后文档 ID 全部变化，清空搜索缓存
+  localStorage.removeItem('mind_sync_last_search');
   try {
     await api("/api/rebuild-index", { method: "POST", body: { use_saved_defaults: true } });
     statusText.value = "全量重建完成";
@@ -302,4 +320,23 @@ onMounted(() => {
 .shared-tag { font-size: 0.7rem; color: var(--fg-subtle); font-weight: 400; opacity: 0.7; margin-left: 6px; }
 .status-msg { margin-top: 8px; font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
+
+/* 确认弹窗 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.confirm-dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  max-width: 420px;
+  box-shadow: var(--shadow-lg);
+}
 </style>

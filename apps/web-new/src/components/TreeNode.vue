@@ -1,6 +1,20 @@
 <template>
   <div>
-    <template v-for="item in node.children || []" :key="item.path">
+    <!-- 顶层文件节点（无父目录包裹的文件） -->
+    <button
+      v-if="node.type === 'file'"
+      type="button"
+      class="file-item"
+      :class="{ active: activeId === node.doc_id || String(props.activeDocId) === String(node.doc_id) }"
+      :style="{ paddingLeft: 8 + depth * 14 + 'px' }"
+      :title="node.path"
+      @click="$emit('select', node.doc_id); activeId = node.doc_id"
+    >
+      <span class="file-icon">{{ langIcon(node.lang) }}</span>
+      <span class="file-name">{{ node.title || node.name }}</span>
+    </button>
+    <!-- 目录节点：递归渲染子节点 -->
+    <template v-else v-for="item in node.children || []" :key="item.path">
       <TreeBranch
         v-if="item.type === 'dir'"
         :label="item.name"
@@ -48,7 +62,11 @@ const activeId = ref(null);
 
 // 检查子树是否包含 activeDocId
 function treeContains(node, targetId) {
-  if (!node || !node.children) return false;
+  if (!node || !targetId) return false;
+  // 顶层文件节点
+  if (node.type === 'file' && String(node.doc_id) === String(targetId)) return true;
+  // 目录节点：递归检查 children
+  if (!node.children) return false;
   for (const item of node.children) {
     if (item.type === 'file' && String(item.doc_id) === String(targetId)) return true;
     if (item.type === 'dir' && treeContains(item, targetId)) return true;

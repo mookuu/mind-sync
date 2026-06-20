@@ -527,7 +527,13 @@ def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Dep
         "type": "local",
         "order": max((s.get("order", 0) or 0) for s in sources if isinstance(s, dict)) + 10 if sources else 50,
         "path": str(path),
-        "include": ["**/*.md", "**/*.py"],
+        "include": [
+            "**/*.md", "**/*.py", "**/*.java", "**/*.txt",
+            "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml",
+            "**/*.html", "**/*.css", "**/*.js", "**/*.ts",
+            "**/*.sh", "**/*.bash", "**/*.sql",
+            "**/*.cfg", "**/*.ini", "**/*.toml",
+        ],
     }
     sources.append(new_source)
     config["sources"] = sources
@@ -611,6 +617,22 @@ def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends
         raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
 
     reload_sources_config()
+
+    # 清理该源已索引的文档数据
+    cleanup_id = parsed_id or source_id
+    try:
+        conn = get_db()
+        from .services.indexer import clear_source_index
+        removed = clear_source_index(conn, cleanup_id)
+        conn.commit()
+    except Exception:
+        pass  # 索引清理失败不影响删除操作本身
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
     add_audit_event("sources_deleted", request, actor=resolve_actor(request), detail=f"id={source_id}")
     return {"ok": True, "deleted": source_id}
 
@@ -988,6 +1010,13 @@ def user_add_source(request: Request, body: dict[str, Any], _: Any = Depends(req
         "type": "local",
         "owner": username,
         "path": str(path),
+        "include": [
+            "**/*.md", "**/*.py", "**/*.java", "**/*.txt",
+            "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml",
+            "**/*.html", "**/*.css", "**/*.js", "**/*.ts",
+            "**/*.sh", "**/*.bash", "**/*.sql",
+            "**/*.cfg", "**/*.ini", "**/*.toml",
+        ],
     }
     sources.append(new_source)
     config["sources"] = sources
@@ -1043,6 +1072,21 @@ def user_delete_source(request: Request, source_id: str, _: Any = Depends(requir
     config["sources"] = sources
     user_src.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
     reload_sources_config()
+
+    # 清理该源已索引的文档数据
+    try:
+        conn = get_db()
+        from .services.indexer import clear_source_index
+        clear_source_index(conn, source_id)
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
     add_audit_event("user_source_deleted", request, actor=resolve_actor(request), detail=f"id={source_id} owner={username}")
     return {"ok": True, "deleted": source_id}
 
@@ -1224,12 +1268,14 @@ def update_settings(
 
 @app.get("/api/library")
 def library(
+    request: Request,
     category: str | None = "source",
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
+    username, role = resolve_current_user(request)
     conn = get_db()
     try:
-        return build_library_index(conn, category=category or "all")
+        return build_library_index(conn, category=category or "all", username=username, role=role)
     finally:
         conn.close()
 

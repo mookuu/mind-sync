@@ -1,8 +1,8 @@
 # Lessons Learned — mind-sync 开发踩坑记录
 
-> **归档日期**：2026-06-17
+> **归档日期**：2026-06-17（更新：2026-07-15）
 > **整理缘由**：开发过程中遇到的问题、根因与修复方案，供后续维护参考。
-> **概要**：涵盖认证重写、权限边界、路径一致性、状态持久化、跨用户隔离、前端数据流、UI 交互、Docker/环境兼容性等多个方面，共 34 条踩坑记录 + 通用原则总结。
+> **概要**：涵盖认证重写、权限边界、路径一致性、状态持久化、跨用户隔离、前端数据流、UI 交互、Docker/环境兼容性、索引重建、树组件渲染、缓存策略等多个方面，共 49 条踩坑记录 + 通用原则总结。
 
 ---
 
@@ -44,6 +44,24 @@
   - [28. 循环导入风险](#28-循环导入风险)
   - [29. API Key 缺少删除接口](#29-api-key-缺少删除接口)
   - [30. 预设 ID 被 is_known_sync_key 过滤导致勾选丢失](#30-预设-id-被-is_known_sync_key-过滤导致勾选丢失)
+- [第七组：索引重建与数据同步](#第七组索引重建与数据同步)
+  - [35. 全量重建后文档 ID 变化导致缓存 404](#35-全量重建后文档-id-变化导致缓存-404)
+  - [36. include 模式默认过窄导致文件未被索引](#36-include-模式默认过窄导致文件未被索引)
+  - [37. 删除源后未清理索引文档](#37-删除源后未清理索引文档)
+  - [38. load_ordered_sources 缺少用户参数](#38-load_ordered_sources-缺少用户参数)
+- [第八组：前端树组件](#第八组前端树组件)
+  - [39. 语言分组树导致目录结构失真](#39-语言分组树导致目录结构失真)
+  - [40. TreeNode 不渲染根级文件](#40-treenode-不渲染根级文件)
+  - [41. TreeBranch defaultExpanded 不响应 prop 变化](#41-treebranch-defaultexpanded-不响应-prop-变化)
+  - [42. 侧边栏树缓存导致过期数据](#42-侧边栏树缓存导致过期数据)
+- [第九组：UI 优化与缓存策略](#第九组ui-优化与缓存策略)
+  - [43. 代码文件 escapeHtml 未调用 highlight.js](#43-代码文件-escapehtml-未调用-highlightjs)
+  - [44. 浏览器 confirm() 风格不统一](#44-浏览器-confirm-风格不统一)
+  - [45. 搜索结果 localStorage 缓存过期](#45-搜索结果-localstorage-缓存过期)
+  - [46. 新增库在 preset=all 时自动勾选](#46-新增库在-presetall-时自动勾选)
+  - [47. 删除/增加库后侧边栏树未同步更新](#47-删除增加库后侧边栏树未同步更新)
+  - [48. 路径无效的库仍展示在文档树](#48-路径无效的库仍展示在文档树)
+  - [49. etag 缓存提速文档库树加载](#49-etag-缓存提速文档库树加载)
 - [通用原则总结](#通用原则总结)
 
 ---
@@ -769,6 +787,347 @@ a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 
 ---
 
+## 第七组：索引重建与数据同步
+
+### 35. 全量重建后文档 ID 变化导致缓存 404
+
+**症状**：全量重建（rebuild）后，点击之前的搜索结果或树中的文档，返回 404 Not Found。重新搜索后跳转正常。
+
+**根因**：`run_rebuild_job` 流程是 `clear_source_index` → `index_single_source_force`。前者 DELETE 文档行，后者 INSERT 新行（`ON CONFLICT(source_id, rel_path) DO UPDATE`，但旧行已删除 → 无冲突 → 新行获得新的自增 ID）。
+
+```python
+# clear_source_index:
+DELETE FROM documents WHERE source_id = ?  # 旧 doc_id=1029 被删除
+
+# index_single_source_force:
+INSERT INTO documents(...) VALUES(...)   # 新行获得 doc_id=2050
+```
+
+前端搜索结果缓存在 localStorage 中，树缓存在 Vue 响应式变量中，都持有旧的 doc_id → 404。
+
+**修复**：
+1. 侧边栏树：移除 `if (catTrees[catKey]) return` 缓存保护，每次展开都重新加载
+2. 搜索结果：缓存加 `ts` 时间戳，超过 10 分钟过期
+3. 同步/重建触发时：主动 `localStorage.removeItem('mind_sync_last_search')`
+4. 兜底：`Library.vue` 的 `openDoc` 检测到 404 时也清除缓存
+
+**教训**：自增 ID 不可靠——任何可能导致行被删除后重建的操作都会改变 ID。对外暴露的引用（URL、缓存）应使用稳定标识符（如 `source_id + rel_path`）。
+
+---
+
+### 36. include 模式默认过窄导致文件未被索引
+
+**症状**：添加全局库后，库内的 Java/JSON/JS 等文件无法被搜索到，文档树中也无该库。
+
+**根因**：`admin_add_custom_source` 和 `user_add_source` 的 `include` 默认值分别是 `["**/*.md", "**/*.py"]` 和 `["**/*.md"]`（通过 `item.get("include", ["**/*.md"])`）。`collect_files` 只用这些 glob 模式匹配文件，其他后缀的文件全部跳过。
+
+**修复**：将默认 include 扩展到 18 种常见文本文件类型：
+
+```python
+"include": [
+    "**/*.md", "**/*.py", "**/*.java", "**/*.txt",
+    "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml",
+    "**/*.html", "**/*.css", "**/*.js", "**/*.ts",
+    "**/*.sh", "**/*.bash", "**/*.sql",
+    "**/*.cfg", "**/*.ini", "**/*.toml",
+],
+```
+
+**教训**：默认值应该覆盖最常见的场景，宁可多索引不可漏索引。用户手动排除比手动追加容易。
+
+---
+
+### 37. 删除源后未清理索引文档
+
+**症状**：从素材管理删除库后，文档库子菜单仍能看到该库的文档。
+
+**根因**：`admin_delete_source` 和 `user_delete_source` 只从 YAML 配置中移除条目并 `reload_sources_config()`，但没有清理 SQLite 中已索引的文档行。
+
+**修复**：在删除端点中，YAML 删除后调用 `clear_source_index(conn, source_id)` 删除 `documents` 和 `documents_fts` 表中的相关行。
+
+```python
+# admin_delete_source:
+cleanup_id = parsed_id or source_id
+conn = get_db()
+clear_source_index(conn, cleanup_id)
+conn.commit()
+```
+
+**教训**：资源删除要考虑级联：配置删了 → 索引也要删。任何一对多的数据关系，删除"一"时必须处理"多"。
+
+---
+
+### 38. load_ordered_sources 缺少用户参数
+
+**症状**：非管理员用户添加私有库后，文档库「原始素材」中看不到该库。管理员能看到。
+
+**根因**：`build_library_index` 中补充空源时调用 `load_ordered_sources()` 未传 `username`/`role` → 默认 `username=None, role=None` → `load_sources_for_user` 只返回 `owner=None` 的共享源，过滤掉了所有私有源。
+
+```python
+# 错误：未传用户上下文
+all_srcs = load_ordered_sources()  # → username=None → 只返回 ownerless 源
+
+# 正确：传入当前请求的用户
+all_srcs = load_ordered_sources(username=username, role=role)
+```
+
+**修复**：
+1. library 端点增加 `request: Request` 参数，`resolve_current_user` 获取用户
+2. `build_library_index` 签名增加 `username, role` 参数并传递给 `load_ordered_sources`
+
+**教训**：任何需要区分用户可见数据的 API 端点，都必须把用户上下文传递到底层数据查询函数。默认参数只适用于无需用户区分的场景。
+
+---
+
+## 第八组：前端树组件
+
+### 39. 语言分组树导致目录结构失真
+
+**症状**：文档库树中同一个源的目录结构被拆成多份（Python 树、Java 树、Markdown 树），每份只显示该语言的文件，整体结构与源的实际目录不一致。
+
+**根因**：`_build_lang_groups` 按 `lang` 字段分组文档，每组独立构建一棵树。共享的目录路径在每个语言组里被复制一份但内容不全。
+
+```python
+# 旧逻辑：按语言分组 → 每个语言独立一棵树
+by_lang: dict[str, list] = {}
+for doc in docs:
+    by_lang.setdefault(doc["lang"], []).append(doc)
+for lang, lang_docs in by_lang.items():
+    lang_groups.append({"tree": _build_lang_tree(lang_docs)})
+```
+
+**修复**：改为 `_build_lang_tree(docs)` 直接构建统一目录树，所有文件共享同一棵树，`lang` 保留为文件属性用于图标显示。
+
+API 响应结构：`"languages": [...]` → `"tree": [...]`（源级别直接挂树，去掉中间语言分组层）。
+
+**教训**：分组视图不应破坏原始层级结构。如果分组会导致路径重复且内容不完整，说明分组维度选错了——应该在保留源目录树的前提下通过颜色/图标区分文件类型。
+
+---
+
+### 40. TreeNode 不渲染根级文件
+
+**症状**：源的根目录下的文件（如 `README.md`）在树中不可见。
+
+**根因**：TreeNode 模板遍历 `node.children` 来渲染子节点：
+
+```html
+<template v-for="item in node.children || []" :key="item.path">
+  <TreeBranch v-if="item.type === 'dir'" ...>
+  <button v-else-if="item.type === 'file'" ...>
+</template>
+```
+
+当 `node` 本身是文件（`type === 'file'`）时，`node.children` 为 `undefined`，`v-for` 无事可迭代 → 文件不渲染。
+
+**修复**：在 TreeNode 模板开头加顶层文件节点的渲染分支：
+
+```html
+<button v-if="node.type === 'file'" type="button" class="file-item" ...>
+  <span class="file-icon">{{ langIcon(node.lang) }}</span>
+  <span class="file-name">{{ node.title || node.name }}</span>
+</button>
+<template v-else v-for="item in node.children || []" ...>
+```
+
+同时更新 `treeContains` 函数，检查节点自身是否匹配（不仅是 children）。
+
+**教训**：递归组件的边界条件最容易遗漏——顶层节点和递归节点的数据结构可能不同，组件必须同时处理两种形状。
+
+---
+
+### 41. TreeBranch defaultExpanded 不响应 prop 变化
+
+**症状**：从搜索页点击结果跳转到文档库后，侧边栏树的祖先节点不会自动展开到目标文档。
+
+**根因**：TreeBranch 的 `expanded` 由 `ref(props.depth === 0 || props.defaultExpanded)` 初始化，但之后 `defaultExpanded` prop 变化时，`expanded` 不会更新。
+
+```javascript
+const expanded = ref(props.depth === 0 || props.defaultExpanded);
+// props.defaultExpanded 后续变化 → expanded 不响应
+```
+
+**修复**：添加 `watch` 监听 prop 变化：
+
+```javascript
+import { watch } from "vue";
+watch(() => props.defaultExpanded, (val) => {
+  if (val) expanded.value = true;
+});
+```
+
+**教训**：Vue 的 `ref(initialValue)` 只在组件创建时执行一次。如果需要响应 prop 变化，必须显式 `watch`。
+
+---
+
+### 42. 侧边栏树缓存导致过期数据
+
+**症状**：删除库后切回文档库，已展开的树仍显示被删除的库，需要手动点击两次（收起→展开）才能刷新。
+
+**根因**：`catTrees` 是 Vue 响应式变量，数据加载后就一直存在内存中。`toggleCatTree` 中的 `if (catTrees[catKey]) return` 阻止了重新加载。删除库后虽然 DB 数据已清，但内存中的 `catTrees` 未更新。
+
+**修复**：
+1. 移除 `if (catTrees[catKey]) return` 缓存检查
+2. 在路由 watcher 中检测从其他页面进入 `/library` 时，自动收起再展开已展开的树
+3. 引入 API 响应的 `etag` 指纹，etag 未变时跳过 DOM 重建（保留性能优化）
+
+**教训**：内存缓存的数据没有过期机制就会成为过期数据源。缓存的正确做法是「缓存 + 失效策略」，而不是「缓存没有任何失效策略」。
+
+---
+
+## 第九组：UI 优化与缓存策略
+
+### 43. 代码文件 escapeHtml 未调用 highlight.js
+
+**症状**：代码文件（如 `.py`、`.java`）在文档阅读区显示为纯文本灰色块，无任何语法高亮颜色。HTML 中有 `class="language-python"` 但无 `<span class="hljs-*">` 标签。
+
+**根因**：`Library.vue` 的 `renderedContent` 对非 markdown 文件只用了 `escapeHtml` 转义，包了一层 `<pre class="hljs"><code class="language-xxx">`，但从未调用 `hljs.highlight()`。
+
+```javascript
+// 错误：只转义，不高亮
+const content = markdownIt.utils.escapeHtml(doc.content || "");
+return `<pre class="hljs"><code class="language-${codeLang}">${content}</code></pre>`;
+```
+
+**修复**：从 `markdown-it.js` 导出 `hljs`，代码文件路径调用 `hljs.highlight()`：
+
+```javascript
+import { hljs } from "../markdown-it.js";
+// ...
+return `<pre class="hljs"><code class="language-${codeLang}">${hljs.highlight(content, { language: codeLang, ignoreIllegals: true }).value}</code></pre>`;
+```
+
+**教训**：CSS 类名只是样式约定，不等于实际高亮行为。highlight.js 的 `class="language-xxx"` + `class="hljs"` 只是约定，实际颜色来自 `<span>` 标签——必须调用 `hljs.highlight()` 才会生成这些 span。
+
+---
+
+### 44. 浏览器 confirm() 风格不统一
+
+**症状**：全量重建使用 `confirm("全量重建将清空索引...")` 弹出浏览器原生对话框，与系统其他确认操作（删除用户、删除库、重置密码）的组件式 modal 风格不一致。
+
+**修复**：替换为 Vue 组件式弹窗：
+
+```html
+<div v-if="showRebuildConfirm" class="modal-overlay" @click.self="showRebuildConfirm = false">
+  <div class="confirm-dialog">
+    <p>确认执行<strong>全量重建</strong>？</p>
+    <p class="subtle">将清空全部索引并强制重扫所有文件...</p>
+    <div class="btn-row">
+      <button class="btn btn-ghost" @click="showRebuildConfirm = false">取消</button>
+      <button class="btn btn-danger btn-sm" @click="doRebuild">确认重建</button>
+    </div>
+  </div>
+</div>
+```
+
+**教训**：项目中应保持交互模式统一。`confirm()` / `alert()` / `prompt()` 是不可定制、不可主题化的浏览器原生控件，只适合快速原型。生产代码用组件式 modal。
+
+---
+
+### 45. 搜索结果 localStorage 缓存过期
+
+**症状**：全量重建后，从搜索页点击之前的搜索结果跳转到文档 → 404。
+
+**根因**：Search.vue 的 `doSearch` 将搜索结果缓存到 `localStorage`，`restoreCachedSearch` 在页面加载时恢复。rebuild 后文档 ID 变化，缓存中的 ID 已失效。
+
+**修复**：
+1. 缓存加 `ts` 时间戳，超过 10 分钟过期
+2. 增量同步/全量重建开始时主动 `localStorage.removeItem('mind_sync_last_search')`
+3. `Library.vue` 的 `openDoc` 返回 404 时也清缓存（兜底）
+
+**教训**：跨会话缓存的数据必须有失效策略（TTL、事件驱动清除、版本号）。不能依赖"用户会手动刷新"。
+
+---
+
+### 46. 新增库在 preset=all 时自动勾选
+
+**症状**：素材管理添加新库后，其 checkbox 默认处于勾选状态。
+
+**根因**：`syncPreset === "all"` 时，所有源的 checkbox 都显示为已勾选。新增库后 preset 仍为 "all"，新库也被自动勾选。
+
+**修复**：在 `addCustomPath` / `addPrivateSource` 中，若旧 `syncPreset === "all"`，reload 后转为 `"custom"` 模式并将所有源（排除新库）加入自定义列表：
+
+```javascript
+if (oldPreset === 'all') {
+  const allIds = syncPresets.value
+    .filter(p => p.id !== 'all' && p.id !== 'custom' && p.id !== `${newSourceId}:local`)
+    .map(p => p.id);
+  await setCustomSources(allIds);
+}
+```
+
+**教训**：「全选」是一种隐式包含，新增条目会被自动纳入。如果需要用户显式 opt-in，应在添加操作后退出全选模式。
+
+---
+
+### 47. 删除/增加库后侧边栏树未同步更新
+
+**症状**：从素材管理删除或增加库后，切回文档库，已展开的分类树仍显示旧数据，需要手动点击两次（收起→展开）刷新。
+
+**根因**：侧边栏 `catTrees` 数据加载后保留在 Vue 内存中。路由切换不销毁 AppSidebar 组件（它在 layout 中），数据不会自动刷新。
+
+**修复**：在 `watch(route.path)` 中检测从非 `/library` 页面进入时，自动收起再展开已展开的分类树，触发重新加载：
+
+```javascript
+if (newPath.startsWith('/library') && oldPath && !oldPath.startsWith('/library')) {
+  nextTick(() => {
+    for (const catKey of ['source', 'summary', 'query']) {
+      if (catExpanded[catKey] && catTrees[catKey]) {
+        catExpanded[catKey] = false;
+        nextTick(() => toggleCatTree(catKey));  // 重新加载
+      }
+    }
+  });
+}
+```
+
+**教训**：SPA 中不销毁的全局组件需要主动感知数据变化。监听路由变化是一种轻量的事件驱动刷新方式。
+
+---
+
+### 48. 路径无效的库仍展示在文档树
+
+**症状**：素材管理中标为「⚠ 路径无效」的库，在文档库树中仍然显示（count=0）。
+
+**根因**：`build_library_index` 补充空源时未检查路径是否真实存在。
+
+**修复**：在补充空源的循环中加路径存在性检查：
+
+```python
+spath = (src.path or "").strip()
+if spath and not spath.startswith(("http://", "https://", "git@")):
+    if not Path(spath).exists():
+        continue  # 路径无效 → 跳过
+```
+
+**教训**：展示数据前应做完整性校验。路径无效的源无法提供任何文档，展示出来只会让用户困惑。
+
+---
+
+### 49. etag 缓存提速文档库树加载
+
+**症状**：每次展开分类树都重建 DOM，即使数据未变化也有轻微闪烁。
+
+**优化**：后端在 library API 响应中添加 `etag` 字段（源 ID + 文档数的 MD5 指纹），前端比对——相同则跳过 `catTrees = nodes` 赋值，避免 Vue 触发 DOM 重渲染。
+
+```python
+# 后端
+etag_src = sorted((sid, len(dlist)) for sid, dlist in by_source.items())
+etag = hashlib.md5(json.dumps(etag_src).encode()).hexdigest()[:8]
+```
+
+```javascript
+// 前端
+if (data.etag && catTrees[catKey] && data.etag === catTreesETag[catKey]) {
+  return;  // 跳过 DOM 重建
+}
+catTrees[catKey] = nodes;
+catTreesETag[catKey] = data.etag;
+```
+
+**教训**：数据变更频率远低于查询频率的场景，用轻量指纹做缓存验证可以消除无意义的 DOM 更新。不增加额外 API 调用，仅需 8 字符的 hash 字段。
+
+---
+
 ## 通用原则总结
 
 | # | 原则 | 归类 |
@@ -788,3 +1147,16 @@ a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 | 13 | **显式声明**：后端的认证中间件不自动告知前端"已认证"，需显式返回字段 | 前后端协作 |
 | 14 | **防呆不防智**：不让用户取消所有选项的"防呆"逻辑，反而让用户困惑 | UX |
 | 15 | **视图数据分离**：灰掉是视觉状态，勾选是数据状态，灰掉不应清除数据 | 前端架构 |
+| 16 | **ID 不稳定**：自增 ID 在 DELETE + INSERT 后会变，对外引应用稳定标识符 | 数据一致性 |
+| 17 | **默认即覆盖**：include/file-type 默认值应覆盖最常见场景，宁可多不可漏 | 数据完整性 |
+| 18 | **级联删除**：删除"一"时必须处理关联的"多"（源 → 文档） | 数据完整性 |
+| 19 | **用户上下文穿透**：需要区分用户可见数据的函数必须接收 username/role | 安全/数据隔离 |
+| 20 | **分组不破结构**：分组视图不能破坏原始层级结构，应用颜色/图标区分而非拆分树 | UI/数据组织 |
+| 21 | **递归组件边界**：顶层节点和递归节点的数据形状可能不同，组件需处理所有形状 | 前端架构 |
+| 22 | **prop 初始化 ≠ 响应**：ref(prop.value) 只在创建时执行，后续变化需 watch | Vue 响应式 |
+| 23 | **缓存配失效**：内存缓存必须配过期策略（事件驱动 / TTL / 版本号） | 性能/数据一致 |
+| 24 | **类名 ≠ 行为**：CSS class 只是约定，实际效果需要调用对应的 JS 函数 | 前后端协作 |
+| 25 | **UI 模式统一**：confirm()/alert() 不可定制，生产代码用组件式 modal | UX |
+| 26 | **隐式包含需显式退出**：「全选」模式新增条目自动纳入，需在添加后退出全选 | UX |
+| 27 | **校验后展示**：展示数据前应做完整性校验，路径无效的源不应展示 | 数据质量 |
+| 28 | **指纹缓存**：数据变更频率远低于查询频率时，用轻量指纹跳过无意义更新 | 性能优化 |

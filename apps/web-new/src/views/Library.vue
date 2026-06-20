@@ -24,7 +24,7 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useRoute } from 'vue-router';
 import api from "../api/index.js";
-import { markdownIt, rewriteImageUrls } from "../markdown-it.js";
+import { markdownIt, rewriteImageUrls, hljs } from "../markdown-it.js";
 
 const route = useRoute();
 const isSingleDoc = computed(() => !!route.query.doc);
@@ -33,14 +33,29 @@ const currentDoc = ref(null);
 const imageEnhance = ref(true);
 const docContentEl = ref(null);
 
+const CODE_LANGS = { python: "python", java: "java", javascript: "javascript", js: "javascript", html: "html", css: "css", json: "json", bash: "bash", sh: "bash", yaml: "yaml", yml: "yaml", sql: "sql", xml: "xml", dockerfile: "dockerfile", nginx: "nginx" };
+
 const renderedContent = computed(() => {
   if (!currentDoc.value) return "";
+  const doc = currentDoc.value;
+  const lang = (doc.lang || "text").toLowerCase();
   try {
-    const rawHtml = markdownIt.render(currentDoc.value.content || "");
-    const withImages = rewriteImageUrls(rawHtml, currentDoc.value.id);
-    return highlightContent(withImages);
+    if (lang === "markdown" || lang === "md") {
+      const rawHtml = markdownIt.render(doc.content || "");
+      const withImages = rewriteImageUrls(rawHtml, doc.id);
+      return highlightContent(withImages);
+    }
+    // 代码文件：使用 hljs 做语法高亮
+    const codeLang = CODE_LANGS[lang] || "";
+    const content = doc.content || "";
+    if (codeLang && hljs.getLanguage(codeLang)) {
+      try {
+        return `<pre class="hljs"><code class="language-${codeLang}">${hljs.highlight(content, { language: codeLang, ignoreIllegals: true }).value}</code></pre>`;
+      } catch {}
+    }
+    return `<pre class="hljs"><code>${markdownIt.utils.escapeHtml(content)}</code></pre>`;
   } catch {
-    return `<pre>${currentDoc.value.content || ""}</pre>`;
+    return `<pre>${markdownIt.utils.escapeHtml(doc.content || "")}</pre>`;
   }
 });
 
@@ -58,13 +73,19 @@ function highlightContent(html) {
   return html.replace(regex, '$1$2<mark>$3</mark>$4$5');
 }
 
+const SEARCH_CACHE_KEY = 'mind_sync_last_search';
+
 async function openDoc(docId) {
   try {
     const data = await api(`/api/document/${docId}`);
     currentDoc.value = data;
     if (searchQuery.value) applyHighlight(currentDoc.value, searchQuery.value);
   } catch (e) {
-    currentDoc.value = { source_id: "error", rel_path: e.message, content: "" };
+    // 404 表示文档 ID 已过期（可能 rebuild 后 ID 变化），清除搜索缓存
+    if (e.message && e.message.includes('404')) {
+      localStorage.removeItem(SEARCH_CACHE_KEY);
+    }
+    currentDoc.value = { source_id: "error", rel_path: e.message || '文档不存在（可能索引已重建，请重新搜索）', content: "" };
   }
 }
 
@@ -102,5 +123,16 @@ onMounted(async () => {
 .doc-content :deep(table) { border-collapse: collapse; width: 100%; margin: 12px 0; }
 .doc-content :deep(th), .doc-content :deep(td) { border: 1px solid var(--border-default); padding: 8px 12px; text-align: left; }
 .doc-content :deep(th) { background: var(--bg-muted); font-weight: 600; }
+.doc-content :deep(h1) { font-size: 1.6rem; font-weight: 700; margin: 24px 0 12px; border-bottom: 1px solid var(--border-muted); padding-bottom: 8px; }
+.doc-content :deep(h2) { font-size: 1.3rem; font-weight: 600; margin: 20px 0 10px; }
+.doc-content :deep(h3) { font-size: 1.1rem; font-weight: 600; margin: 16px 0 8px; }
+.doc-content :deep(h4) { font-size: 1rem; font-weight: 600; margin: 12px 0 6px; }
+.doc-content :deep(p) { margin: 8px 0; line-height: 1.6; }
+.doc-content :deep(ul), .doc-content :deep(ol) { margin: 8px 0; padding-left: 24px; }
+.doc-content :deep(li) { margin: 4px 0; }
+.doc-content :deep(blockquote) { border-left: 3px solid var(--accent-emphasis); padding: 4px 14px; margin: 12px 0; color: var(--fg-muted); background: var(--bg-muted); border-radius: 0 6px 6px 0; }
+.doc-content :deep(hr) { border: none; border-top: 1px solid var(--border-muted); margin: 16px 0; }
+.doc-content :deep(a) { color: var(--accent-fg); }
+.doc-content :deep(a:hover) { text-decoration: underline; }
 .empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-subtle); font-size: 1.1rem; }
 </style>

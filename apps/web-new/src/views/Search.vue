@@ -96,7 +96,7 @@ async function doSearch() {
     allResults.value = data.results || data.items || [];
     searched.value = true;
     localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify({
-      q: query.value, items: allResults.value,
+      q: query.value, items: allResults.value, ts: Date.now(),
     }));
   } catch (e) {
     allResults.value = [];
@@ -110,7 +110,9 @@ async function doSearch() {
 function restoreCachedSearch() {
   try {
     const cached = JSON.parse(localStorage.getItem(SEARCH_CACHE_KEY));
-    if (cached && cached.q && cached.items?.length) {
+    // 超过 10 分钟的缓存视为过期（rebuild 后 ID 会变化）
+    const maxAge = 10 * 60 * 1000;
+    if (cached && cached.q && cached.items?.length && cached.ts && (Date.now() - cached.ts) < maxAge) {
       query.value = cached.q;
       allResults.value = cached.items;
       searched.value = true;

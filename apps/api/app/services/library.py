@@ -1,5 +1,6 @@
 import sqlite3
 
+from pathlib import Path
 from typing import Any
 
 
@@ -156,7 +157,7 @@ def _build_lang_groups(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 
-def build_library_index(conn: sqlite3.Connection, *, category: str | None = "source") -> dict[str, Any]:
+def build_library_index(conn: sqlite3.Connection, *, category: str | None = "source", username: str | None = None, role: str | None = None) -> dict[str, Any]:
 
     rows = conn.execute(
 
@@ -216,13 +217,37 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
                 "count": len(docs),
 
-                "languages": _build_lang_groups(docs),
+                "tree": _build_lang_tree(docs),
 
             }
 
         )
 
 
+
+    # 补充配置中存在但暂无文档的源（新增库在同步前也能在树中看到）
+    if category in (None, "", "all", "source"):
+        from .sync_settings import load_ordered_sources
+        try:
+            all_srcs = load_ordered_sources(username=username, role=role)
+            existing_ids = set(by_source.keys())
+            for src in all_srcs:
+                if src.id not in existing_ids and src.id != "wiki":
+                    # 跳过路径无效的库
+                    spath = (src.path or "").strip()
+                    if spath and not spath.startswith(("http://", "https://", "git@")):
+                        if not Path(spath).exists():
+                            continue
+                    raw_blocks.append(
+                        {
+                            "id": src.id,
+                            "label": SOURCE_LABELS.get(src.id, src.id),
+                            "count": 0,
+                            "tree": [],
+                        }
+                    )
+        except Exception:
+            pass  # 源配置加载失败不影响主流程
 
     if raw_blocks:
 
@@ -244,7 +269,7 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
                 "source_id": "wiki",
 
-                "languages": _build_lang_groups(wiki_docs),
+                "tree": _build_lang_tree(wiki_docs),
 
             }
 
@@ -252,11 +277,18 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
 
 
+    # 生成 etag：源 ID + 文档数的指纹，前端用于缓存判断
+    import hashlib
+    import json
+    etag_src = sorted((sid, len(dlist)) for sid, dlist in by_source.items())
+    etag = hashlib.md5(json.dumps(etag_src, sort_keys=True).encode()).hexdigest()[:8]
+
     return {
 
         "sections": sections,
 
         "total_documents": sum(len(v) for v in by_source.values()),
+        "etag": etag,
 
     }
 
