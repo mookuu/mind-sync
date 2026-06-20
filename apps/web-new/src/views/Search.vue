@@ -16,7 +16,8 @@
       <button class="btn btn-primary" @click="doSearch">搜索</button>
     </div>
     <div class="search-results">
-      <p v-if="filtered.length === 0 && searched" class="subtle">无结果</p>
+      <p v-if="searching" class="subtle">搜索中…</p>
+      <p v-else-if="filtered.length === 0 && searched" class="subtle">无结果</p>
       <div v-for="r in pageItems" :key="r.id" class="result-card" @click="openDoc(r)">
         <div class="result-head">
           <span class="result-title">{{ r.title || r.rel_path }}</span>
@@ -82,16 +83,39 @@ const filtered = computed(() => {
   return items;
 });
 
+const searching = ref(false);
+const SEARCH_CACHE_KEY = 'mind_sync_last_search';
+
 async function doSearch() {
   if (!query.value.trim()) return;
-  searched.value = true;
+  searching.value = true;
+  searched.value = false;
   page.value = 1;
   try {
     const data = await api(`/api/search?q=${encodeURIComponent(query.value)}&limit=200`);
     allResults.value = data.results || data.items || [];
+    searched.value = true;
+    localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify({
+      q: query.value, items: allResults.value,
+    }));
   } catch (e) {
     allResults.value = [];
+    searched.value = true;
+  } finally {
+    searching.value = false;
   }
+}
+
+// 恢复上次搜索结果
+function restoreCachedSearch() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(SEARCH_CACHE_KEY));
+    if (cached && cached.q && cached.items?.length) {
+      query.value = cached.q;
+      allResults.value = cached.items;
+      searched.value = true;
+    }
+  } catch {}
 }
 
 function applyLocal() {
@@ -99,11 +123,14 @@ function applyLocal() {
 }
 
 import { useRouter } from 'vue-router';
+import { onMounted } from 'vue';
 const router = useRouter();
+
+onMounted(restoreCachedSearch);
 
 function openDoc(doc) {
   if (doc.id) {
-    const q = keyword.value.trim();
+    const q = query.value.trim();
     const qp = q ? `&q=${encodeURIComponent(q)}` : '';
     router.push(`/library?doc=${encodeURIComponent(doc.id)}${qp}`);
   }

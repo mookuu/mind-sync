@@ -26,9 +26,10 @@ const props = defineProps({
   count: { type: [Number, String], default: null },
   sourceId: { type: String, default: "" },
   depth: { type: Number, default: 0 },
+  defaultExpanded: { type: Boolean, default: false },
 });
 
-const expanded = ref(props.depth === 0);
+const expanded = ref(props.depth === 0 || props.defaultExpanded);
 
 const icon = computed(() => {
   if (props.sourceId) return "📦";

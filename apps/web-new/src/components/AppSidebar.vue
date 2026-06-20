@@ -17,30 +17,28 @@
           </router-link>
           <div v-if="expanded[item.path]" class="sub-nav">
             <template v-for="child in item.children" :key="child.path">
-              <router-link
-                v-if="!child.admin || isAdmin"
-                :to="child.path"
-                class="sub-nav-item"
-                :class="{ active: isActive(child.path) }"
-                @click.stop="child.loadTree && loadLibTree(child.loadTree)"
-              >
-              <span class="nav-icon">{{ child.icon }}</span>
-              <span class="nav-label">{{ child.label }}</span>
-            </router-link>
-            </template>
-            <!-- 文档库动态子目录 -->
-            <template v-if="libSubItems.length">
-              <div class="nav-separator"></div>
-              <router-link
-                v-for="si in libSubItems"
-                :key="si.path"
-                :to="si.path"
-                class="sub-nav-item sub-nav-item-deeper"
-              >
-                <span class="nav-icon">{{ si.icon }}</span>
-                <span class="nav-label">{{ si.label }}</span>
+              <template v-if="child.catKey">
+                <!-- 可展开树子菜单 -->
+                <button v-if="!child.admin || isAdmin" class="sub-nav-item" :class="{ active: catExpanded[child.catKey] }" @click.stop="toggleCatTree(child.catKey)">
+                  <span class="nav-icon">{{ child.icon }}</span>
+                  <span class="nav-label">{{ child.label }}</span>
+                  <span class="nav-chevron" style="font-size:0.65rem">{{ catExpanded[child.catKey] ? '▾' : '▸' }}</span>
+                </button>
+                <template v-if="catExpanded[child.catKey]">
+                  <p v-if="catLoading[child.catKey]" class="subtle" style="padding:4px 10px 4px 48px;font-size:0.75rem">加载中…</p>
+                  <template v-else v-for="node in (catTrees[child.catKey] || [])" :key="node.sourceId">
+                    <TreeBranch :label="node.label" :source-id="node.sourceId" :depth="2" :default-expanded="treeContains(node, activeDocId)">
+                      <TreeNode v-for="titem in (node.tree || [])" :key="titem.path || titem.name" :node="titem" :depth="3" :active-doc-id="activeDocId" @select="openDocFromSidebar" />
+                    </TreeBranch>
+                  </template>
+                </template>
+              </template>
+              <router-link v-else-if="!child.admin || isAdmin" :to="child.path" class="sub-nav-item" :class="{ active: isActive(child.path) }">
+                <span class="nav-icon">{{ child.icon }}</span>
+                <span class="nav-label">{{ child.label }}</span>
               </router-link>
             </template>
+
           </div>
         </div>
       </template>
@@ -67,48 +65,67 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
-import { useRoute } from "vue-router";
+import { ref, reactive, computed, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import api from "../api/index.js";
+import TreeBranch from "./TreeBranch.vue";
+import TreeNode from "./TreeNode.vue";
 
-const route = useRoute();
+const router = useRouter();
 
-// 文档库子菜单的动态树数据
-const libTree = ref(null);
-const libTreeLoading = ref(false);
-const libTreeCategory = ref('');
+// 每个分类独立的树状态
+const catTrees = reactive({ source: null, summary: null, query: null });
+const catLoading = reactive({ source: false, summary: false, query: false });
+const catExpanded = reactive({ source: false, summary: false, query: false });
 
-async function loadLibTree(category) {
-  if (libTreeLoading.value && libTreeCategory.value === category) return;
-  libTreeLoading.value = true;
-  libTreeCategory.value = category;
-  try {
-    const data = await api(`/api/library?category=${encodeURIComponent(category)}`);
-    libTree.value = data.sections || [];
-  } catch {
-    libTree.value = [];
-  } finally {
-    libTreeLoading.value = false;
+async function toggleCatTree(catKey) {
+  if (catExpanded[catKey]) {
+    catExpanded[catKey] = false;
+    return;
   }
-}
-
-// 将 library tree section 转为扁平的子菜单项
-const libSubItems = computed(() => {
-  if (!libTree.value) return [];
-  const items = [];
-  for (const section of libTree.value) {
-    for (const group of (section.groups || [])) {
-      if (group.source) {
-        items.push({
-          label: group.source,
-          icon: group.type === 'web' ? '🌐' : '📁',
-          path: `/library?category=${encodeURIComponent(libTreeCategory.value)}&source=${encodeURIComponent(group.source || '')}`,
-        });
+  // 关闭其他展开的分类
+  catExpanded.source = false;
+  catExpanded.summary = false;
+  catExpanded.query = false;
+  catExpanded[catKey] = true;
+  if (catTrees[catKey]) return;
+  catLoading[catKey] = true;
+  try {
+    const data = await api(`/api/library?category=${encodeURIComponent(catKey)}`);
+    const nodes = [];
+    for (const sec of (data.sections || [])) {
+      for (const src of (sec.sources || [])) {
+        for (const lang of (src.languages || [])) {
+          if (lang.tree && lang.tree.length) {
+            nodes.push({ label: src.label || src.id, sourceId: src.id, type: 'source', tree: lang.tree });
+          }
+        }
       }
     }
+    catTrees[catKey] = nodes;
+  } catch { catTrees[catKey] = []; }
+  finally { catLoading[catKey] = false; }
+}
+
+function openDocFromSidebar(docId) {
+  if (docId) router.push('/library?doc=' + docId);
+}
+
+function treeContains(node, targetId) {
+  if (!node || !targetId) return false;
+  const t = String(targetId);
+  const tree = node.tree || node.children || [];
+  for (const item of tree) {
+    if (item.type === 'file' && String(item.doc_id) === t) return true;
+    if (item.type === 'dir' && treeContains(item, t)) return true;
   }
-  return items;
-});
+  return false;
+}
+
+const route = useRoute();
+const activeDocId = computed(() => route.query.doc ? String(route.query.doc) : null);
+
+
 
 // expanded: 当前展开的父级（同一时间只有一个）
 const expanded = ref({});
@@ -146,9 +163,9 @@ const orderedItems = computed(() => {
       icon: "📚",
       path: "/library",
       children: [
-        { label: "原始素材", icon: "📦", path: "/library?category=source", loadTree: "source" },
-        { label: "学习摘要", icon: "📝", path: "/library?category=summary", loadTree: "summary" },
-        { label: "问答沉淀", icon: "💬", path: "/library?category=query", loadTree: "query" },
+        { label: "原始素材", icon: "📦", path: "/library?category=source", catKey: "source" },
+        { label: "学习摘要", icon: "📝", path: "/library?category=summary", catKey: "summary" },
+        { label: "问答沉淀", icon: "💬", path: "/library?category=query", catKey: "query" },
       ],
     },
     { label: "知识查询", icon: "💡", path: "/qa" },
@@ -282,6 +299,9 @@ function onParentClick(path) {
   color: var(--accent-fg);
   background: var(--accent-bg);
 }
+.sub-nav-item.active:hover {
+  background: var(--accent-bg);
+}
 .sub-nav-item-deeper {
   padding-left: 48px;
   font-size: 0.78rem;
@@ -292,7 +312,24 @@ function onParentClick(path) {
   margin: 2px 8px;
 }
 
+.sidebar-file-item {
+  display: flex; align-items: center; gap: 4px;
+  width: 100%; padding: 2px 8px; border: none; border-radius: var(--radius);
+  background: transparent; color: var(--fg-muted); font-size: 0.75rem;
+  cursor: pointer; text-align: left; transition: background 0.1s;
+}
+.sidebar-file-item:hover { background: var(--bg-hover); color: var(--fg-default); }
 .sidebar-spacer {
   flex: 1;
 }
+/* 子菜单 button 与 router-link 统一扁平样式 */
+button.sub-nav-item {
+  font-family: inherit; cursor: pointer; border: none; outline: none; box-shadow: none;
+}
+button.sub-nav-item:hover { background: var(--bg-hover); color: var(--fg-default); }
+/* 去掉侧边栏树节点边框 */
+.sub-nav :deep(.tree-branch) { border: none; outline: none; box-shadow: none; }
+.sub-nav :deep(.branch-head) { padding: 2px 8px; font-size: 0.78rem; border: none; outline: none; box-shadow: none; background: transparent; border-radius: 0; }
+.sub-nav :deep(.branch-body) { border: none; }
+.sub-nav :deep(.file-item) { padding: 2px 8px; font-size: 0.75rem; border: none; outline: none; box-shadow: none; border-radius: 0; }
 </style>

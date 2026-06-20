@@ -75,17 +75,61 @@
           <p v-if="pathMsg" class="status-msg" :class="{ error: pathError }">{{ pathMsg }}</p>
         </template>
 
+        <!-- ===== 管理员：我的知识库（折叠） ===== -->
+        <div v-if="isAdmin" class="section-label collapsible" @click="toggleSection('my_private')" style="margin-top:8px">
+          <span class="chevron">{{ sectionExpanded.my_private ? '▾' : '▸' }}</span>
+          <span>🔒 我的知识库</span>
+          <span class="subtle">仅自己可见</span>
+          <button class="btn btn-ghost btn-xs" @click.stop="toggleSection('my_private')" style="margin-left:auto">
+            {{ sectionExpanded.my_private ? '收起' : '展开' }}
+          </button>
+        </div>
+        <template v-if="isAdmin && sectionExpanded.my_private">
+          <template v-for="group in myPrivateSources" :key="group.owner || '__ungrouped__'">
+            <div
+              v-for="p in group.sources"
+              :key="p.id"
+              class="preset-row"
+              :class="{ 'path-invalid-row': p.path_exists === false }"
+              :style="p.path_exists === false ? disabledStyle : {}"
+            >
+              <div class="preset-info preset-info-admin">
+                <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
+                <div class="preset-desc" :class="{ 'path-invalid': p.path && p.path_exists === false }">
+                  {{ displayPath(p.path || p.description || '') }}
+                  <span v-if="p.path && p.path_exists === false" class="path-invalid-tag" title="此路径在服务器上不存在">⚠ 路径无效</span>
+                </div>
+              </div>
+              <button
+                v-if="p.path_exists === false"
+                class="btn btn-ghost btn-sm delete-source-btn"
+                title="此路径无效，点击删除"
+                :disabled="isAll || deleting === p.id"
+                @click="deletePrivateSource(p)"
+              >✕</button>
+            </div>
+          </template>
+          <!-- 管理员添加自己的私有库 -->
+          <div class="custom-path-row" style="margin-top:8px">
+            <input v-model="privatePath" type="text" placeholder="输入服务器文件夹路径" class="custom-path-input" />
+            <button class="btn btn-ghost" @click="openPrivateDirPicker">📁 浏览</button>
+            <button class="btn btn-primary" @click="addPrivateSource" :disabled="addingPrivate">
+              {{ addingPrivate ? "添加中…" : "添加" }}
+            </button>
+          </div>
+          <p v-if="privateMsg" class="status-msg" :class="{ error: privateError }">{{ privateMsg }}</p>
+        </template>
+
         <!-- ===== 个人知识库 / 我的知识库（折叠） ===== -->
         <div class="section-label collapsible" @click="toggleSection('private')" style="margin-top:8px">
           <span class="chevron">{{ sectionExpanded.private ? '▾' : '▸' }}</span>
           <span>{{ isAdmin ? '👥 个人知识库' : '🔒 我的知识库' }}</span>
-          <span class="subtle">{{ isAdmin ? '所有用户的个人目录' : '仅自己可见' }}</span>
+          <span class="subtle">{{ isAdmin ? '其他用户的个人目录' : '仅自己可见' }}</span>
           <button class="btn btn-ghost btn-xs" @click.stop="toggleSection('private')" style="margin-left:auto">
             {{ sectionExpanded.private ? '收起' : '展开' }}
           </button>
         </div>
         <template v-if="sectionExpanded.private">
-          <!-- 按 owner 分组的私有库列表，每个分组可独立展开/折叠 -->
           <template v-for="group in groupedPrivateSources" :key="group.owner || '__ungrouped__'">
             <div v-if="group.owner && isAdmin" class="owner-group-label collapsible" @click="togglePrivateGroup(group.owner)">
               <span class="chevron">{{ privateGroupExpanded[group.owner] !== false ? '▾' : '▸' }}</span>
@@ -100,7 +144,6 @@
               :class="{ 'admin-row': isAdmin, 'path-invalid-row': p.path_exists === false }"
               :style="isAdmin ? (p.path_exists === false ? disabledStyle : {}) : (isAll ? disabledStyle : {})"
             >
-              <!-- 管理员：只查看和删除，没有 checkbox -->
               <template v-if="isAdmin">
                 <div class="preset-info preset-info-admin">
                   <div class="preset-label">{{ p.label }}</div>
@@ -117,7 +160,6 @@
                   @click="deletePrivateSource(p)"
                 >✕</button>
               </template>
-              <!-- 非管理员：checkbox + 信息 + 删除 -->
               <template v-else>
                 <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id), 'path-invalid': p.path_exists === false }">
                   <input
@@ -279,7 +321,7 @@ watch(localAllMode, (val) => {
 });
 
 // 折叠状态（持久化到 localStorage，刷新后保留）
-const sectionExpanded = ref(JSON.parse(localStorage.getItem('sync_sections') || '{"shared":false,"private":false}'));
+const sectionExpanded = ref(JSON.parse(localStorage.getItem('sync_sections') || '{"shared":false,"private":false,"my_private":false}'));
 watch(sectionExpanded, (val) => {
   localStorage.setItem('sync_sections', JSON.stringify(val));
 }, { deep: true });
@@ -460,22 +502,29 @@ const privateSourceList = computed(() => {
 
 // 按 owner 分组（个人库）
 const groupedPrivateSources = computed(() => {
-  // 非管理员：只显示自己的库（其他人的共享库仅出现在共享知识库中）
-  const list = isAdmin.value
-    ? privateSourceList.value
-    : privateSourceList.value.filter(p => p.owner === currentUser.value);
+  if (isAdmin.value) return groupByOwnerList(privateSourceList.value.filter(p => p.owner && p.owner !== currentUser.value));
+  return groupByOwnerList(privateSourceList.value.filter(p => p.owner === currentUser.value));
+});
+
+const myPrivateSources = computed(() => {
+  if (!isAdmin.value) return [];
+  return groupByOwnerList(privateSourceList.value.filter(p => p.owner === currentUser.value));
+});
+
+function groupByOwnerList(list) {
   const groups = {};
   for (const p of list) {
     const owner = p.owner || "__ungrouped__";
     if (!groups[owner]) groups[owner] = { owner: p.owner || "", sources: [] };
     groups[owner].sources.push(p);
   }
-  // 每个分组内的库按 label 字母序排列
   for (const g of Object.values(groups)) {
     g.sources.sort((a, b) => naturalSort(a.label || a.id, b.label || b.id));
   }
   return Object.values(groups);
-});
+}
+
+
 
 // 共享知识库：非管理员可见的其他用户共享库
 const groupedSharedPublicSources = computed(() => {

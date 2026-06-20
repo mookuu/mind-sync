@@ -791,21 +791,23 @@ def admin_set_user_role(request: Request, username: str, body: dict[str, Any], _
         conn.close()
 
     if role == "member":
-        # 切换为普通用户 → 创建/确保用户目录存在，注册私有源
+        # 切换为普通用户 → 确保目录存在，仅在无源时注册默认私有源
         try:
             ensure_user_dir(username)
         except Exception as e:
             logger.error("创建用户目录失败: %s", traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"创建目录失败: {e}")
-        try:
-            entry = build_user_source_entry(username)
-            append_user_source_to_yaml(entry)
-        except Exception as e:
-            logger.error("写入 user_sources.yaml 失败: %s", traceback.format_exc())
-            raise HTTPException(status_code=500, detail=f"写入源配置失败: {e}")
-    else:
-        # 切换为管理员 → 仅移除私有源注册，目录保留（休眠状态）
-        remove_user_source_from_yaml(username)
+        # 检查是否已有源，没有则创建默认源
+        from .services.user_manager import load_user_sources as _check_src
+        existing = [s for s in _check_src() if isinstance(s, dict) and s.get("owner") == username]
+        if not existing:
+            try:
+                entry = build_user_source_entry(username)
+                append_user_source_to_yaml(entry)
+            except Exception as e:
+                logger.error("写入 user_sources.yaml 失败: %s", traceback.format_exc())
+                raise HTTPException(status_code=500, detail=f"写入源配置失败: {e}")
+    # admin → 不删除源，保留目录和所有手动添加的源
 
     reload_sources_config()
     add_audit_event("user_role_changed", request, actor=resolve_actor(request), detail=f"username={username} role={role}")
@@ -1066,16 +1068,24 @@ def admin_stats(_: Any = Depends(require_admin)) -> dict[str, Any]:
         wiki_pages = sum(1 for _ in WIKI_DIR.rglob("*.md")) if WIKI_DIR.exists() else 0
         # 按用户统计文档数：通过 source_id 匹配 owner
         user_doc_counts = {}
-        # 获取所有源的 owner 映射
-        from .services.user_manager import load_user_sources as _load_usr
-        _usr_src = _load_usr()
+        from .services.sync_settings import list_sync_presets
         _src_owner = {}
-        for s in _usr_src:
-            if isinstance(s, dict) and s.get("owner"):
-                _src_owner[s.get("id")] = s.get("owner")
-        # 查询每个 source_id 的文档数
+        for p in list_sync_presets():
+            _oid = p.get("id", "")
+            _own = p.get("owner")
+            if _own:
+                _src_owner[_oid] = _own
         for row in conn.execute("SELECT source_id, COUNT(1) AS c FROM documents GROUP BY source_id").fetchall():
-            owner = _src_owner.get(row["source_id"], "__shared__")
+            sid = row["source_id"]
+            # 匹配：精确匹配 preset id，或匹配 preset id 去掉 :type 后缀的部分
+            owner = _src_owner.get(sid)
+            if not owner:
+                for pk, pv in _src_owner.items():
+                    if pk.startswith(sid + ":"):
+                        owner = pv
+                        break
+            if not owner:
+                owner = "__shared__"
             user_doc_counts[owner] = user_doc_counts.get(owner, 0) + row["c"]
     finally:
         conn.close()
