@@ -78,7 +78,7 @@ FastAPI 应用，负责：
 | `source_sync_key.py` | 源标识生成与匹配（`id:type` 格式，如 `PythonBasic:local`） |
 | `chinese_tokenizer.py` | jieba 中文分词：索引预分词 + 搜索查询分词 + 自定义词典 |
 | `user_manager.py` | 用户目录管理、私有源注册、索引清理 |
-| `sync_settings.py` | 同步范围预设（all / wiki / custom） |
+| `sync_settings.py` | 同步范围预设（per-user sync_preset/sync_source_ids） |
 | `sync_backoff.py` | 远程源失败指数退避 |
 | `scheduler.py` | 定时自动同步 |
 
@@ -119,7 +119,7 @@ FastAPI 应用，负责：
 | 模块 | 职责 |
 |------|------|
 | `categories.py` | 分类浏览（原始素材 / 学习摘要 / 问答沉淀） |
-| `library.py` | 层级目录树（source → language → dir → file） |
+| `library.py` | 层级目录树（source → dir → file，统一树，不再按语言分组） |
 | `vault_git.py` | Vault Git 双向同步（`wiki/` + `purpose.md`） |
 | `git_ops.py` | Git 底层操作（clone / pull / status） |
 | `web_extract.py` | HTML → Markdown 转换 |
@@ -219,13 +219,17 @@ FastAPI 应用，负责：
 | `session_revocations` | （已废弃，保留兼容）不再使用 |
 | `login_failures` | 登录限速计数器 |
 | `api_usage` | API 限速桶 |
+| `user_notifications` | 用户通知（共享状态变更、库删除等） |
+| `app_settings` | 应用设置（per-user 键前缀 `{username}:sync_*`） |
 
 ### 角色
 
 | 角色 | 能力 |
 |------|------|
-| **admin** | 同步、全量重建、wiki 编辑、Vault、settings、purpose、lint、问答保存 |
-| **viewer** | 搜索、浏览、图谱、问答（不可写入磁盘） |
+| **admin** | 同步、全量重建、素材管理、wiki 编辑、Vault、purpose、lint、操作记录、系统管理 |
+| **member** | 搜索、文档库、知识查询、同步控制、素材管理（个人库）、操作记录（仅自己） |
+
+> Per-user 同步：每个用户独立管理自己的同步范围（`{username}:sync_preset` / `{username}:sync_source_ids`），同步/重建结果只对当前用户可见。
 
 详见 [SECURITY.md](../SECURITY.md)。
 
@@ -253,21 +257,22 @@ apps/web-new/
     │   ├── useSyncSettings.js  # 同步范围共享状态（DB 持久化 + 本地 reactive）
     │   └── useMarkdown.js   # Markdown 渲染封装
     ├── components/
-    │   ├── AppSidebar.vue   # 侧边栏导航
+    │   ├── AppSidebar.vue   # 侧边栏导航（角色感知菜单）
+    │   ├── NotifyBar.vue    # 顶部通知条（共享状态变更/库删除）
     │   ├── TreeView.vue     # 递归文档树容器
-    │   ├── TreeBranch.vue   # 树分支（可展开/收起）
-    │   └── TreeNode.vue     # 树节点（文件/目录递归）
+    │   ├── TreeBranch.vue   # 树分支（可展开/收起，响应 activeDocId）
+    │   └── TreeNode.vue     # 树节点（文件/目录递归，含根级文件渲染）
     └── views/
-        ├── Library.vue      # 文档库（树 + Markdown 阅读器）
-        ├── Search.vue       # 全文搜索
+        ├── Library.vue      # 文档库（代码高亮 + 图片 + 权限拦截提示）
+        ├── Search.vue       # 全文搜索（per-user 源过滤 + 缓存 TTL）
         ├── QA.vue           # LLM 问答
-        ├── Graph.vue        # Wiki 图谱（Canvas 力导向图）
+        ├── Graph.vue        # Wiki 图谱（Canvas 力导向图，仅管理员）
         ├── Account.vue      # 账户（改密码、会话管理、API Key）
-        ├── SyncControl.vue  # 同步控制
-        ├── SyncSources.vue  # 来源管理（含同步范围 UI）
-        ├── SyncVault.vue    # 全局（Vault Git）
-        ├── SyncPurpose.vue  # 规则约束
-        └── SyncAudit.vue    # 审计日志
+        ├── SyncControl.vue  # 同步控制（per-user 增量/全量）
+        ├── SyncSources.vue  # 素材管理（管理员 3 区：全局/我的/共享）
+        ├── SyncVault.vue    # 仓库管理
+        ├── SyncPurpose.vue  # 规则约束（仅管理员）
+        └── SyncAudit.vue    # 操作记录（角色过滤 + 高亮 + 跳转）
 ```
 
 构建输出为 `dist/` 静态文件，由 Nginx 容器 serve。

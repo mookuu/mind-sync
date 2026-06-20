@@ -19,12 +19,12 @@
 | 方法 | 路径                        | 说明                                          |
 | ---- | --------------------------- | --------------------------------------------- |
 | GET  | `/api/sources`              | 列出当前用户可见的源（共享 + 自己的私有源）   |
-| POST | `/api/sync`                 | 启动增量同步（GitHub pull + 本地扫描 + 索引） |
+| POST | `/api/sync`                 | 启动增量同步（仅处理当前用户选中的源）        |
 | GET  | `/api/sync-status`          | 查看同步进度和状态                            |
-| POST | `/api/rebuild-index`        | 全量重建索引（不清除源数据）                  |
+| POST | `/api/rebuild-index`        | 全量重建（仅处理当前用户选中的源）            |
 | POST | `/api/admin/sources/reload` | 重载 sources.yaml 配置                        |
-| POST | `/api/admin/sources/custom` | 添加自定义共享源（admin 专用）                |
-| POST | `/api/admin/sources/delete` | 删除来源（支持复合 key 如 PythonBasic:local） |
+| POST | `/api/admin/sources/custom` | 添加自定义全局库（admin 专用，含通知）        |
+| POST | `/api/admin/sources/delete` | 删除来源（有 owner 时通知拥有者）             |
 
 ## 用户私有源管理
 
@@ -89,15 +89,22 @@
 | GET  | `/api/purpose` | 读取当前规则约束 |
 | POST | `/api/purpose` | 更新规则约束     |
 
+## 通知
+
+| 方法 | 路径                              | 说明                         |
+| ---- | --------------------------------- | ---------------------------- |
+| GET  | `/api/user/notifications`         | 获取当前用户未读通知         |
+| POST | `/api/user/notifications/{id}/read` | 标记通知已读               |
+
 ## 系统管理
 
-| 方法 | 路径                        | 说明                             |
-| ---- | --------------------------- | -------------------------------- |
-| GET  | `/api/settings`             | 读取系统设置                     |
-| POST | `/api/settings`             | 更新系统设置                     |
-| GET  | `/api/audit-events?limit=N` | 审计日志（登录/同步/设置变更）   |
-| GET  | `/api/vault-status`         | Git Vault 状态                   |
-| POST | `/api/vault-sync`           | Git Vault 同步（push/pull wiki） |
+| 方法 | 路径                        | 说明                              |
+| ---- | --------------------------- | --------------------------------- |
+| GET  | `/api/settings`             | 读取当前用户的同步设置（per-user）|
+| POST | `/api/settings`             | 更新当前用户的同步设置（per-user）|
+| GET  | `/api/audit-events?limit=N` | 操作记录（非管理员仅看自己的记录）|
+| GET  | `/api/vault-status`         | Git Vault 状态                    |
+| POST | `/api/vault-sync`           | Git Vault 同步（push/pull wiki）  |
 
 ---
 
