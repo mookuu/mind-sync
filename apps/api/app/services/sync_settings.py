@@ -190,12 +190,19 @@ def resolve_sync_source_ids(settings_map: dict[str, str] | None = None, username
     all_srcs = load_ordered_sources(settings_map, username=username, role=role)
     all_keys = [source_sync_key(s) for s in all_srcs]
 
-    if role != "admin" and meta["sync_preset"] == "all":
-        # Non-admin "all": all owned + checked shared/global
-        owned_keys = {source_sync_key(s) for s in all_srcs if s.owner == username}
-        checked_keys = set(meta["sync_selected_keys"])
-        effective = list(owned_keys | checked_keys)
-        # Filter to only valid keys
+    if meta["sync_preset"] == "all":
+        if role == "admin":
+            # Admin "all": all global + all owned + checked shared
+            global_keys = {source_sync_key(s) for s in all_srcs if s.owner is None}
+            owned_keys = {source_sync_key(s) for s in all_srcs if s.owner == username}
+            checked_keys = set(meta["sync_selected_keys"])
+            shared_keys = checked_keys - global_keys - owned_keys
+            effective = list(global_keys | owned_keys | shared_keys)
+        else:
+            # Non-admin "all": all owned + checked (global + shared)
+            owned_keys = {source_sync_key(s) for s in all_srcs if s.owner == username}
+            checked_keys = set(meta["sync_selected_keys"])
+            effective = list(owned_keys | checked_keys)
         valid = [k for k in all_keys if k in set(effective)]
         return valid if valid else []
 
