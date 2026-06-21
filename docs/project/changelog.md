@@ -6,20 +6,19 @@
 - **feat**: 通知系统 — `user_notifications` 表 + API + NotifyBar 前端组件，管理员删除他人库自动通知
 - **feat**: 文档库树恢复真实目录结构 — `_build_lang_groups`→`_build_lang_tree`（统一树）
 - **feat**: 代码文件语法高亮 — hljs.highlight() 替代 escapeHtml
-- **feat**: etag 缓存 — API 指纹，数据未变跳过 DOM 重建
-- **feat**: include 扩展到 18 种文本类型；新增库树中立即可见（count=0）
-- **feat**: CSRF cookie 自动恢复 — auth-mode 补发 + 前端自动重试
-- **feat**: 素材管理管理员 3 区布局（全局/我的/共享）+ 默认库置顶勾选
-- **feat**: 全量重建 modal 弹窗（统一 UI）+ 操作记录页角色过滤
-- **feat**: 菜单权限分离 — Wiki图谱/规则约束/系统管理仅管理员
-- **fix**: 全量重建后缓存 404（多层面修复）
-- **fix**: 删除源后索引残留 + 新增库后树不显示
-- **fix**: TreeNode 根级文件不可见 + TreeBranch 不响应 prop 变化
-- **fix**: 搜索跳转树不展开 + 路径无效库展示
-- **fix**: 新增库自动勾选 + 侧边栏树同步更新
+- **feat**: include 扩展到 18 种文本类型
+- **fix**: sync/rebuild 端点 require_admin→require_any_auth（权限分离后遗漏）
+- **fix**: 文档库只显示已同步源（移除空源补充）；全部同步作用域精确化
 - **fix**: CSRF 403 + 并发 DB 写入导致登出（重试机制）
-- **refactor**: 审计→操作记录；素材管理管理员 3 区分离
-- **docs**: lessons.md +4 条（#50–#53），原则扩展至 31 条
+- **perf**: 子菜单切换秒开 — 恢复树缓存 + sync 后 event 精准清缓存
+- **feat**: 素材管理管理员 3 区布局 + 默认库置顶勾选 + 全量重建 modal
+- **feat**: 菜单权限分离 — Wiki图谱/规则约束/系统管理仅管理员；平级菜单 admin 检查
+- **fix**: 全量重建后缓存 404 + 删除源索引残留 + 新增库树不显示
+- **fix**: TreeNode 根级文件不可见 + TreeBranch 不响应 prop + 搜索跳转树不展开
+- **fix**: 新增库自动勾选 + 侧边栏树同步 + 路径无效库不展示
+- **refactor**: 审计→操作记录 + 角色过滤 + 高亮跳转
+- **cleanup**: 移除旧 etag 残留 + 路由回到 library 不必要的树重载
+- **docs**: lessons.md +6 条（#50–#55），原则扩展至 33 条
 
 ## 2026-06-17 (续)
 
