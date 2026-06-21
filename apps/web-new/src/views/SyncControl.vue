@@ -187,6 +187,7 @@ async function startSync() {
   try {
     await api("/api/sync", { method: "POST", body: { use_saved_defaults: true } });
     statusText.value = "同步完成";
+    window.dispatchEvent(new CustomEvent('mind-sync-tree-refresh'));
     await loadStatus();
   } catch (e) {
     statusText.value = `同步失败: ${e.message}`;
@@ -203,6 +204,7 @@ async function doRebuild() {
   try {
     await api("/api/rebuild-index", { method: "POST", body: { use_saved_defaults: true } });
     statusText.value = "全量重建完成";
+    window.dispatchEvent(new CustomEvent('mind-sync-tree-refresh'));
     await loadStatus();
   } catch (e) {
     statusText.value = `全量重建失败: ${e.message}`;

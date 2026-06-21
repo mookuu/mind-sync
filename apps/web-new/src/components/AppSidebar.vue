@@ -66,7 +66,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, nextTick } from "vue";
+import { ref, reactive, computed, watch, nextTick, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../api/index.js";
 import TreeBranch from "./TreeBranch.vue";
@@ -80,6 +80,19 @@ const catTreesETag = reactive({ source: '', summary: '', query: '' });
 const catLoading = reactive({ source: false, summary: false, query: false });
 const catExpanded = reactive({ source: false, summary: false, query: false });
 
+function clearTreeCache() {
+  catTrees.source = null;
+  catTrees.summary = null;
+  catTrees.query = null;
+  catTreesETag.source = '';
+  catTreesETag.summary = '';
+  catTreesETag.query = '';
+}
+
+// sync/rebuild 后精准清缓存
+window.addEventListener('mind-sync-tree-refresh', clearTreeCache);
+onUnmounted(() => window.removeEventListener('mind-sync-tree-refresh', clearTreeCache));
+
 async function toggleCatTree(catKey) {
   if (catExpanded[catKey]) {
     catExpanded[catKey] = false;
@@ -90,21 +103,17 @@ async function toggleCatTree(catKey) {
   catExpanded.summary = false;
   catExpanded.query = false;
   catExpanded[catKey] = true;
+  // 有缓存直接复用（sync/rebuild 后会被 event 清空）
+  if (catTrees[catKey]) return;
   catLoading[catKey] = true;
   try {
     const data = await api(`/api/library?category=${encodeURIComponent(catKey)}`);
-    // etag 未变且缓存存在 → 跳过 DOM 重建，直接复用
-    if (data.etag && catTrees[catKey] && data.etag === catTreesETag[catKey]) {
-      return;
-    }
     const nodes = [];
     for (const sec of (data.sections || [])) {
-      // Wiki section: single tree on the section itself
       if (sec.flat && sec.tree && sec.tree.length) {
         nodes.push({ label: sec.label || sec.source_id, sourceId: sec.source_id || 'wiki', type: 'source', tree: sec.tree, count: sec.count });
         continue;
       }
-      // Raw sources: 只显示有文档的源（同步后才出现）
       for (const src of (sec.sources || [])) {
         if (src.tree && src.tree.length) {
           nodes.push({ label: src.label || src.id, sourceId: src.id, type: 'source', tree: src.tree, count: src.count });
@@ -112,7 +121,6 @@ async function toggleCatTree(catKey) {
       }
     }
     catTrees[catKey] = nodes;
-    catTreesETag[catKey] = data.etag || '';
   } catch { catTrees[catKey] = []; }
   finally { catLoading[catKey] = false; }
 }
@@ -181,12 +189,12 @@ watch(() => route.path, (newPath, oldPath) => {
     expanded.value = {};
   }
 
-  // 从其他页面回到 /library 时，刷新已展开的分类树（删除库后无需重建）
+  // 从其他页面回到 /library 时，清缓存并刷新已展开的分类树
   if (newPath.startsWith('/library') && oldPath && !oldPath.startsWith('/library')) {
+    clearTreeCache();
     nextTick(() => {
       for (const catKey of ['source', 'summary', 'query']) {
-        if (catExpanded[catKey] && catTrees[catKey]) {
-          // 收起后立即重新展开，触发重新加载
+        if (catExpanded[catKey]) {
           catExpanded[catKey] = false;
           nextTick(() => {
             toggleCatTree(catKey);
