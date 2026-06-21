@@ -1356,7 +1356,7 @@ def sync(
     background_tasks: BackgroundTasks,
     request: Request,
     payload: SyncRequest | None = None,
-    _: Any = Depends(require_admin),
+    _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
     check_api_rate_limit(request, "sync")
     username, role = resolve_current_user(request)
@@ -1397,7 +1397,7 @@ def rebuild_index(
     background_tasks: BackgroundTasks,
     request: Request,
     payload: RebuildRequest | None = None,
-    _: Any = Depends(require_admin),
+    _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
     """Full index rebuild: clear selected sources in SQLite, then re-scan every file."""
     check_api_rate_limit(request, "sync")

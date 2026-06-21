@@ -178,14 +178,28 @@ def read_sync_settings(settings_map: dict[str, str], username: str | None = None
 
 
 def resolve_sync_source_ids(settings_map: dict[str, str] | None = None, username: str | None = None, role: str | None = None) -> list[str] | None:
-    """Return None to sync all sources, or a filtered ordered list of sync keys (id:type)."""
+    """Return None to sync all sources, or a filtered ordered list of sync keys (id:type).
+
+    Admin "all" = all visible sources. Non-admin "all" = owned sources + checked shared/global.
+    """
     if settings_map is None:
         from ..db import load_settings_map
 
         settings_map = load_settings_map(username)
     meta = read_sync_settings(settings_map, username=username, role=role)
+    all_srcs = load_ordered_sources(settings_map, username=username, role=role)
+    all_keys = [source_sync_key(s) for s in all_srcs]
+
+    if role != "admin" and meta["sync_preset"] == "all":
+        # Non-admin "all": all owned + checked shared/global
+        owned_keys = {source_sync_key(s) for s in all_srcs if s.owner == username}
+        checked_keys = set(meta["sync_selected_keys"])
+        effective = list(owned_keys | checked_keys)
+        # Filter to only valid keys
+        valid = [k for k in all_keys if k in set(effective)]
+        return valid if valid else []
+
     selected_keys = meta["sync_selected_keys"]
-    all_keys = [source_sync_key(s) for s in load_ordered_sources(settings_map, username=username, role=role)]
     if not selected_keys or set(selected_keys) >= set(all_keys):
         return None
     selected_set = set(selected_keys)

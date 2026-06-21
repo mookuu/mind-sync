@@ -180,7 +180,6 @@ async function loadSettings() {
 }
 
 async function startSync() {
-  if (!canWrite.value) return;
   statusText.value = "同步中…";
   statusError.value = false;
   // 增量同步后文档 ID 可能变化，清空搜索缓存
@@ -196,7 +195,6 @@ async function startSync() {
 }
 
 async function doRebuild() {
-  if (!canWrite.value) return;
   showRebuildConfirm.value = false;
   statusText.value = "全量重建中…";
   statusError.value = false;

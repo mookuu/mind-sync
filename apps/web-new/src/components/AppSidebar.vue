@@ -43,9 +43,10 @@
         </div>
       </template>
 
-      <!-- 平级菜单 -->
+      <!-- 平级菜单（无子项） -->
       <template v-else>
         <router-link
+          v-if="!item.admin || isAdmin"
           :to="item.path"
           class="nav-item"
           :class="{ active: isActive(item.path) }"
@@ -99,14 +100,14 @@ async function toggleCatTree(catKey) {
     const nodes = [];
     for (const sec of (data.sections || [])) {
       // Wiki section: single tree on the section itself
-      if (sec.flat && sec.tree) {
-        nodes.push({ label: sec.label || sec.source_id, sourceId: sec.source_id || 'wiki', type: 'source', tree: sec.tree || [], count: sec.count });
+      if (sec.flat && sec.tree && sec.tree.length) {
+        nodes.push({ label: sec.label || sec.source_id, sourceId: sec.source_id || 'wiki', type: 'source', tree: sec.tree, count: sec.count });
         continue;
       }
-      // Raw sources: tree is on each source directly（含空树，使新增库立即可见）
+      // Raw sources: 只显示有文档的源（同步后才出现）
       for (const src of (sec.sources || [])) {
-        if (src.tree) {
-          nodes.push({ label: src.label || src.id, sourceId: src.id, type: 'source', tree: src.tree || [], count: src.count });
+        if (src.tree && src.tree.length) {
+          nodes.push({ label: src.label || src.id, sourceId: src.id, type: 'source', tree: src.tree, count: src.count });
         }
       }
     }

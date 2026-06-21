@@ -1,6 +1,5 @@
 import sqlite3
 
-from pathlib import Path
 from typing import Any
 
 
@@ -232,30 +231,6 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
         )
 
 
-
-    # 补充配置中存在但暂无文档的源（新增库在同步前也能在树中看到）
-    if category in (None, "", "all", "source"):
-        from .sync_settings import load_ordered_sources
-        try:
-            all_srcs = load_ordered_sources(username=username, role=role)
-            existing_ids = set(by_source.keys())
-            for src in all_srcs:
-                if src.id not in existing_ids and src.id != "wiki":
-                    # 跳过路径无效的库
-                    spath = (src.path or "").strip()
-                    if spath and not spath.startswith(("http://", "https://", "git@")):
-                        if not Path(spath).exists():
-                            continue
-                    raw_blocks.append(
-                        {
-                            "id": src.id,
-                            "label": SOURCE_LABELS.get(src.id, src.id),
-                            "count": 0,
-                            "tree": [],
-                        }
-                    )
-        except Exception:
-            pass  # 源配置加载失败不影响主流程
 
     if raw_blocks:
 

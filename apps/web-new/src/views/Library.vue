@@ -15,7 +15,7 @@
       </template>
       <template v-else>
         <div v-if="deniedMsg" class="denied-notice">{{ deniedMsg }}</div>
-        <div class="empty-state">选择左侧文件开始阅读</div>
+        <div v-else class="empty-state">选择左侧文件开始阅读</div>
       </template>
     </div>
   </div>
@@ -32,9 +32,7 @@ const deniedMsg = ref('');
 
 // 权限拦截后显示提示
 watch(() => route.query.denied, (path) => {
-  if (path) {
-    deniedMsg.value = `页面「${path}」仅管理员可访问`;
-  }
+  deniedMsg.value = path ? `页面「${path}」仅管理员可访问` : '';
 }, { immediate: true });
 
 const isSingleDoc = computed(() => !!route.query.doc);
