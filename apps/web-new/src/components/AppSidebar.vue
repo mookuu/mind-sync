@@ -66,7 +66,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, nextTick, onUnmounted } from "vue";
+import { ref, reactive, computed, watch, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../api/index.js";
 import TreeBranch from "./TreeBranch.vue";
@@ -76,7 +76,6 @@ const router = useRouter();
 
 // 每个分类独立的树状态
 const catTrees = reactive({ source: null, summary: null, query: null });
-const catTreesETag = reactive({ source: '', summary: '', query: '' });
 const catLoading = reactive({ source: false, summary: false, query: false });
 const catExpanded = reactive({ source: false, summary: false, query: false });
 
@@ -84,9 +83,6 @@ function clearTreeCache() {
   catTrees.source = null;
   catTrees.summary = null;
   catTrees.query = null;
-  catTreesETag.source = '';
-  catTreesETag.summary = '';
-  catTreesETag.query = '';
 }
 
 // sync/rebuild 后精准清缓存
@@ -180,28 +176,13 @@ function expandForRoute(path) {
 }
 expanded.value = expandForRoute(route.path);
 
-// 路由变化时自动展开对应父级，并在进入文档库时刷新树
-watch(() => route.path, (newPath, oldPath) => {
-  const target = expandForRoute(newPath);
+// 路由变化时自动展开对应父级
+watch(() => route.path, (path) => {
+  const target = expandForRoute(path);
   if (Object.keys(target).length) {
     expanded.value = target;
   } else {
     expanded.value = {};
-  }
-
-  // 从其他页面回到 /library 时，清缓存并刷新已展开的分类树
-  if (newPath.startsWith('/library') && oldPath && !oldPath.startsWith('/library')) {
-    clearTreeCache();
-    nextTick(() => {
-      for (const catKey of ['source', 'summary', 'query']) {
-        if (catExpanded[catKey]) {
-          catExpanded[catKey] = false;
-          nextTick(() => {
-            toggleCatTree(catKey);
-          });
-        }
-      }
-    });
   }
 });
 
