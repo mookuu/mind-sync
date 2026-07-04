@@ -38,13 +38,13 @@ def test_admin_can_reload_sources(tmp_path, monkeypatch):
         assert any(s["id"] == "demo2" for s in body["sources"])
 
 
-def test_viewer_cannot_reload_sources(monkeypatch):
-    monkeypatch.setattr("app.config.settings.auth_users", "viewer:vpass:viewer")
+def test_member_cannot_reload_sources(monkeypatch):
+    monkeypatch.setattr("app.config.settings.auth_users", "member:vpass:member")
     secret = "test-secret-key-long-enough-1234567890123456"
     monkeypatch.setattr("app.config.settings.secret_key", secret)
     patch_session_serializer(monkeypatch, secret)
     with TestClient(app) as client:
-        login = client.post("/api/login", json={"username": "viewer", "password": "vpass"})
+        login = client.post("/api/login", json={"username": "member", "password": "vpass"})
         attach_session_cookies(client, login)
         csrf = login.json()["csrf_token"]
         resp = client.post("/api/admin/sources/reload", headers={"x-csrf-token": csrf})

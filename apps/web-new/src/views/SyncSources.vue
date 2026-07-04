@@ -387,7 +387,7 @@ function getOwnerRoleLabel(username) {
   if (username === currentUser.value) return '当前用户';
   const role = userRole(username);
   if (role === 'admin') return '管理员';
-  return '只读用户';
+  return '成员';
 }
 
 async function loadUserDisplayNames() {

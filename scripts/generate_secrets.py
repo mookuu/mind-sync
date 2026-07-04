@@ -43,7 +43,7 @@ def main() -> None:
     for key, val in secrets_map.items():
         print(f"{key}={val}")
     print("# Example bcrypt user (generate hash with: python scripts/generate_secrets.py hash-password 'your-pass')")
-    print("# AUTH_USERS=admin:$2b$12$...:admin,viewer:$2b$12$...:viewer")
+    print("# AUTH_USERS=admin:$2b$12$...:admin,member:$2b$12$...:member")
 
 
 if __name__ == "__main__":

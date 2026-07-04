@@ -1,4 +1,4 @@
-"""Tests for role-based permissions (admin vs viewer)."""
+"""Tests for role-based permissions (admin vs member)."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +12,7 @@ def rbac_client(monkeypatch):
     monkeypatch.setattr("app.config.settings.auth_password", "legacy-admin-pass")
     monkeypatch.setattr(
         "app.config.settings.auth_users",
-        "admin:adminpass:admin,viewer:viewpass:viewer",
+        "admin:adminpass:admin,member:memberpass:member",
     )
     monkeypatch.setattr("app.config.settings.api_key", "test-api-key")
     secret = "test-secret-key-long-enough-1234567890123456"
@@ -31,15 +31,15 @@ def _login(client: TestClient, username: str, password: str) -> str:
     return resp.json()["csrf_token"]
 
 
-def test_viewer_can_search_but_not_write_wiki(rbac_client: TestClient):
-    csrf = _login(rbac_client, "viewer", "viewpass")
+def test_member_can_search_but_not_write_wiki(rbac_client: TestClient):
+    csrf = _login(rbac_client, "member", "memberpass")
     search = rbac_client.get("/api/search", params={"q": "test"})
     assert search.status_code == 200
 
     auth = rbac_client.get("/api/auth-mode")
     assert auth.status_code == 200
     body = auth.json()
-    assert body["role"] == "viewer"
+    assert body["role"] == "member"
     assert body["can_write"] is False
 
     write = rbac_client.put(
@@ -61,8 +61,8 @@ def test_admin_can_write_wiki(rbac_client: TestClient):
     assert write.json().get("ok") is True
 
 
-def test_viewer_cannot_sync(rbac_client: TestClient):
-    csrf = _login(rbac_client, "viewer", "viewpass")
+def test_member_cannot_sync(rbac_client: TestClient):
+    csrf = _login(rbac_client, "member", "memberpass")
     resp = rbac_client.post("/api/sync", json={}, headers={"x-csrf-token": csrf})
     assert resp.status_code == 403
 
