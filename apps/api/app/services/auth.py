@@ -63,7 +63,7 @@ def authenticate(username: str, password: str) -> AuthUser | None:
         if row["deleted_at"] and row["deleted_at"] > 0:
             return None  # 已注销用户不可登录
         if verify_password(supplied, row["password_hash"]):
-            role = Role.ADMIN if row["role"] == "admin" else Role.VIEWER
+            role = Role.ADMIN if row["role"] == "admin" else Role.MEMBER
             return AuthUser(username=row["username"], password=row["password_hash"], role=role)
 
     # Fallback: env users
@@ -168,11 +168,11 @@ def resolve_role(request: Request) -> str:
         return Role.ADMIN.value
     session_id = _get_session_id(request)
     if not session_id:
-        return Role.VIEWER.value
+        return Role.MEMBER.value
     sess = get_session(session_id)
     if not sess:
-        return Role.VIEWER.value
-    return (sess.get("role") or Role.ADMIN.value).strip().lower()
+        return Role.MEMBER.value
+    return (sess.get("role") or Role.MEMBER.value).strip().lower()
 
 
 def require_admin(request: Request) -> None:
@@ -192,8 +192,8 @@ def resolve_current_user(request: Request) -> tuple[str | None, str | None]:
     if not sess:
         return None, None
     username = sess.get("username")
-    role = sess.get("role", "viewer")
-    return username, (role or "viewer").strip().lower()
+    role = sess.get("role", "member")
+    return username, (role or "member").strip().lower()
 
 
 def require_own_source(source_id: str, request: Request) -> None:

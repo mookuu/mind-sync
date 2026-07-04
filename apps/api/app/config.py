@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     )
 
     auth_password: str = "changeme"
-    # Multi-user RBAC. CSV: user:pass:role,... or JSON list. Roles: admin | viewer
+    # Multi-user RBAC. CSV: user:pass:role,... or JSON list. Roles: admin | member
     auth_users: str = ""
     secret_key: str = "replace-with-random-secret"
     api_key: str = "mind-sync-dev-key"

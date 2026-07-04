@@ -89,7 +89,7 @@ def load_sources_for_user(username: str | None = None, role: str | None = None) 
     """返回当前用户可见的源列表。
 
     - admin → 全部源（含私有）
-    - member/viewer → 共享源（owner=None） + 自己的私有源（owner=username）
+    - member → 共享源（owner=None） + 自己的私有源（owner=username）
        + 其他用户设为共享的源（shared=True 且 owner≠username）
     - 未登录（username=None） → 仅共享源
     """

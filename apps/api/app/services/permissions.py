@@ -1,4 +1,4 @@
-"""Role-based access: admin (read/write) vs viewer (read-only)."""
+"""Role-based access: admin (read/write) vs member (read-only)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .password_util import verify_password
 
 class Role(str, Enum):
     ADMIN = "admin"
-    VIEWER = "viewer"
+    MEMBER = "member"
 
 
 @dataclass(frozen=True)
@@ -26,8 +26,9 @@ def _normalize_role(raw: str) -> Role | None:
     value = (raw or "").strip().lower()
     if value in {"admin", "administrator", "write", "editor"}:
         return Role.ADMIN
-    if value in {"viewer", "read", "readonly", "read-only", "guest"}:
-        return Role.VIEWER
+    # "viewer" 保留向后兼容，归一化为 member
+    if value in {"member", "viewer", "read", "readonly", "read-only", "guest"}:
+        return Role.MEMBER
     return None
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 7  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 8  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "db" / "mind_sync.db"
@@ -160,6 +160,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
             ("_schema_version", "7"),
+        )
+    if version < 8:
+        # V8: 角色统一 viewer → member
+        conn.execute("UPDATE users SET role = 'member' WHERE role = 'viewer'")
+        conn.execute("UPDATE sessions SET role = 'member' WHERE role = 'viewer'")
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "8"),
         )
 
 
