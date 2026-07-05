@@ -23,15 +23,16 @@ def resolve_wiki_prefix(path: str, username: str | None = None) -> str:
     return "shared/"
 
 
-def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True, username: str | None = None) -> Path:
+def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True, username: str | None = None, role: str | None = None) -> Path:
     """Validate and resolve a relative wiki path, ensuring no directory traversal.
 
     当路径以 'users/' 开头时，检查当前用户是否匹配（隔离检查）。
-    admin 不受此限制（可访问任何用户 Wiki）。
+    admin 角色不受此限制（可访问任何用户 Wiki）。
 
     Args:
         must_exist: If True (default), raises 404 when file does not exist.
-        username: If set, enforces user namespace isolation.
+        username: Current user name for namespace isolation.
+        role: Current user role ('admin' bypasses isolation).
     Raises HTTPException(400/403/404) on validation/permission/not-found errors.
     Returns the resolved absolute Path within wiki_dir.
     """
@@ -48,7 +49,7 @@ def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True, usernam
     if norm.startswith("users/"):
         if len(parts) >= 2:
             requested_user = parts[1]
-            if username and requested_user != username and username != "admin":
+            if role != "admin" and requested_user != (username or ""):
                 raise HTTPException(status_code=403, detail="无权访问其他用户的 Wiki")
     target = (wiki_dir / norm).resolve()
     try:

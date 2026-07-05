@@ -54,6 +54,43 @@
 
 ---
 
+---
+
+## 第二轮审查（Wiki 隔离 + API Key 审计）
+
+> 审查日期：2026-07 | 审查范围：`da3d260` — US-03 Wiki 隔离 + US-04 API Key 审计绑定
+
+### 🔴 Critical（已修复）
+
+| ID | 问题 | 文件:行 | 修复 |
+|----|------|---------|------|
+| CR-04 | `safe_wiki_path` 用 `username == "admin"` 判断管理员，应用 `role` 判断 | `wiki_util.py:48` | 增加 `role` 参数，`role == "admin"` 显式放行 |
+| CR-05 | env API Key 时 `username=None` 导致隔离检查静默跳过 | `main.py:1582` → `wiki_util.py:48` | 同上修复覆盖；`role="admin"` 时显式授权 |
+
+### 🟡 Suggestion（延后）
+
+| ID | 问题 | 文件:行 |
+|----|------|---------|
+| SG-06 | `resolve_api_key_user()` 吞异常 | `auth.py:149-153` |
+| SG-07 | `wiki_util.py` 两套隔离逻辑（`resolve_wiki_prefix` 未使用） | `wiki_util.py:6` |
+| SG-08 | V9 迁移脆弱 try/except | `db.py:175` |
+
+### 🟢 Nice to have（延后）
+
+| ID | 问题 |
+|----|------|
+| NT-03 | `/api/wiki-page` 废弃端点可删除 |
+| NT-04 | 缺少 Wiki 越权读取测试 |
+
+### 第二轮修改文件
+
+```
+apps/api/app/services/wiki_util.py — safe_wiki_path 加 role 参数 + 修复判断逻辑
+apps/api/app/main.py               — _read_wiki_page/wiki_content/wiki_page/update_wiki_content 传 role
+```
+
+---
+
 ## 残余检查
 
 全项目 `search_content "viewer"` 结果：

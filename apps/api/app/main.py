@@ -1570,9 +1570,9 @@ def wiki_graph(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
     return analyze_wiki_graph(WIKI_DIR)
 
 
-def _read_wiki_page(path: str, username: str | None = None) -> dict[str, Any]:
+def _read_wiki_page(path: str, username: str | None = None, role: str | None = None) -> dict[str, Any]:
     """Read a wiki page by relative path, respecting user namespace."""
-    target = safe_wiki_path(path, WIKI_DIR, username=username)
+    target = safe_wiki_path(path, WIKI_DIR, username=username, role=role)
     rel = (path or "").strip().replace("\\", "/")
     content = read_text_safely(target)
     return {"path": rel, "content": content}
@@ -1580,13 +1580,15 @@ def _read_wiki_page(path: str, username: str | None = None) -> dict[str, Any]:
 
 @app.get("/api/wiki-content")
 def wiki_content(path: str, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
-    return _read_wiki_page(path, username=resolve_current_user(request)[0])
+    user, role = resolve_current_user(request)
+    return _read_wiki_page(path, username=user, role=role)
 
 
 @app.get("/api/wiki-page")
 def wiki_page(path: str, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     """Deprecated alias of /api/wiki-content."""
-    return _read_wiki_page(path, username=resolve_current_user(request)[0])
+    user, role = resolve_current_user(request)
+    return _read_wiki_page(path, username=user, role=role)
 
 
 @app.put("/api/wiki-content")
@@ -1609,7 +1611,7 @@ def update_wiki_content(
         if role != "admin":
             raise HTTPException(status_code=403, detail="仅管理员可写入共享 Wiki")
     assert_wiki_writable(rel)
-    target = safe_wiki_path(rel, WIKI_DIR, must_exist=False, username=username)
+    target = safe_wiki_path(rel, WIKI_DIR, must_exist=False, username=username, role=role)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(payload.content or "", encoding="utf-8")
     stat: dict[str, Any] = {}
