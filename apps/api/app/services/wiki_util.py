@@ -26,10 +26,13 @@ def resolve_wiki_prefix(path: str, username: str | None = None) -> str:
 def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True, username: str | None = None) -> Path:
     """Validate and resolve a relative wiki path, ensuring no directory traversal.
 
+    当路径以 'users/' 开头时，检查当前用户是否匹配（隔离检查）。
+    admin 不受此限制（可访问任何用户 Wiki）。
+
     Args:
         must_exist: If True (default), raises 404 when file does not exist.
-        username: If set, allows access to 'users/<username>/' paths.
-    Raises HTTPException(400) if the path is invalid or attempts traversal.
+        username: If set, enforces user namespace isolation.
+    Raises HTTPException(400/403/404) on validation/permission/not-found errors.
     Returns the resolved absolute Path within wiki_dir.
     """
     norm = (rel or "").strip().replace("\\", "/")
@@ -41,6 +44,12 @@ def safe_wiki_path(rel: str, wiki_dir: Path, *, must_exist: bool = True, usernam
         raise HTTPException(status_code=400, detail="invalid wiki path")
     if not norm.lower().endswith(".md"):
         raise HTTPException(status_code=400, detail="only .md wiki pages are supported")
+    # 用户 Wiki 隔离检查
+    if norm.startswith("users/"):
+        if len(parts) >= 2:
+            requested_user = parts[1]
+            if username and requested_user != username and username != "admin":
+                raise HTTPException(status_code=403, detail="无权访问其他用户的 Wiki")
     target = (wiki_dir / norm).resolve()
     try:
         target.relative_to(wiki_dir.resolve())

@@ -349,7 +349,7 @@ def list_api_keys(
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT id, key_value, label, created_at, last_used_at FROM api_keys ORDER BY created_at DESC"
+            "SELECT id, key_value, label, username, created_at, last_used_at FROM api_keys ORDER BY created_at DESC"
         ).fetchall()
         env_keys = parse_api_keys()
         return {
@@ -369,12 +369,13 @@ def rotate_api_key(
     enforce_csrf(request)
     import secrets as secmod
 
+    username, _ = resolve_current_user(request)
     new_key = f"msk-{secmod.token_urlsafe(32)}"
     conn = get_db()
     try:
         conn.execute(
-            "INSERT INTO api_keys(key_value, label, created_at) VALUES(?, ?, ?)",
-            (new_key, payload.label or "default", time.time()),
+            "INSERT INTO api_keys(key_value, label, username, created_at) VALUES(?, ?, ?, ?)",
+            (new_key, payload.label or "default", username or "", time.time()),
         )
         conn.commit()
     finally:
@@ -1583,9 +1584,9 @@ def wiki_content(path: str, request: Request, _: Any = Depends(require_any_auth)
 
 
 @app.get("/api/wiki-page")
-def wiki_page(path: str, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def wiki_page(path: str, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     """Deprecated alias of /api/wiki-content."""
-    return _read_wiki_page(path)
+    return _read_wiki_page(path, username=resolve_current_user(request)[0])
 
 
 @app.put("/api/wiki-content")

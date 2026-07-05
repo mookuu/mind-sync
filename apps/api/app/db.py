@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 8  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 9  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "db" / "mind_sync.db"
@@ -168,6 +168,16 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
             ("_schema_version", "8"),
+        )
+    if version < 9:
+        # V9: api_keys 加 username 列，审计可追溯
+        try:
+            conn.execute("ALTER TABLE api_keys ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "9"),
         )
 
 

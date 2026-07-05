@@ -133,16 +133,47 @@ def parse_api_keys() -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
-def is_api_key_valid(request: Request) -> bool:
-    expected_set = parse_api_keys()
-    if not expected_set:
-        return False
+def _get_request_key(request: Request) -> str:
+    """从请求中提取 API Key（x-api-key header 或 Bearer token）。"""
     header_key = request.headers.get("x-api-key", "").strip()
     auth_header = request.headers.get("authorization", "").strip()
     bearer_key = ""
     if auth_header.lower().startswith("bearer "):
         bearer_key = auth_header[7:].strip()
-    return header_key in expected_set or bearer_key in expected_set
+    return header_key or bearer_key
+
+
+def resolve_api_key_user(request: Request) -> str | None:
+    """查找 API Key 对应的用户名。DB key 优先，env key 默认 None。"""
+    key_value = _get_request_key(request)
+    if not key_value:
+        return None
+    # 查 DB api_keys 表
+    from ..db import get_db
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT username FROM api_keys WHERE key_value = ? AND (username IS NOT NULL AND username != '')",
+            (key_value,),
+        ).fetchone()
+        if row and row["username"]:
+            return row["username"]
+    except Exception:
+        pass
+    finally:
+        conn.close()
+    return None
+
+
+def is_api_key_valid(request: Request) -> bool:
+    expected_set = parse_api_keys()
+    if expected_set:
+        key_value = _get_request_key(request)
+        if key_value in expected_set:
+            return True
+    # 也检查 DB api_keys 表
+    return resolve_api_key_user(request) is not None
 
 
 def require_auth(request: Request) -> None:
@@ -182,9 +213,10 @@ def require_admin(request: Request) -> None:
 
 
 def resolve_current_user(request: Request) -> tuple[str | None, str | None]:
-    """返回 (username, role)。API Key 认证时角色为 admin。"""
+    """返回 (username, role)。API Key 认证时返回绑定用户（如有）或 None。"""
     if is_api_key_valid(request):
-        return None, "admin"
+        ak_user = resolve_api_key_user(request)
+        return ak_user, "admin"
     session_id = _get_session_id(request)
     if not session_id:
         return None, None
@@ -220,11 +252,10 @@ def require_own_source(source_id: str, request: Request) -> None:
 
 def resolve_actor(request: Request) -> str:
     if is_api_key_valid(request):
-        key = request.headers.get("x-api-key", "").strip()
-        if not key:
-            auth = request.headers.get("authorization", "").strip()
-            if auth.lower().startswith("bearer "):
-                key = auth[7:].strip()
+        ak_user = resolve_api_key_user(request)
+        if ak_user:
+            return ak_user
+        key = _get_request_key(request)
         return f"api-key:{key[:8]}…" if key else "api-key"
     session_id = _get_session_id(request)
     if session_id:
