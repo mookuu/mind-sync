@@ -1,6 +1,8 @@
 # Security Policy
 
-文档索引：[docs/README.md](docs/README.md) · 架构：[docs/architecture.md](docs/architecture.md)
+文档索引：[README.md](README.md) · 架构：[ARCHITECTURE.md](ARCHITECTURE.md)
+
+> ⚠️ 2026-07 Phase 0 已将角色统一为 admin/member。本文档中 `viewer` 一词保留仅在历史示例中，实际代码使用 `member`。
 
 ## Supported versions
 
@@ -35,13 +37,13 @@ AUTH_PASSWORD=strong-secret
 
 # 多用户（密码推荐 bcrypt 哈希，明文仍兼容迁移期）
 # 生成: python scripts/generate_secrets.py hash-password 'your-pass'
-AUTH_USERS=admin:$2b$12$...:admin,reader:$2b$12$...:viewer
+AUTH_USERS=admin:$2b$12$...:admin,reader:$2b$12$...:member
 ```
 
 | 角色 | 能力 |
 |------|------|
 | **admin** | 同步、全量重建、wiki 编辑、Vault、settings、purpose、lint、问答保存 |
-| **viewer** | 搜索、浏览、图谱、问答（不可写入磁盘） |
+| **member** | 搜索、浏览、图谱、问答；管理私有源（不可写入共享 Wiki） |
 
 Web UI 会隐藏/禁用写控件；**以 API 403 为准**。
 
