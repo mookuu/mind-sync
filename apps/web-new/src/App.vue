@@ -49,11 +49,15 @@
         </div>
         <div class="topbar-right">
           <span class="badge" :class="badgeClass">{{ badgeLabel }}</span>
+          <button class="btn btn-ghost btn-sm notify-bell" @click="showNotices = !showNotices" v-if="notifyCount > 0">
+            🔔<span class="bell-badge">{{ notifyCount }}</span>
+          </button>
           <router-link to="/account" class="btn btn-ghost btn-sm">{{ displayName || '账户' }}</router-link>
           <button class="btn btn-ghost btn-sm" @click="handleLogout">登出</button>
         </div>
       </header>
       <NotifyBar />
+      <Toast />
       <main class="content">
         <router-view v-slot="{ Component, route: r }">
           <!-- 注：之前用 <transition> 导致 route transitionend 不触发，组件挂载卡死 -->
@@ -70,6 +74,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useAuth } from "./composables/useAuth.js";
 import AppSidebar from "./components/AppSidebar.vue";
 import NotifyBar from "./components/NotifyBar.vue";
+import Toast from "./components/Toast.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -82,6 +87,7 @@ const loggingIn = ref(false);
 const loginError = ref("");
 
 const LAST_PAGE_KEY = "mind_sync_last_page";
+const LAST_DOC_KEY = "mind_sync_last_doc";
 
 // 保存当前路由到 localStorage
 // 路由守卫：拦截非管理员访问管理页面
@@ -92,10 +98,14 @@ router.beforeEach((to) => {
 });
 
 watch(
-  () => route.path,
-  (path) => {
-    if (path && path !== "/") {
-      localStorage.setItem(LAST_PAGE_KEY, path);
+  () => route.fullPath,
+  (fullPath) => {
+    if (fullPath && fullPath !== "/") {
+      localStorage.setItem(LAST_PAGE_KEY, fullPath);
+      // 保存 doc 参数
+      if (route.query.doc) {
+        localStorage.setItem(LAST_DOC_KEY, route.query.doc);
+      }
     }
   }
 );
@@ -106,6 +116,34 @@ function navigateToLastPage() {
   const target = saved && saved !== "/" ? saved : "/library";
   router.push(target);
 }
+
+// 页面加载时恢复 doc（用于服务器重启后保持）
+onMounted(async () => {
+  try {
+    await checkSession();
+    if (isLoggedIn.value) {
+      // 如果路由没有 doc 参数但有缓存的 doc，尝试恢复
+      if (!route.query.doc) {
+        const cachedDoc = localStorage.getItem(LAST_DOC_KEY);
+        if (cachedDoc && route.path === "/library") {
+          router.replace(`/library?doc=${cachedDoc}`);
+          return;
+        }
+      }
+      navigateToLastPage();
+    }
+  } catch {
+    // not logged in
+  } finally {
+    checkingSession.value = false;
+  }
+});
+const notifyCount = ref(0);
+
+window.addEventListener("mind-notify-count", (e) => {
+  notifyCount.value = e.detail.count || 0;
+});
+
 const checkingSession = ref(true);
 
 const authState = computed(() => {
@@ -137,22 +175,6 @@ async function handleLogin() {
 }
 
 async function handleLogout() {
-  await logout();
-}
-
-
-
-onMounted(async () => {
-  try {
-    await checkSession();
-    // 已登录则跳转到上次页面
-    if (isLoggedIn.value) {
-      navigateToLastPage();
-    }
-  } catch {
-    // not logged in
-  } finally {
-    checkingSession.value = false;
   }
 });
 </script>
@@ -263,6 +285,24 @@ onMounted(async () => {
   grid-column: 1 / -1;
   grid-row: 1 / -1;
   background: var(--bg-default);
+}
+.notify-bell {
+  position: relative;
+  font-size: 1.1rem;
+}
+.bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  background: var(--danger-fg, #dc2626);
+  color: #fff;
+  font-size: 0.65rem;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  border-radius: 8px;
+  text-align: center;
+  padding: 0 4px;
 }
 .login-error {
   color: var(--danger-fg);

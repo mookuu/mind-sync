@@ -1119,6 +1119,31 @@ def user_toggle_source_share(request: Request, source_id: str, _: Any = Depends(
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=404, detail=str(e))
     reload_sources_config()
+
+    # 通知所有勾选了该源的用户
+    from .db import load_settings_map, get_db as _get_db
+    import json as _json
+    source_key = f"{source_id}:local"
+    conn2 = _get_db()
+    try:
+        all_settings = conn2.execute("SELECT key, value FROM app_settings WHERE key LIKE '%:sync_source_ids'").fetchall()
+        action = "共享" if new_state else "取消共享"
+        for row in all_settings:
+            try:
+                ids = _json.loads(row["value"] or "[]")
+                if source_key in ids or source_id in ids:
+                    target_user = row["key"].split(":")[0]
+                    if target_user != username:
+                        _add_notification(
+                            target_user,
+                            f"{username} {action}了 {source_id}，请通过同步控制页面更新库信息",
+                            action_link="/sync/control",
+                        )
+            except Exception:
+                pass
+    finally:
+        conn2.close()
+
     add_audit_event("user_source_share_toggle", request, actor=resolve_actor(request),
                     detail=f"id={source_id} owner={username} shared={new_state}")
     return {"ok": True, "shared": new_state}
@@ -1454,24 +1479,27 @@ def update_purpose(
 
 
 @app.get("/api/categories")
-def categories(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def categories(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+    username, role = resolve_current_user(request)
     conn = get_db()
     try:
-        return list_category_stats(conn)
+        return list_category_stats(conn, username=username, role=role)
     finally:
         conn.close()
 
 
 @app.get("/api/browse")
 def browse(
+    request: Request,
     category: str | None = None,
     topic: str | None = None,
     limit: int = 50,
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
+    username, role = resolve_current_user(request)
     conn = get_db()
     try:
-        items = browse_documents(conn, category=category, topic=topic, limit=limit)
+        items = browse_documents(conn, category=category, topic=topic, limit=limit, username=username, role=role)
     finally:
         conn.close()
     return {"items": items}
@@ -1515,15 +1543,21 @@ def search(
 
 
 @app.get("/api/document/{doc_id}")
-def get_document(doc_id: int, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+def get_document(doc_id: int, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     conn = get_db()
     row = conn.execute(
-        "SELECT id, source_id, rel_path, title, content, lang, updated_at FROM documents WHERE id = ?",
+        "SELECT id, source_id, rel_path, title, content, lang, updated_at, source_owner FROM documents WHERE id = ?",
         (doc_id,),
     ).fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
+    # 权限检查：私有源文档仅 owner + admin 可读
+    username, role = resolve_current_user(request)
+    owner = (row["source_owner"] or "").strip()
+    if owner and owner != "__shared__":
+        if role != "admin" and owner != username:
+            raise HTTPException(status_code=403, detail="此文档属于私有知识库，你无权访问")
     return dict(row)
 
 
@@ -1762,6 +1796,69 @@ def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_
         "model_used": model_used,
         "llm_configured": bool((settings.llm_api_key or "").strip()),
     }
+
+
+@app.post("/api/query/stream")
+async def query_stream(
+    payload: QueryRequest,
+    request: Request,
+    _: Any = Depends(require_any_auth),
+):
+    if payload.save_to_wiki:
+        require_admin(request)
+    check_api_rate_limit(request, "query")
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+
+    conn = get_db()
+    try:
+        username, role = resolve_current_user(request)
+        citations = search_for_query(conn, question, limit=payload.limit, username=username, role=role)
+    finally:
+        conn.close()
+
+    evidences = build_evidence_items(citations, question)
+    config = QueryEngineConfig(
+        llm_base_url=settings.llm_base_url,
+        llm_api_key=settings.llm_api_key,
+        llm_model=settings.llm_model,
+        ollama_base_url=settings.ollama_base_url,
+    )
+    purpose_text = read_purpose_text()
+
+    from starlette.responses import StreamingResponse
+    from query_engine import _call_llm_stream as __stream
+    import json as _json
+
+    async def event_stream():
+        # Yield citations first
+        yield f"data: {_json.dumps({'type': 'citations', 'citations': evidences})}\n\n"
+        # Stream LLM tokens
+        if not settings.llm_api_key.strip():
+            # No LLM → return citations-only result
+            yield f"data: {_json.dumps({'type': 'done', 'answer': '未配置 LLM_API_KEY，以下为检索摘要', 'evidences': evidences})}\n\n"
+            return
+        full_content = ""
+        reasoning_content = ""
+        async for evt in __stream(question, citations, config, purpose_text):
+            if evt["event"] == "error":
+                yield f"data: {_json.dumps({'type': 'error', 'message': evt['data']})}\n\n"
+                return
+            if evt["event"] == "token":
+                chunk = _json.loads(evt["data"])
+                choice = chunk["choices"][0]["delta"]
+                if "reasoning_content" in choice and choice["reasoning_content"]:
+                    reasoning_content += choice["reasoning_content"]
+                    yield f"data: {_json.dumps({'type': 'reasoning', 'text': choice['reasoning_content']})}\n\n"
+                if choice.get("content"):
+                    token = choice["content"]
+                    full_content += token
+                    yield f"data: {_json.dumps({'type': 'token', 'text': token})}\n\n"
+        yield f"data: {_json.dumps({'type': 'done', 'answer': full_content, 'reasoning': reasoning_content})}\n\n"
+        yield f"data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/api/lint")

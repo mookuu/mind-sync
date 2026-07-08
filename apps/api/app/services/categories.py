@@ -50,8 +50,19 @@ def path_prefix_sql_clause(path_prefix: str | None) -> tuple[str, list[Any]]:
     return " AND d.rel_path LIKE ?", [p]
 
 
-def list_category_stats(conn: sqlite3.Connection) -> dict[str, Any]:
-    rows = conn.execute("SELECT source_id, rel_path FROM documents").fetchall()
+def list_category_stats(conn: sqlite3.Connection, *, username: str | None = None, role: str | None = None) -> dict[str, Any]:
+    # 权限过滤：与 browse_documents 一致
+    if role and role.strip().lower() == "admin":
+        rows = conn.execute("SELECT source_id, rel_path FROM documents").fetchall()
+    elif not username:
+        rows = conn.execute(
+            "SELECT source_id, rel_path FROM documents WHERE source_owner = ?", ("__shared__",)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT source_id, rel_path FROM documents WHERE source_owner = ? OR source_owner = ?",
+            ("__shared__", username),
+        ).fetchall()
     counts: dict[str, int] = {"source": 0, "summary": 0, "query": 0}
     topic_counts: dict[str, int] = {}
     for row in rows:
@@ -78,6 +89,8 @@ def browse_documents(
     category: str | None = None,
     topic: str | None = None,
     limit: int = 50,
+    username: str | None = None,
+    role: str | None = None,
 ) -> list[dict[str, Any]]:
     cap = max(1, min(int(limit), 200))
     sql = """
@@ -86,6 +99,17 @@ def browse_documents(
         WHERE 1=1
     """
     args: list[Any] = []
+
+    # source_owner 权限过滤（与 fts.py _user_owner_filter 一致）
+    if role and role.strip().lower() == "admin":
+        pass  # admin 可浏览全部文档
+    elif not username:
+        sql += " AND d.source_owner = ?"
+        args.append("__shared__")
+    else:
+        sql += " AND (d.source_owner = ? OR d.source_owner = ?)"
+        args.extend(["__shared__", username])
+
     clause, cargs = category_sql_clause(category)
     sql += clause
     args.extend(cargs)

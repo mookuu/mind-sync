@@ -32,6 +32,7 @@ async function loadNotices() {
   try {
     const data = await api("/api/user/notifications");
     notices.value = data.notifications || [];
+    window.dispatchEvent(new CustomEvent("mind-notify-count", { detail: { count: notices.value.length } }));
   } catch {
     // ignore
   }

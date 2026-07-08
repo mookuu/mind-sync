@@ -1,13 +1,24 @@
 <template>
   <div class="view-pane">
     <div class="doc-panel">
-      <template v-if="currentDoc">
+      <template v-if="loadingDoc">
+        <div class="doc-content" style="padding: 24px 5%;">
+          <Skeleton height="28px" width="60%" style="margin-bottom:16px" />
+          <Skeleton height="16px" width="80%" style="margin-bottom:10px" />
+          <Skeleton height="16px" width="75%" style="margin-bottom:10px" />
+          <Skeleton height="16px" width="70%" style="margin-bottom:24px" />
+          <Skeleton height="200px" width="100%" />
+        </div>
+      </template>
+      <template v-else-if="currentDoc">
         <div class="doc-toolbar">
           <div class="doc-breadcrumb">{{ currentDoc.source_id }}/{{ currentDoc.rel_path }}</div>
           <div class="doc-toolbar-actions">
             <label class="image-toggle">
               <input v-model="imageEnhance" type="checkbox" />深色底图增强
             </label>
+            <button v-if="currentDoc.source_id === 'error'" class="btn btn-ghost btn-sm" @click="retryLoadDoc">重试</button>
+            <button v-if="hasSearchHighlight" class="btn btn-ghost btn-sm" @click="resetSearchHighlight">重置高亮</button>
             <button class="btn btn-ghost btn-sm" @click="currentDoc = null">✕</button>
           </div>
         </div>
@@ -22,10 +33,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useRoute } from 'vue-router';
 import api from "../api/index.js";
 import { markdownIt, rewriteImageUrls, hljs } from "../markdown-it.js";
+import Skeleton from "../components/Skeleton.vue";
 
 const route = useRoute();
 const deniedMsg = ref('');
@@ -40,6 +52,9 @@ const searchQuery = computed(() => route.query.q || '');
 const currentDoc = ref(null);
 const imageEnhance = ref(true);
 const docContentEl = ref(null);
+const hasSearchHighlight = computed(() => currentDoc.value?._searchQuery ? true : false);
+const loadingDoc = ref(false);
+const lastDocId = ref(null);
 
 const CODE_LANGS = { python: "python", java: "java", javascript: "javascript", js: "javascript", html: "html", css: "css", json: "json", bash: "bash", sh: "bash", yaml: "yaml", yml: "yaml", sql: "sql", xml: "xml", dockerfile: "dockerfile", nginx: "nginx" };
 
@@ -82,19 +97,46 @@ function highlightContent(html) {
 }
 
 const SEARCH_CACHE_KEY = 'mind_sync_last_search';
+const KEYBOARD_MODE_KEY = 'mind_sync_kbd_mode';
 
 async function openDoc(docId) {
+  loadingDoc.value = true;
+  lastDocId.value = docId;
   try {
     const data = await api(`/api/document/${docId}`);
     currentDoc.value = data;
     if (searchQuery.value) applyHighlight(currentDoc.value, searchQuery.value);
   } catch (e) {
-    // 404 表示文档 ID 已过期（可能 rebuild 后 ID 变化），清除搜索缓存
-    if (e.message && e.message.includes('404')) {
+    const msg = e.message || '';
+    if (msg.includes('404')) {
       localStorage.removeItem(SEARCH_CACHE_KEY);
     }
-    currentDoc.value = { source_id: "error", rel_path: e.message || '文档不存在（可能索引已重建，请重新搜索）', content: "" };
+    const displayMsg = msg.includes('403') ? '此文档属于私有知识库，你无权访问'
+      : msg.includes('404') ? '文档不存在（可能索引已重建，请重新搜索）'
+      : msg;
+    currentDoc.value = { source_id: "error", rel_path: displayMsg, content: "" };
+  } finally {
+    loadingDoc.value = false;
   }
+}
+
+function retryLoadDoc() {
+  if (lastDocId.value) openDoc(lastDocId.value);
+}
+
+function resetSearchHighlight() {
+  if (currentDoc.value) {
+    delete currentDoc.value._searchQuery;
+    // 强制刷新 renderedContent（触发重组）
+    currentDoc.value = { ...currentDoc.value };
+  }
+  // 清除 localStorage 搜索缓存
+  localStorage.removeItem('mind_sync_last_search');
+  highlightIndex.value = -1;
+  // 从 url 去掉搜索参数
+  const url = new URL(window.location);
+  url.searchParams.delete('q');
+  window.history.replaceState({}, '', url);
 }
 
 function onDocClick(e) {
@@ -109,10 +151,74 @@ function onDocClick(e) {
   }
 }
 
+// 键盘高亮导航
+const highlightIndex = ref(-1);
+
+function navigateHighlights(direction) {
+  const marks = docContentEl.value?.querySelectorAll("mark");
+  if (!marks || !marks.length) return;
+  if (direction === "next") {
+    highlightIndex.value = (highlightIndex.value + 1) % marks.length;
+  } else {
+    highlightIndex.value = highlightIndex.value <= 0 ? marks.length - 1 : highlightIndex.value - 1;
+  }
+  // 清除旧高亮
+  marks.forEach((m, i) => {
+    if (i === highlightIndex.value) {
+      m.classList.add("hl-active");
+      m.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      m.classList.remove("hl-active");
+    }
+  });
+}
+
+function onKeyDown(e) {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    // 仅当文档来自搜索结果时拦截
+    if (currentDoc.value?._searchQuery) {
+      e.preventDefault();
+      navigateHighlights(e.key === "ArrowDown" ? "next" : "prev");
+    }
+  }
+}
+
+// 键盘模式持久化
+watch(() => route.path, (newPath, oldPath) => {
+  if (oldPath === '/library' && newPath !== '/library') {
+    // 离开文档库时保存键盘模式
+    const mode = currentDoc.value?._searchQuery ? 'highlight' : 'scroll';
+    localStorage.setItem(KEYBOARD_MODE_KEY, mode);
+  }
+  if (newPath === '/library' && oldPath !== '/library') {
+    // 回到文档库时恢复键盘模式
+    const saved = localStorage.getItem(KEYBOARD_MODE_KEY);
+    if (saved === 'highlight' && currentDoc.value?._searchQuery) {
+      // 自动激活高亮模式
+    } else {
+      localStorage.removeItem(KEYBOARD_MODE_KEY);
+    }
+  }
+});
+
 onMounted(async () => {
   const docId = route.query.doc;
-  if (docId) await openDoc(docId);
+  if (docId) {
+    await openDoc(docId);
+    // 首个高亮居中
+    setTimeout(() => navigateHighlights("next"), 100);
+  } else {
+    // 恢复上次键盘模式
+    const saved = localStorage.getItem(KEYBOARD_MODE_KEY);
+    if (saved === 'highlight') {
+      // 给文档加载一点时间后再滚动到高亮
+      setTimeout(() => navigateHighlights("next"), 200);
+    }
+  }
+  window.addEventListener("keydown", onKeyDown);
 });
+
+onUnmounted(() => window.removeEventListener("keydown", onKeyDown));
 </script>
 
 <style scoped>
@@ -150,5 +256,6 @@ onMounted(async () => {
   color: var(--warning-fg, #92400e);
   font-size: 0.9rem;
 }
+.doc-content :deep(mark.hl-active) { background: var(--accent-emphasis); color: #fff; border-radius: 2px; }
 .empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-subtle); font-size: 1.1rem; }
 </style>

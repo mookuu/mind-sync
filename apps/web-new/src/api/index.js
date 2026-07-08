@@ -1,6 +1,8 @@
 // Global flag: set to a callback that runs on 401 to redirect to login
 let onUnauthorized = null;
 
+import { toast } from "../composables/toast.js";
+
 export function setOnUnauthorized(cb) {
   onUnauthorized = cb;
 }
@@ -71,6 +73,14 @@ async function request(path, options = {}) {
       } catch {
         // 刷新失败，继续抛出原错误
       }
+    }
+    // Toast 通知用户（非 401/403 的其它错误）
+    if (res.status === 429) {
+      toast.warning("操作过于频繁，请稍后再试");
+    } else if (res.status >= 500) {
+      toast.error("服务器内部错误，请稍后重试");
+    } else if (res.status !== 401 && res.status !== 403 && res.status !== 404) {
+      toast.error(detail);
     }
     throw new Error(detail);
   }

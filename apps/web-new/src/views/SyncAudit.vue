@@ -72,7 +72,12 @@ async function refresh() {
   }
 }
 
-onMounted(refresh);
+onMounted(() => {
+  refresh();
+  window.addEventListener("mind-sync-done", () => {
+    events.value = events.value.map(e => ({ ...e, _highlight: false }));
+  });
+});
 </script>
 
 <style scoped>

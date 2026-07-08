@@ -14,6 +14,7 @@
         <option value="query">问答沉淀</option>
       </select>
       <button class="btn btn-primary" @click="doSearch">搜索</button>
+      <button v-if="searched && filtered.length" class="btn btn-ghost" @click="resetSearch">重置</button>
     </div>
     <div class="search-results">
       <p v-if="searching" class="subtle">搜索中…</p>
@@ -87,7 +88,11 @@ const searching = ref(false);
 const SEARCH_CACHE_KEY = 'mind_sync_last_search';
 
 async function doSearch() {
-  if (!query.value.trim()) return;
+  if (!query.value.trim()) {
+    allResults.value = [];
+    searched.value = true;
+    return;
+  }
   searching.value = true;
   searched.value = false;
   page.value = 1;
@@ -122,6 +127,14 @@ function restoreCachedSearch() {
 
 function applyLocal() {
   page.value = 1;
+}
+
+function resetSearch() {
+  query.value = "";
+  allResults.value = [];
+  searched.value = false;
+  page.value = 1;
+  localStorage.removeItem(SEARCH_CACHE_KEY);
 }
 
 import { useRouter } from 'vue-router';
