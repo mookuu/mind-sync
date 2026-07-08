@@ -8,7 +8,7 @@ class HealthResponse(BaseModel):
     status: str
     source_warnings: list[str]
     health: str
-    security: dict[str, Any]
+    security: list[str]
 
 
 class AuthModeResponse(BaseModel):

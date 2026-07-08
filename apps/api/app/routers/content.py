@@ -197,7 +197,7 @@ def ingest(payload: IngestRequest, _: Any = Depends(require_admin)) -> dict[str,
             source_id_filter=(payload.source_id or "").strip() or None,
         )
         if payload.source_id and not sources_to_ingest:
-            from .services.source_pairing import build_sync_plan
+            from ..services.source_pairing import build_sync_plan
 
             plan = build_sync_plan(sources_all)
             skipped_ids = {s.id for s in plan.skipped_locals}
@@ -370,7 +370,7 @@ def lint(payload: LintRequest, request: Request, _: Any = Depends(require_admin)
         report = run_lint_report(rows=rows, stale_days=payload.stale_days, report_dir=LINT_DIR, wiki_dir=WIKI_DIR, conn=conn)
     finally:
         conn.close()
-    from .services.wiki_nav import touch_wiki_nav
+    from ..services.wiki_nav import touch_wiki_nav
 
     touch_wiki_nav("lint", f"issues={report.get('issue_count', 0)}")
     add_audit_event(

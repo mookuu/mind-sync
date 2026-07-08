@@ -41,7 +41,7 @@ def update_settings(
     request: Request,
     _: Any = Depends(require_any_auth),
 ) -> dict[str, Any]:
-    from .db import save_user_setting
+    from ..db import save_user_setting
 
     updater_username, _ = resolve_current_user(request)
     conn = get_db()
@@ -66,7 +66,7 @@ def update_settings(
             import json
 
             all_src = load_sources()
-            from .services.sync_settings import list_sync_presets
+            from ..services.sync_settings import list_sync_presets
 
             valid_preset_ids = {p["id"] for p in list_sync_presets() if p.get("source_ids")}
             ids = [
@@ -132,7 +132,7 @@ def sync(
     elif body.source_ids:
         source_ids = [str(x).strip() for x in body.source_ids if str(x).strip()]
     elif body.use_saved_defaults:
-        from .services.sync_settings import resolve_sync_source_ids
+        from ..services.sync_settings import resolve_sync_source_ids
 
         source_ids = resolve_sync_source_ids(username=username, role=role)
 
@@ -174,7 +174,7 @@ def rebuild_index(
     elif body.source_ids:
         source_ids = [str(x).strip() for x in body.source_ids if str(x).strip()]
     elif body.use_saved_defaults:
-        from .services.sync_settings import resolve_sync_source_ids
+        from ..services.sync_settings import resolve_sync_source_ids
 
         source_ids = resolve_sync_source_ids(username=username, role=role)
 

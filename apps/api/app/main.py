@@ -142,10 +142,10 @@ def audit_events(request: Request, limit: int = 50, _: Any = Depends(require_any
 
 
 # ──────────────────────────────────────────────
-# User management (admin) — moved to routers/admin.py
+# User management (admin)
 # ──────────────────────────────────────────────
 
-// user endpoints moved to routers/user.py
+# user endpoints
 
 
 # ──────────────────────────────────────────────
