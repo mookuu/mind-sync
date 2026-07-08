@@ -1317,3 +1317,24 @@ sync/rebuild 完成 → event 清缓存 → 下次展开 API 加载
 | 31 | **作用域归属**：全局配置和用户配置分表/分键存储，不混合 | 数据架构 |
 | 32 | **三层权限**：路由守卫（前端）+ 菜单显隐（前端）+ API 鉴权（后端）缺一不可 | 安全 |
 | 33 | **精准失效**：缓存失效策略与数据变更触发点对齐，事件驱动优于轮询 | 性能 |
+| 34 | **包相对导入层级**：子包中的模块用 `.` 引用同级、`..` 引用上级；迁移代码时上下文变化需要同步更新导入路径 | 模块化 |
+
+### 第 35 条：router 子包相对导入层级错位
+
+**症状**：Docker compose 启动后 `router/admin.py` 等 4 个文件导入失败，容器显示 `ModuleNotFoundError`，但本地 `uvicorn` 开发运行正常。
+
+**根因**：将 $main.py 中的端点代码迁移到 `app/routers/*.py` 子包时，代码中的相对导入未同步更新。
+
+```
+迁移前 (app/main.py):  from .db import          → app/db.py ✅
+迁移后 (app/routers/*.py):  from .db import     → routers/db.py ❌
+                             from ..db import    → app/db.py    ✅
+```
+
+`.` = 当前包（`routers/`），`..` = 父包（`app/`）。共 6 处需要修正。
+
+**为什么 docker 报错而本地不报**：本地 `uvicorn app.main:app` 启动时路由模块是惰性加载（lazy import），直到匹配请求才触发导入。Docker 的某些启动路径或 pytest 配置更早触发路由模块加载，暴露了导入错误。
+
+**修复**：`from .db` → `from ..db`；`from .services` → `from ..services`
+
+**涉及文件**：`app/routers/knowledge.py`（4 处）、`app/routers/content.py`（2 处）

@@ -15,9 +15,9 @@
 | 本地开发、测试、模块路径 | [DEVELOPMENT.md](./DEVELOPMENT.md) |
 | API 端点参考 | [API.md](./API.md) |
 | 鉴权、RBAC、限速、合规 | [SECURITY.md](./SECURITY.md) |
-| 待办事项 | [project/todo.md](project/todo.md) |
+| 待办事项 | [log/todo.md](log/todo.md) |
 | 变更日志 | [CHANGELOG.md](./CHANGELOG.md) |
-| 踩坑记录 | [project/lessons.md](project/lessons.md) |
+| 踩坑记录 | [log/coding-testing.md](log/coding-testing.md) |
 
 ## 概念速查
 
@@ -74,7 +74,7 @@ docs/
 ├── reference/             ← 配置参考
 │   ├── sources.md
 │   └── mcp-setup.md
-├── project/               ← 工程记录
+├── log/                   ← 开发日志与踩坑
 │   ├── todo.md
 │   └── lessons.md
 ├── reviews/               ← 代码审查
