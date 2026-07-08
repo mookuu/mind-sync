@@ -1338,3 +1338,35 @@ sync/rebuild 完成 → event 清缓存 → 下次展开 API 加载
 **修复**：`from .db` → `from ..db`；`from .services` → `from ..services`
 
 **涉及文件**：`app/routers/knowledge.py`（4 处）、`app/routers/content.py`（2 处）
+
+### 第 36 条：router 提取时模块映射错误
+
+**症状**：修复第 35 条后 Docker 仍报 `ImportError: cannot import name X from module Y`，多次逐个修复。
+
+**根因**：将 `main.py` 的端点提取为独立 router 文件时，手动编写的导入语句将函数名映射到了错误的源模块。
+
+| 函数/变量 | 错误写入 | 正确模块 |
+|-----------|---------|---------|
+| `load_ordered_sources` | `services.indexer` | `services.sync_settings` |
+| `SYNC_PRESETS` | `services.sync_engine` | `services.sync_settings` |
+| `enrich_settings_response` | `services.settings` | `services.sync_settings` |
+| `resolve_ingest_sources` | `services.ingest` | `services.source_pairing` |
+| `SCHEDULER` | `services.scheduler` | `app/state.py`（新建单例） |
+
+**为什么逐一两两混淆**：`main.py` 中有 `from .services.sync_settings import SYNC_PRESETS, enrich_settings_response, load_ordered_sources` 这类"一拖多"导入。提取时按功能域拆散了 import 行，未逐一核对函数实际归属模块。
+
+**修复**：
+- 新建 `app/state.py` 存放 `SCHEDULER` 全局单例，供 `main.py` 和 `knowledge.py` 共享
+- `admin.py`/`user.py`/`content.py`：`load_ordered_sources` 改从 `sync_settings` 导入
+- `knowledge.py`：`SYNC_PRESETS`/`enrich_settings_response` 改从 `sync_settings`，`SCHEDULER` 改从 `state`
+- `content.py`：`resolve_ingest_sources` 改从 `source_pairing`，反斜杠转义修正
+
+**教训**：提取代码块到新文件时，不要凭记忆写 import，应 grep 确认每个函数在源项目中的实际定义模块。
+
+### 第 37 条：Docker 环境更严格加载路由模块
+
+**症状**：本地 `uvicorn` 开发一切正常，但 `docker compose up` 报 ImportError。
+
+**根因**：`uvicorn` 在 reload 模式下（`--reload`）惰性加载路由——只有当 HTTP 请求匹配到路由时才 import 对应模块。Docker 生产模式（无 `--reload`）启动时即全量加载所有路由，立即暴露 import 错误。
+
+**教训**：本地测试通过 ≠ Docker 能跑。任何涉及模块拆分的重构，应在提交前至少执行一次 `docker compose run --rm api python -c "from app.main import app"`。
