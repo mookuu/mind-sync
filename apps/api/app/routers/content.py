@@ -14,8 +14,9 @@ from ..services.audit import add_audit_event
 from ..services.classify import suggest_wiki_path
 from ..services.evidence import build_evidence_items
 from ..services.fts import search_for_query
-from ..services.indexer import index_single_source, load_ordered_sources, read_text_safely
-from ..services.ingest import resolve_ingest_sources
+from ..services.indexer import index_single_source, read_text_safely
+from ..services.sync_settings import load_ordered_sources
+from ..services.source_pairing import resolve_ingest_sources
 from ..services.link_graph import analyze_wiki_graph
 from ..services.lint_engine import run_lint_report
 from ..services.purpose import load_purpose_text
@@ -32,7 +33,7 @@ router = APIRouter(tags=["content"])
 
 def _read_wiki_page(path: str, username: str | None = None, role: str | None = None) -> dict[str, Any]:
     target = safe_wiki_path(path, WIKI_DIR, username=username, role=role)
-    rel = (path or "").strip().replace("\", "/")
+    rel = (path or "").strip().replace("\\", "/")
     content = read_text_safely(target)
     return {"path": rel, "content": content}
 
