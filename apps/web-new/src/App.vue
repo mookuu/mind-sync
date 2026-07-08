@@ -175,8 +175,8 @@ async function handleLogin() {
 }
 
 async function handleLogout() {
-  }
-});
+  await logout();
+}
 </script>
 
 <style scoped>

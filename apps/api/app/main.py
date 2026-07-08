@@ -32,10 +32,7 @@ from .services.wiki_source import assert_wiki_writable, get_wiki_source_or_fallb
 from .services.auth import (
     check_login_rate_limit,
     clear_login_failures,
-    csrf_header_key,
     enforce_csrf,
-    login_user,
-    logout_user,
     mark_login_failure,
     parse_api_keys,
     require_admin,
@@ -45,16 +42,17 @@ from .services.auth import (
     resolve_current_user,
     resolve_role,
     session_account,
-    update_password,
-    authenticate,
 )
 from .services.permissions import can_write
-from .services.session_store import delete_session, list_sessions as list_sessions_for_user
 from .services.categories import browse_documents, list_category_stats
 from .services.evidence import build_evidence_items
 from .services.fts import search_documents, search_for_query
 from .services.indexer import index_single_source, load_sources, read_text_safely, reload_sources_config, resolve_source_root
 from .services.source_sync_key import is_known_sync_key, parse_sync_key, source_display_label, source_sync_key
+from .responses import (
+    DocumentResponse, LibraryResponse, QueryResponse, 
+    SearchResponse, SearchResult, SyncStatusResponse,
+)
 from .services.library import build_library_index
 from .services.link_graph import analyze_wiki_graph
 from .services.lint_engine import run_lint_report
@@ -100,6 +98,12 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="mind-sync API", version="0.1.0", lifespan=lifespan)
 logger = logging.getLogger("mind-sync")
+
+# ─── 子模块路由 ─────────────────────────────────────────
+from .routers.auth import router as auth_router
+from .routers.admin import router as admin_router
+app.include_router(auth_router)
+app.include_router(admin_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -121,289 +125,6 @@ async def add_security_headers(request: Request, call_next: Any) -> Response:
     return response
 
 
-@app.get("/api/health")
-def health() -> dict[str, Any]:
-    warnings = collect_source_warnings()
-    sec = collect_security_warnings()
-    return {
-        "status": source_health_status(warnings),
-        "source_warnings": warnings,
-        "security_warnings": sec,
-        "vault": vault_status(),
-        "web_fetch": web_fetch_policy_summary(),
-    }
-
-
-@app.post("/api/login")
-def login(payload: LoginRequest, request: Request, response: Response) -> dict[str, Any]:
-    account = (payload.username or "default").strip() or "default"
-    check_login_rate_limit(request, account)
-    user = authenticate(account, payload.password)
-    if user is None:
-        mark_login_failure(request, account)
-        add_audit_event("login_failed", request, actor=account, detail="invalid credentials")
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    clear_login_failures(request, account)
-
-    remember_me = bool(getattr(payload, "remember_me", False))
-    session_id, _, _ = login_user(account, payload.password, request, remember_me=remember_me)
-
-    # 清理已过期的 session，并限制每用户最多 5 条活跃 session
-    from .services.session_store import cleanup_expired_sessions
-
-    cleanup_expired_sessions()
-    # 保留最近 5 条 session，删除更早的
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT session_id FROM sessions WHERE username = ? ORDER BY last_active_at DESC",
-            (account,),
-        ).fetchall()
-        if len(rows) > 5:
-            keep = {r["session_id"] for r in rows[:5]}
-            conn.execute(
-                "DELETE FROM sessions WHERE username = ? AND session_id NOT IN ({})".format(
-                    ",".join("?" for _ in keep)
-                ),
-                (account, *keep),
-            )
-            conn.commit()
-    finally:
-        conn.close()
-
-    # Calculate cookie max_age from session TTL
-    ttl = max(60, int(settings.session_ttl_seconds))
-    if remember_me:
-        ttl = max(ttl, 60 * 60 * 24 * 30)
-    else:
-        ttl = min(ttl, 60 * 60 * 24)
-
-    cookie_samesite = (settings.cookie_samesite or "lax").lower()
-    if cookie_samesite not in {"lax", "strict", "none"}:
-        cookie_samesite = "lax"
-    cookie_secure = bool(settings.cookie_secure or cookie_samesite == "none")
-    # Clear any old cookies first
-    response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite, path="/")
-    response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite, path="/")
-    csrf_token = secrets.token_urlsafe(24)
-    response.set_cookie(
-        "ms_token", session_id,
-        httponly=True, secure=cookie_secure, samesite=cookie_samesite, max_age=ttl,
-    )
-    response.set_cookie(
-        "ms_csrf", csrf_token,
-        httponly=False, secure=cookie_secure, samesite=cookie_samesite, max_age=ttl,
-    )
-    add_audit_event(
-        "login_success", request, actor=user.username,
-        detail=f"server-side session role={user.role.value} remember_me={remember_me}",
-    )
-    # 获取 display_name
-    display_name = user.username
-    conn2 = get_db()
-    try:
-        row = conn2.execute(
-            "SELECT display_name FROM users WHERE username = ?", (user.username,)
-        ).fetchone()
-        if row and row["display_name"]:
-            display_name = row["display_name"]
-    finally:
-        conn2.close()
-
-    return {
-        "ok": True,
-        "username": user.username,
-        "display_name": display_name,
-        "role": user.role.value,
-        "can_write": can_write(user.role),
-        "csrf_header": settings.csrf_header_name,
-        "csrf_token": csrf_token,
-    }
-
-
-@app.post("/api/logout")
-def logout(request: Request, response: Response) -> dict[str, bool]:
-    session_id = request.cookies.get("ms_token", "").strip()
-    if session_id:
-        logout_user(session_id)
-    cookie_samesite = (settings.cookie_samesite or "lax").lower()
-    if cookie_samesite not in {"lax", "strict", "none"}:
-        cookie_samesite = "lax"
-    cookie_secure = bool(settings.cookie_secure or cookie_samesite == "none")
-    response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite)
-    response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite)
-    add_audit_event("logout", request, actor=resolve_actor(request), detail="session deleted")
-    return {"ok": True}
-
-
-@app.get("/api/auth-mode")
-def auth_mode(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
-    import secrets as secmod
-
-    role = resolve_role(request)
-    from .services.auth import session_account
-    username = session_account(request) or None
-
-    # 若 CSRF cookie 缺失，生成新 token 返回（由前端写入 cookie）
-    csrf_token = csrf_cookie_token(request)
-    if not csrf_token:
-        csrf_token = secmod.token_urlsafe(24)
-
-    # 获取 display_name
-    display_name = username
-    if username:
-        conn = get_db()
-        try:
-            row = conn.execute(
-                "SELECT display_name FROM users WHERE username = ?", (username,)
-            ).fetchone()
-            if row and row["display_name"]:
-                display_name = row["display_name"]
-        finally:
-            conn.close()
-
-    return {
-        "cookie_enabled": True,
-        "api_key_enabled": bool(parse_api_keys()),
-        "csrf_header": csrf_header_key(),
-        "role": role,
-        "can_write": can_write(role),
-        "username": username,
-        "display_name": display_name,
-        "authenticated": True,
-        "csrf_token": csrf_token,
-    }
-
-
-@app.post("/api/change-password")
-def change_password(
-    payload: ChangePasswordRequest,
-    request: Request,
-    _: Any = Depends(require_any_auth),
-) -> dict[str, bool]:
-    enforce_csrf(request)
-    account = session_account(request)
-    if not account:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    user = authenticate(account, payload.current_password)
-    if not user:
-        raise HTTPException(status_code=403, detail="Current password is incorrect")
-    from .services.password_util import hash_password
-
-    new_hash = hash_password(payload.new_password)
-    if not update_password(account, new_hash):
-        raise HTTPException(status_code=500, detail="Failed to update password")
-    add_audit_event("password_changed", request, actor=account, detail="password updated")
-    return {"ok": True}
-
-
-@app.get("/api/sessions")
-def list_sessions(
-    request: Request,
-    _: Any = Depends(require_any_auth),
-) -> dict[str, Any]:
-    account = session_account(request)
-    if not account:
-        return {"sessions": []}
-    sessions = list_sessions_for_user(account)
-    current_sid = request.cookies.get("ms_token", "").strip()
-    return {
-        "sessions": [
-            {
-                "session_id": s["session_id"],
-                "ip": s.get("ip", ""),
-                "user_agent": s.get("user_agent", ""),
-                "created_at": s.get("created_at", 0),
-                "last_active_at": s.get("last_active_at", 0),
-                "expires_at": s.get("expires_at", 0),
-                "remember_me": bool(s.get("remember_me", 0)),
-                "current": s["session_id"] == current_sid,
-            }
-            for s in sessions
-        ]
-    }
-
-
-@app.delete("/api/sessions/{session_id}")
-def delete_session_endpoint(
-    session_id: str,
-    request: Request,
-    _: Any = Depends(require_any_auth),
-) -> dict[str, bool]:
-    enforce_csrf(request)
-    account = session_account(request)
-    if not account:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    current_sid = request.cookies.get("ms_token", "").strip()
-    if session_id == current_sid:
-        raise HTTPException(status_code=400, detail="Cannot delete current session, use logout instead")
-    delete_session(session_id)
-    add_audit_event("session_revoked", request, actor=account, detail=f"session {session_id[:12]}…")
-    return {"ok": True}
-
-
-@app.get("/api/api-keys")
-def list_api_keys(
-    _: Any = Depends(require_admin),
-) -> dict[str, Any]:
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT id, key_value, label, username, created_at, last_used_at FROM api_keys ORDER BY created_at DESC"
-        ).fetchall()
-        env_keys = parse_api_keys()
-        return {
-            "keys": [dict(r) for r in rows],
-            "env_keys": list(env_keys),
-        }
-    finally:
-        conn.close()
-
-
-@app.post("/api/api-keys/rotate")
-def rotate_api_key(
-    payload: RotateApiKeyRequest,
-    request: Request,
-    _: Any = Depends(require_admin),
-) -> dict[str, str]:
-    enforce_csrf(request)
-    import secrets as secmod
-
-    username, _ = resolve_current_user(request)
-    new_key = f"msk-{secmod.token_urlsafe(32)}"
-    conn = get_db()
-    try:
-        conn.execute(
-            "INSERT INTO api_keys(key_value, label, username, created_at) VALUES(?, ?, ?, ?)",
-            (new_key, payload.label or "default", username or "", time.time()),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    add_audit_event("api_key_rotated", request, actor=resolve_actor(request), detail="new API key generated")
-    return {"key": new_key}
-
-
-@app.delete("/api/api-keys/{key_id}")
-def delete_api_key(
-    key_id: int,
-    request: Request,
-    _: Any = Depends(require_admin),
-) -> dict[str, bool]:
-    enforce_csrf(request)
-    conn = get_db()
-    try:
-        cur = conn.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
-        conn.commit()
-        deleted = cur.rowcount > 0
-    finally:
-        conn.close()
-    if not deleted:
-        raise HTTPException(status_code=404, detail="API Key not found")
-    add_audit_event("api_key_deleted", request, actor=resolve_actor(request), detail=f"key_id={key_id}")
-    return {"ok": True}
-
-
 @app.get("/api/audit-events")
 def audit_events(request: Request, limit: int = 50, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     username, role = resolve_current_user(request)
@@ -414,487 +135,9 @@ def audit_events(request: Request, limit: int = 50, _: Any = Depends(require_any
     return {"items": items}
 
 
-@app.get("/api/sources")
-def sources(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
-    username, role = resolve_current_user(request)
-    return _build_sources_response(username=username, role=role)
-
-
-def _build_sources_response(username: str | None = None, role: str | None = None) -> dict[str, Any]:
-    settings_map = load_settings_map()
-    items = []
-    for source in load_ordered_sources(settings_map, username=username, role=role):
-        root = resolve_source_root(source)
-        path_str = str(root)
-        items.append(
-            {
-                "id": source.id,
-                "sync_key": source_sync_key(source),
-                "label": source_display_label(source),
-                "type": source.source_type,
-                "path": path_str,
-                "path_exists": root.exists(),
-                "url": source.url,
-                "branch": source.branch,
-                "paths": source.paths,
-                "include": source.include,
-                "order": source.order,
-                "exists": root.exists(),
-                "fetch_confirmed": source.fetch_confirmed,
-                "respect_robots": source.respect_robots,
-                "owner": source.owner,
-                "owner_display_name": _resolve_owner_display_name(source.owner),
-            }
-        )
-    return {"sources": items, "web_fetch_policy": web_fetch_policy_summary()}
-
-def _resolve_owner_display_name(owner: str | None) -> str | None:
-    if not owner:
-        return None
-    conn = get_db()
-    try:
-        row = conn.execute(
-            "SELECT display_name FROM users WHERE username = ?", (owner,)
-        ).fetchone()
-        if row and row["display_name"]:
-            return row["display_name"]
-        return None
-    finally:
-        conn.close()
-
-
-@app.post("/api/admin/sources/reload")
-def admin_reload_sources(request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
-    from pathlib import Path
-
-    src_file = Path(settings.sources_file)
-    if not src_file.is_file():
-        raise HTTPException(status_code=404, detail=f"sources file not found: {src_file}")
-    reload_sources_config()
-    username, role = resolve_current_user(request)
-    payload = _build_sources_response(username=username, role=role)
-    payload["ok"] = True
-    payload["count"] = len(payload["sources"])
-    add_audit_event(
-        "sources_reloaded",
-        request,
-        actor=resolve_actor(request),
-        detail=f"count={payload['count']} file={src_file}",
-    )
-    return payload
-
-
-@app.get("/api/admin/browse-dir")
-def browse_directory(path: str = "", _: Any = Depends(require_any_auth)) -> dict[str, Any]:
-    if not path:
-        # 默认浏览路径：优先 DATA_ROOT，否则 ~/
-        from pathlib import Path as PPath
-        default = getattr(settings, "data_root", None) or str(PPath.home())
-        path = default
-    from pathlib import Path
-    base = Path(path).expanduser().resolve()
-    if not base.is_dir():
-        raise HTTPException(status_code=400, detail=f"not a directory: {base}")
-    entries = []
-    try:
-        for entry in sorted(base.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
-            if entry.is_dir() and not entry.name.startswith("."):
-                entries.append({"name": entry.name, "path": str(entry.resolve())})
-    except PermissionError:
-        raise HTTPException(status_code=403, detail=f"permission denied: {base}")
-    return {"parent": str(base.parent), "current": str(base), "entries": entries[:50]}
-
-
-@app.post("/api/admin/sources/custom")
-def admin_add_custom_source(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
-    from pathlib import Path
-    import yaml
-    from .services.user_manager import get_user_sources_path
-
-    path_str = (body.get("path") or "").strip()
-    if not path_str:
-        raise HTTPException(status_code=400, detail="请输入要同步的文件夹路径")
-    path = Path(path_str).expanduser().resolve()
-    if not path.exists():
-        raise HTTPException(status_code=400, detail=f"文件夹不存在：{path}")
-    if not path.is_dir():
-        raise HTTPException(status_code=400, detail=f"路径不是文件夹：{path}")
-    source_id = path.name
-    if not source_id or source_id.startswith("."):
-        raise HTTPException(status_code=400, detail=f"文件夹名称无效：{source_id}")
-
-    # 写入 user_sources.yaml（非只读的 sources.yaml）
-    user_src = get_user_sources_path()
-    user_src.parent.mkdir(parents=True, exist_ok=True)
-    if user_src.is_file():
-        raw = user_src.read_text(encoding="utf-8")
-        config = yaml.safe_load(raw) or {}
-    else:
-        config = {}
-    sources: list = config.get("sources", []) or []
-    existing_ids = {s.get("id") for s in sources if isinstance(s, dict)}
-    if source_id in existing_ids:
-        raise HTTPException(status_code=409, detail=f"同步源已存在：{source_id}（{path}）")
-
-    new_source = {
-        "id": source_id,
-        "type": "local",
-        "order": max((s.get("order", 0) or 0) for s in sources if isinstance(s, dict)) + 10 if sources else 50,
-        "path": str(path),
-        "include": [
-            "**/*.md", "**/*.py", "**/*.java", "**/*.txt",
-            "**/*.json", "**/*.yaml", "**/*.yml", "**/*.xml",
-            "**/*.html", "**/*.css", "**/*.js", "**/*.ts",
-            "**/*.sh", "**/*.bash", "**/*.sql",
-            "**/*.cfg", "**/*.ini", "**/*.toml",
-        ],
-    }
-    sources.append(new_source)
-    config["sources"] = sources
-    user_src.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
-    reload_sources_config()
-    add_audit_event("sources_custom_added", request, actor=resolve_actor(request), detail=f"id={source_id} path={path}")
-    return {"ok": True, "source": new_source}
-
-
-@app.post("/api/admin/sources/delete")
-def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
-    from pathlib import Path
-    import yaml
-
-    source_id = (body.get("id") or "").strip()
-    if not source_id:
-        raise HTTPException(status_code=400, detail="source id is required")
-    fixed_ids = {"all", "obsidian", "web_snapshots", "wiki"}
-    if source_id in fixed_ids:
-        raise HTTPException(status_code=400, detail=f"默认来源不可删除：{source_id}")
-
-    parsed_id, parsed_type = parse_sync_key(source_id)
-
-    def _source_matches(s: dict) -> bool:
-        sid = s.get("id")
-        if not sid:
-            return False
-        if sid == source_id:
-            return True
-        if parsed_type:
-            stype = (s.get("type") or "local").strip().lower()
-            return sid == parsed_id and stype == parsed_type
-        return False
-
-    # 1) 尝试从 sources.yaml（主文件，可能只读）删除
-    src_file = Path(settings.sources_file)
-    deleted = False
-    if src_file.is_file():
-        raw = src_file.read_text(encoding="utf-8")
-        config = yaml.safe_load(raw) or {}
-        sources: list = config.get("sources", [])
-        before = len(sources)
-        sources = [s for s in sources if isinstance(s, dict) and not _source_matches(s)]
-        if len(sources) < before:
-            config["sources"] = sources
-            try:
-                src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
-                deleted = True
-            except OSError:
-                # sources.yaml 只读 → 在 user_sources.yaml 中记录已删除
-                from .services.user_manager import get_user_sources_path
-                usr_file = get_user_sources_path()
-                _config = {}
-                if usr_file.is_file():
-                    _config = yaml.safe_load(usr_file.read_text(encoding="utf-8")) or {}
-                _deleted: set = set(_config.get("_deleted", []))
-                _deleted.add(source_id)
-                _config["_deleted"] = list(_deleted)
-                usr_file.parent.mkdir(parents=True, exist_ok=True)
-                usr_file.write_text(yaml.dump(_config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
-                deleted = True
-
-    # 2) 尝试从 user_sources.yaml（自定义源文件，始终可写）删除
-    if not deleted:
-        from .services.user_manager import get_user_sources_path
-        usr_file = get_user_sources_path()
-        if usr_file.is_file():
-            raw = usr_file.read_text(encoding="utf-8")
-            config = yaml.safe_load(raw) or {}
-            sources: list = config.get("sources", [])
-        before = len(sources)
-        sources = [s for s in sources if isinstance(s, dict) and not _source_matches(s)]
-        if len(sources) < before:
-            config["sources"] = sources
-            usr_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
-            deleted = True
-
-    if not deleted:
-        if src_found:
-            raise HTTPException(status_code=405, detail=f"sources.yaml 为只读，无法删除：{source_id}")
-        raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
-
-    # 查找被删源的拥有者（用于通知）
-    deleted_owner = ""
-    deleted_label = source_id
-    for s in (sources if 'sources' in dir() else []):
-        if isinstance(s, dict) and _source_matches(s):
-            deleted_owner = s.get("owner") or ""
-            deleted_label = s.get("id") or source_id
-            break
-
-    reload_sources_config()
-
-    # 清理该源已索引的文档数据
-    cleanup_id = parsed_id or source_id
-    try:
-        conn = get_db()
-        from .services.indexer import clear_source_index
-        removed = clear_source_index(conn, cleanup_id)
-        conn.commit()
-    except Exception:
-        pass  # 索引清理失败不影响删除操作本身
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-    # 若被删源有拥有者且不是当前管理员本人 → 通知拥有者
-    actor = resolve_actor(request)
-    if deleted_owner and deleted_owner != actor:
-        _add_notification(
-            deleted_owner,
-            f"{actor} 删除了 {deleted_label}，请通过同步控制页面更新库信息",
-            action_link="/sync/control",
-            highlight=True,
-        )
-
-    add_audit_event("sources_deleted", request, actor=actor, detail=f"id={source_id}")
-    return {"ok": True, "deleted": source_id}
-
-
 # ──────────────────────────────────────────────
-# User management (admin)
+# User management (admin) — moved to routers/admin.py
 # ──────────────────────────────────────────────
-
-
-@app.get("/api/admin/users")
-def admin_list_users(request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """List all users with their role, creation time, and source count."""
-    from .services.user_manager import get_user_dir
-
-    from .services.user_manager import load_user_sources as _load_user_sources
-    from .services.sync_settings import list_sync_presets
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT username, role, created_at, display_name, locked_until, deleted_at FROM users ORDER BY created_at"
-        ).fetchall()
-        user_sources = _load_user_sources()
-        # 管理员源数量 = 全局预设中无 owner 的条目数
-        all_presets = list_sync_presets()
-        admin_source_count = sum(1 for p in all_presets if p.get("owner") is None and p.get("id") not in ("all", "custom"))
-        user_map = {}
-        for s in user_sources:
-            if isinstance(s, dict):
-                user_map.setdefault(s.get("owner"), 0)
-                user_map[s.get("owner")] += 1
-        items = []
-        now = time.time()
-        for row in rows:
-            username = row["username"]
-            role = row["role"]
-            udir = get_user_dir(username)
-            if role == "admin":
-                source_count = admin_source_count
-            else:
-                source_count = user_map.get(username, 0)
-            deleted_at = row["deleted_at"] or 0
-            locked_until = row["locked_until"] or 0
-            if deleted_at > 0:
-                status = "deleted"
-            elif locked_until > now:
-                status = "locked"
-            else:
-                status = "normal"
-            items.append({
-                "username": username,
-                "display_name": row["display_name"] or username,
-                "role": role,
-                "created_at": row["created_at"],
-                "has_dir": udir.exists(),
-                "source_count": source_count,
-                "status": status,
-            })
-        return {"users": items}
-    finally:
-        conn.close()
-
-
-@app.post("/api/admin/users")
-def admin_create_user(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Create a new user, their personal directory, and default private source."""
-    import traceback
-    from .services.user_manager import append_user_source_to_yaml, build_user_source_entry, ensure_user_dir
-    from .services.password_util import hash_password
-    from .services.indexer import reload_sources_config
-
-    username = (body.get("username") or "").strip()
-    password = body.get("password") or ""
-    role = (body.get("role") or "member").strip().lower()
-    display_name = (body.get("display_name") or "").strip()
-    if role not in ("admin", "member"):
-        raise HTTPException(status_code=400, detail="角色必须是 admin 或 member")
-    if not username or len(username) < 2:
-        raise HTTPException(status_code=400, detail="用户名至少 2 个字符")
-    if len(password) < 4:
-        raise HTTPException(status_code=400, detail="密码至少 4 个字符")
-
-    # 1) Create user in DB
-    conn = get_db()
-    try:
-        existing = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-        if existing:
-            raise HTTPException(status_code=409, detail=f"用户已存在：{username}")
-        password_hash = hash_password(password)
-        conn.execute(
-            "INSERT INTO users(username, password_hash, role, created_at, display_name) VALUES (?, ?, ?, ?, ?)",
-            (username, password_hash, role, time.time(), display_name or username),
-        )
-        conn.commit()
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("创建用户 DB 失败: %s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"数据库错误: {e}")
-    finally:
-        conn.close()
-
-    # 2) Create user directory and register source in sources.yaml
-    try:
-        ensure_user_dir(username)
-    except Exception as e:
-        logger.error("创建用户目录失败: %s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"创建目录失败: {e}")
-
-    try:
-        entry = build_user_source_entry(username)
-        append_user_source_to_yaml(entry)
-    except Exception as e:
-        logger.error("写入 sources.yaml 失败: %s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"写入 sources.yaml 失败: {e}")
-
-    try:
-        reload_sources_config()
-    except Exception as e:
-        logger.error("重载 sources 配置失败: %s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"重载配置失败: {e}")
-
-    add_audit_event("user_created", request, actor=resolve_actor(request), detail=f"username={username} role={role}")
-    return {"ok": True, "username": username}
-
-
-@app.delete("/api/admin/users/{username}")
-def admin_delete_user(request: Request, username: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Soft-delete a user — 标记为已注销，保留目录和数据。"""
-    from .services.user_manager import remove_user_source_from_yaml
-    from .services.indexer import reload_sources_config
-
-    if username == resolve_actor(request):
-        raise HTTPException(status_code=400, detail="不能删除自己")
-    conn = get_db()
-    try:
-        row = conn.execute("SELECT deleted_at FROM users WHERE username = ?", (username,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail=f"用户不存在：{username}")
-        if row["deleted_at"] and row["deleted_at"] > 0:
-            raise HTTPException(status_code=400, detail="用户已注销")
-        conn.execute("UPDATE users SET deleted_at = ? WHERE username = ?", (time.time(), username))
-        conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
-        conn.commit()
-    finally:
-        conn.close()
-    remove_user_source_from_yaml(username)
-    reload_sources_config()
-    add_audit_event("user_deleted", request, actor=resolve_actor(request), detail=f"username={username} (soft-delete, directory kept)")
-    return {"ok": True, "username": username}
-
-
-@app.put("/api/admin/users/{username}/role")
-def admin_set_user_role(request: Request, username: str, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Change a user's role.
-
-    - member → admin: 目录保留（休眠），移除私有源注册
-    - admin → member: 创建/确保目录存在，注册私有源
-    """
-    from .services.user_manager import (
-        append_user_source_to_yaml,
-        build_user_source_entry,
-        ensure_user_dir,
-        remove_user_source_from_yaml,
-    )
-    from .services.indexer import reload_sources_config
-
-    role = (body.get("role") or "").strip().lower()
-    if role not in ("admin", "member"):
-        raise HTTPException(status_code=400, detail="角色必须是 admin 或 member")
-    conn = get_db()
-    try:
-        existing = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail=f"用户不存在：{username}")
-        conn.execute("UPDATE users SET role = ? WHERE username = ?", (role, username))
-        conn.commit()
-    finally:
-        conn.close()
-
-    if role == "member":
-        # 切换为普通用户 → 确保目录存在，仅在无源时注册默认私有源
-        try:
-            ensure_user_dir(username)
-        except Exception as e:
-            logger.error("创建用户目录失败: %s", traceback.format_exc())
-            raise HTTPException(status_code=500, detail=f"创建目录失败: {e}")
-        # 检查是否已有源，没有则创建默认源
-        from .services.user_manager import load_user_sources as _check_src
-        existing = [s for s in _check_src() if isinstance(s, dict) and s.get("owner") == username]
-        if not existing:
-            try:
-                entry = build_user_source_entry(username)
-                append_user_source_to_yaml(entry)
-            except Exception as e:
-                logger.error("写入 user_sources.yaml 失败: %s", traceback.format_exc())
-                raise HTTPException(status_code=500, detail=f"写入源配置失败: {e}")
-    # admin → 不删除源，保留目录和所有手动添加的源
-
-    reload_sources_config()
-    add_audit_event("user_role_changed", request, actor=resolve_actor(request), detail=f"username={username} role={role}")
-    return {"ok": True, "username": username, "role": role}
-
-
-@app.post("/api/admin/users/{username}/reset-password")
-def admin_reset_password(
-    request: Request,
-    username: str,
-    body: dict[str, Any],
-    _: Any = Depends(require_admin),
-) -> dict[str, bool]:
-    """Admin resets another user's password."""
-    from .services.password_util import hash_password
-
-    new_password = (body.get("new_password") or "").strip()
-    if len(new_password) < 4:
-        raise HTTPException(status_code=400, detail="密码至少 4 个字符")
-    conn = get_db()
-    try:
-        existing = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail=f"用户不存在：{username}")
-        new_hash = hash_password(new_password)
-        conn.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, username))
-        conn.commit()
-    finally:
-        conn.close()
-    add_audit_event("password_reset", request, actor=resolve_actor(request), detail=f"username={username}")
-    return {"ok": True}
-
 
 @app.get("/api/user/me")
 def user_me(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
@@ -1199,91 +442,6 @@ def user_delete_source(request: Request, source_id: str, _: Any = Depends(requir
 # Admin stats & reindex
 # ──────────────────────────────────────────────
 
-
-@app.get("/api/admin/stats")
-def admin_stats(_: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Return system statistics."""
-    from pathlib import Path
-
-    conn = get_db()
-    try:
-        doc_count = conn.execute("SELECT COUNT(1) AS c FROM documents").fetchone()["c"]
-        user_count = conn.execute("SELECT COUNT(1) AS c FROM users").fetchone()["c"]
-        # 库总数：所有用户库的总和（全局库只计一次）
-        from .services.sync_settings import list_sync_presets
-        _presets = list_sync_presets()
-        src_count = len(_presets) - 2  # 排除 all 和 custom
-        wiki_pages = sum(1 for _ in WIKI_DIR.rglob("*.md")) if WIKI_DIR.exists() else 0
-        # 按用户统计文档数：通过 source_id 匹配 owner
-        user_doc_counts = {}
-        from .services.sync_settings import list_sync_presets
-        _src_owner = {}
-        for p in list_sync_presets():
-            _oid = p.get("id", "")
-            _own = p.get("owner")
-            if _own:
-                _src_owner[_oid] = _own
-        for row in conn.execute("SELECT source_id, COUNT(1) AS c FROM documents GROUP BY source_id").fetchall():
-            sid = row["source_id"]
-            # 匹配：精确匹配 preset id，或匹配 preset id 去掉 :type 后缀的部分
-            owner = _src_owner.get(sid)
-            if not owner:
-                for pk, pv in _src_owner.items():
-                    if pk.startswith(sid + ":"):
-                        owner = pv
-                        break
-            if not owner:
-                owner = "__shared__"
-            user_doc_counts[owner] = user_doc_counts.get(owner, 0) + row["c"]
-    finally:
-        conn.close()
-
-    db_path = Path(settings.data_dir) / "mind_sync.db"
-    db_size = db_path.stat().st_size if db_path.exists() else 0
-
-    # Estimate source file sizes
-    source_size = 0
-    for src in load_sources():
-        if src.path:
-            p = Path(src.path)
-            if p.exists():
-                source_size += sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
-
-    return {
-        "doc_count": doc_count,
-        "user_count": user_count,
-        "src_count": src_count,
-        "wiki_pages": wiki_pages,
-        "db_size": db_size,
-        "source_size": source_size,
-        "user_doc_counts": user_doc_counts,
-    }
-
-
-@app.post("/api/admin/reindex")
-def admin_reindex(request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """Reindex all sources."""
-    conn = get_db()
-    results = []
-    try:
-        sources = load_sources()
-        for source in sources:
-            try:
-                result = index_single_source(conn, source)
-                results.append({
-                    "source_id": source.id,
-                    "status": result.get("status"),
-                    "indexed": result.get("indexed", 0),
-                })
-            except Exception as e:
-                results.append({"source_id": source.id, "status": "error", "error": str(e)})
-        conn.commit()
-    finally:
-        conn.close()
-    add_audit_event("reindex", request, actor=resolve_actor(request), detail=f"sources={len(results)}")
-    return {"ok": True, "results": results}
-
-
 @app.get("/api/settings")
 def get_settings(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     username, role = resolve_current_user(request)
@@ -1363,7 +521,7 @@ def update_settings(
     return data
 
 
-@app.get("/api/library")
+@app.get("/api/library", response_model=LibraryResponse)
 def library(
     request: Request,
     category: str | None = "source",
@@ -1452,8 +610,8 @@ def rebuild_index(
     return {"ok": True, "started": True, "mode": "rebuild", "source_ids": source_ids}
 
 
-@app.get("/api/sync-status")
-def sync_status(_: Any = Depends(require_any_auth)) -> dict[str, Any]:
+@app.get("/api/sync-status", response_model=SyncStatusResponse)
+def sync_status(_: Any = Depends(require_any_auth)):
     return get_sync_status_payload()
 
 
@@ -1505,7 +663,7 @@ def browse(
     return {"items": items}
 
 
-@app.get("/api/search")
+@app.get("/api/search", response_model=SearchResponse)
 def search(
     q: str,
     request: Request,
@@ -1542,8 +700,8 @@ def search(
     return {"items": items}
 
 
-@app.get("/api/document/{doc_id}")
-def get_document(doc_id: int, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+@app.get("/api/document/{doc_id}", response_model=DocumentResponse)
+def get_document(doc_id: int, request: Request, _: Any = Depends(require_any_auth)):
     conn = get_db()
     row = conn.execute(
         "SELECT id, source_id, rel_path, title, content, lang, updated_at, source_owner FROM documents WHERE id = ?",
@@ -1738,8 +896,8 @@ def ingest(payload: IngestRequest, _: Any = Depends(require_admin)) -> dict[str,
         conn.close()
 
 
-@app.post("/api/query")
-def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
+@app.post("/api/query", response_model=QueryResponse)
+def query(payload: QueryRequest, request: Request, _: Any = Depends(require_any_auth)):
     if payload.save_to_wiki:
         require_admin(request)
     check_api_rate_limit(request, "query")
