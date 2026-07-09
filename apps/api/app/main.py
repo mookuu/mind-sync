@@ -78,11 +78,7 @@ from .services.sync_engine import (
     run_sync_job,
 )
 
-SCHEDULER = AutoSyncScheduler(
-    load_settings=load_settings_map,
-    is_sync_running=is_sync_running,
-    run_sync_job=lambda: run_sync_job("auto"),
-)
+from .state import SCHEDULER
 
 
 @asynccontextmanager

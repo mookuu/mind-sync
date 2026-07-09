@@ -16,10 +16,11 @@ from ..services.library import build_library_index
 from ..services.purpose import purpose_status, save_purpose_text
 from ..services.rate_limit import check_api_rate_limit
 from ..services.rebuild_engine import run_rebuild_job
-from ..services.scheduler import SCHEDULER
-from ..services.settings import enrich_settings_response
+from ..state import SCHEDULER
+from ..services.sync_settings import enrich_settings_response
 from ..services.source_sync_key import is_known_sync_key
-from ..services.sync_engine import SYNC_LOCK, SYNC_STATE, SYNC_PRESETS, run_sync_job, get_sync_status_payload
+from ..services.sync_engine import SYNC_LOCK, SYNC_STATE, run_sync_job, get_sync_status_payload
+from ..services.sync_settings import SYNC_PRESETS
 
 router = APIRouter(tags=["knowledge"])
 

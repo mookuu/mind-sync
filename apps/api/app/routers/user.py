@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from ..db import get_db
 from ..services.auth import resolve_actor, resolve_current_user, require_any_auth, require_own_source
 from ..services.audit import add_audit_event
-from ..services.indexer import load_ordered_sources, reload_sources_config
+from ..services.indexer import reload_sources_config
+from ..services.sync_settings import load_ordered_sources
 from ..services.source_sync_key import source_display_label, source_sync_key
 
 router = APIRouter(tags=["user"])

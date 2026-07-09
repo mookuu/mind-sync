@@ -11,7 +11,8 @@ from ..config import settings
 from ..db import WIKI_DIR, get_db
 from ..services.auth import resolve_actor, resolve_current_user, require_admin, require_any_auth
 from ..services.audit import add_audit_event
-from ..services.indexer import index_single_source, load_ordered_sources, load_sources, reload_sources_config, resolve_source_root
+from ..services.indexer import index_single_source, load_sources, reload_sources_config, resolve_source_root
+from ..services.sync_settings import load_ordered_sources
 from ..services.source_sync_key import parse_sync_key, source_display_label, source_sync_key
 from ..services.web_fetch_policy import web_fetch_policy_summary
 
