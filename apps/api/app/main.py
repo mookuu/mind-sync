@@ -97,15 +97,7 @@ logger = logging.getLogger("mind-sync")
 
 # ─── 子模块路由 ─────────────────────────────────────────
 from .routers.auth import router as auth_router
-from .routers.admin import router as admin_router
-from .routers.user import router as user_router, _add_notification
-from .routers.knowledge import router as knowledge_router
-from .routers.content import router as content_router
 app.include_router(auth_router)
-app.include_router(admin_router)
-app.include_router(user_router)
-app.include_router(knowledge_router)
-app.include_router(content_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
