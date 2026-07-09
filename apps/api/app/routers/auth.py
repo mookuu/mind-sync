@@ -16,6 +16,63 @@ from ..services.audit import add_audit_event
 
 router = APIRouter(tags=["auth"])
 
+
+@router.post("/api/login")
+def login(body: dict[str, Any], request: Request, response: Response):
+    import secrets as _sec, time
+    from ..config import settings as _st
+    from ..db import get_db as _db
+    from ..services.auth import check_login_rate_limit, clear_login_failures, csrf_header_key, login_user, resolve_actor
+    from ..services.password_util import verify_password as _vp
+
+    username = (body.get("username") or "").strip() or "default"
+    password = body.get("password", "")
+    remember_me = bool(body.get("remember_me", False))
+    check_login_rate_limit(request, username)
+    session_id, user, role = login_user(username, password, request, remember_me)
+    clear_login_failures(request, username)
+    ttl = int(body.get("ttl", 0)) or (60 * 60 * 24 * 30 if remember_me else 60 * 60 * 4)
+    if remember_me:
+        ttl = max(ttl, 60 * 60 * 24 * 30)
+    else:
+        ttl = min(ttl, 60 * 60 * 24)
+    cookie_samesite = (_st.cookie_samesite or "lax").lower()
+    if cookie_samesite not in {"lax", "strict", "none"}:
+        cookie_samesite = "lax"
+    cookie_secure = bool(_st.cookie_secure or cookie_samesite == "none")
+    response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite, path="/")
+    response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite, path="/")
+    csrf_token = _sec.token_urlsafe(24)
+    response.set_cookie("ms_token", session_id, httponly=True, secure=cookie_secure, samesite=cookie_samesite, max_age=ttl)
+    response.set_cookie("ms_csrf", csrf_token, httponly=False, secure=cookie_secure, samesite=cookie_samesite, max_age=ttl)
+    add_audit_event("login_success", request, actor=user, detail=f"role={role}")
+    conn = _db()
+    try:
+        row = conn.execute("SELECT display_name FROM users WHERE username = ?", (username,)).fetchone()
+        display_name = row["display_name"] or username if row else username
+    finally:
+        conn.close()
+    return {
+        "ok": True, "username": username, "role": role, "display_name": display_name,
+        "csrf_header": csrf_header_key(), "csrf_token": csrf_token,
+    }
+
+
+@router.post("/api/logout")
+def logout(request: Request, response: Response):
+    from ..config import settings as _st
+    from ..services.auth import logout_user, _get_session_id
+
+    sid = _get_session_id(request)
+    if sid:
+        logout_user(sid)
+    cookie_samesite = (_st.cookie_samesite or "lax").lower()
+    cookie_secure = bool(_st.cookie_secure or cookie_samesite == "none")
+    response.delete_cookie("ms_token", secure=cookie_secure, httponly=True, samesite=cookie_samesite)
+    response.delete_cookie("ms_csrf", secure=cookie_secure, httponly=False, samesite=cookie_samesite)
+    add_audit_event("logout", request, actor=resolve_actor(request), detail="session deleted")
+    return {"ok": True}
+
 @router.get("/api/health", response_model=HealthResponse)
 def health():
     from ..services.source_health import source_health_status as _shs, collect_source_warnings
