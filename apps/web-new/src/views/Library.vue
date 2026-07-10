@@ -14,15 +14,12 @@
         <div class="doc-toolbar">
           <div class="doc-breadcrumb">{{ currentDoc.source_id }}/{{ currentDoc.rel_path }}</div>
           <div class="doc-toolbar-actions">
-            <label class="image-toggle">
-              <input v-model="imageEnhance" type="checkbox" />深色底图增强
-            </label>
             <button v-if="currentDoc.source_id === 'error'" class="btn btn-ghost btn-sm" @click="retryLoadDoc">重试</button>
             <button v-if="hasSearchHighlight" class="btn btn-ghost btn-sm" @click="resetSearchHighlight">重置高亮</button>
             <button class="btn btn-ghost btn-sm" @click="currentDoc = null">✕</button>
           </div>
         </div>
-        <div class="doc-content doc-markdown" :class="{ 'image-enhance': imageEnhance }" v-html="renderedContent" ref="docContentEl" @click="onDocClick"></div>
+        <div class="doc-content doc-markdown" v-html="renderedContent" ref="docContentEl" @click="onDocClick"></div>
       </template>
       <template v-else>
         <div v-if="deniedMsg" class="denied-notice">{{ deniedMsg }}</div>
@@ -50,7 +47,6 @@ watch(() => route.query.denied, (path) => {
 const isSingleDoc = computed(() => !!route.query.doc);
 const searchQuery = computed(() => route.query.q || '');
 const currentDoc = ref(null);
-const imageEnhance = ref(true);
 const docContentEl = ref(null);
 const hasSearchHighlight = computed(() => currentDoc.value?._searchQuery ? true : false);
 const loadingDoc = ref(false);
@@ -130,13 +126,7 @@ function resetSearchHighlight() {
     // 强制刷新 renderedContent（触发重组）
     currentDoc.value = { ...currentDoc.value };
   }
-  // 清除 localStorage 搜索缓存
-  localStorage.removeItem('mind_sync_last_search');
   highlightIndex.value = -1;
-  // 从 url 去掉搜索参数
-  const url = new URL(window.location);
-  url.searchParams.delete('q');
-  window.history.replaceState({}, '', url);
 }
 
 function onDocClick(e) {
@@ -228,7 +218,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKeyDown));
 .doc-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--border-muted); gap: 12px; }
 .doc-breadcrumb { font-size: 0.82rem; color: var(--fg-subtle); font-family: var(--font-mono); }
 .doc-toolbar-actions { display: flex; align-items: center; gap: 8px; }
-.image-toggle { font-size: 0.8rem; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .doc-content { overflow-wrap: break-word; }
 .doc-content :deep(pre) { background: var(--bg-muted); border-radius: 8px; padding: 1px 0; overflow-x: auto; margin: 12px 0; }
 .doc-content :deep(pre code) { display: block; padding: 14px 18px; font-size: 0.83rem; line-height: 1.55; }
