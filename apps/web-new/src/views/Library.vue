@@ -191,20 +191,25 @@ watch(() => route.path, (newPath, oldPath) => {
   }
 });
 
-onMounted(async () => {
-  const docId = route.query.doc;
+async function loadOrRestoreDoc(docId) {
   if (docId) {
     await openDoc(docId);
-    // 首个高亮居中
     setTimeout(() => navigateHighlights("next"), 100);
   } else {
-    // 恢复上次键盘模式
     const saved = localStorage.getItem(KEYBOARD_MODE_KEY);
     if (saved === 'highlight') {
-      // 给文档加载一点时间后再滚动到高亮
       setTimeout(() => navigateHighlights("next"), 200);
     }
   }
+}
+
+// doc 变化时自动加载（同路由切换 doc）
+watch(() => route.query.doc, (docId) => {
+  loadOrRestoreDoc(docId);
+});
+
+onMounted(async () => {
+  loadOrRestoreDoc(route.query.doc);
   window.addEventListener("keydown", onKeyDown);
 });
 

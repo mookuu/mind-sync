@@ -59,9 +59,10 @@
       <NotifyBar />
       <Toast />
       <main class="content">
-        <router-view v-slot="{ Component, route: r }">
-          <!-- 注：之前用 <transition> 导致 route transitionend 不触发，组件挂载卡死 -->
-          <component :is="Component" :key="$route.fullPath" />
+        <router-view v-slot="{ Component }">
+          <keep-alive>
+            <component :is="Component" />
+          </keep-alive>
         </router-view>
       </main>
     </template>
@@ -238,6 +239,7 @@ async function handleLogout() {
   overflow-y: auto;
   padding: 24px 32px;
   background: var(--bg-default);
+  min-height: 100%;
 }
 
 /* Login screen */

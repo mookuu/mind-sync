@@ -149,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted, onActivated } from "vue";
 import api from "../api/index.js";
 
 const users = ref([]);
@@ -318,6 +318,10 @@ function onGlobalKeydown(e) {
 
 onMounted(() => {
   document.addEventListener('keydown', onGlobalKeydown);
+  loadUsers();
+});
+
+onActivated(() => {
   loadUsers();
 });
 

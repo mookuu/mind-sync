@@ -230,6 +230,7 @@ const orderedItems = computed(() => {
       children: [
         { label: "系统概览", icon: "📊", path: "/admin/dashboard" },
         { label: "用户管理", icon: "👥", path: "/admin/users" },
+        { label: "API keys", icon: "🔑", path: "/admin/api-keys" },
       ],
     });
   }

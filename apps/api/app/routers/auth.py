@@ -197,3 +197,19 @@ def delete_api_key(key_id: int, request: Request, _: Any = Depends(require_admin
         raise HTTPException(status_code=404, detail="API key not found")
     add_audit_event("api_key_deleted", request, actor=resolve_actor(request), detail=f"id={key_id}")
     return {"ok": True, "deleted": key_id}
+
+@router.put("/api/api-keys/{key_id}")
+def update_api_key(key_id: int, payload: dict[str, Any], request: Request, _: Any = Depends(require_admin)):
+    enforce_csrf(request)
+    label = (payload.get("label") or "").strip()
+    conn = get_db()
+    try:
+        cur = conn.execute("UPDATE api_keys SET label = ? WHERE id = ?", (label, key_id))
+        conn.commit()
+        updated = cur.rowcount > 0
+    finally:
+        conn.close()
+    if not updated:
+        raise HTTPException(status_code=404, detail="API key not found")
+    add_audit_event("api_key_updated", request, actor=resolve_actor(request), detail=f"id={key_id} label={label}")
+    return {"ok": True, "updated": key_id, "label": label}

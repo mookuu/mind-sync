@@ -106,40 +106,6 @@
       </div>
     </section>
 
-    <!-- API Key 管理（仅管理员） -->
-    <section v-if="isAdmin" class="settings-section">
-      <h3>API Key</h3>
-      <p class="subtle">管理已生成的 API Key，删除后立即失效</p>
-
-      <!-- 已有 Key 列表 -->
-      <div v-if="apiKeys.length" class="api-key-list">
-        <div v-for="k in apiKeys" :key="k.id" class="api-key-card">
-          <div class="api-key-row">
-            <code class="api-key-value">{{ k.key_value.slice(0, 16) }}…</code>
-            <span class="api-key-label">{{ k.label || "default" }}</span>
-            <span class="api-key-time" :title="'创建于 ' + fmtTime(k.created_at)">
-              创建于 {{ fmtTime(k.created_at) }}
-            </span>
-            <button class="btn btn-danger btn-sm" @click="deleteKey(k.id)" :disabled="deleting === k.id">
-              {{ deleting === k.id ? "删除中…" : "删除" }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="newApiKey" class="new-api-key">
-        <strong>新 API Key：</strong>
-        <code class="api-key-display">{{ newApiKey }}</code>
-        <button class="btn btn-sm btn-ghost" @click="copyKey">复制</button>
-      </div>
-      <div class="api-key-actions">
-        <button class="btn btn-primary btn-sm" @click="rotateKey" :disabled="keyRotating">
-          {{ keyRotating ? "生成中…" : "生成新 API Key" }}
-        </button>
-      </div>
-      <p v-if="keyMsg" class="status-msg">{{ keyMsg }}</p>
-    </section>
-
     <!-- 确认弹窗 -->
     <div v-if="confirmTarget" class="modal-overlay" @click.self="confirmTarget = null">
       <div class="confirm-dialog">
@@ -166,7 +132,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, onActivated } from "vue";
 import api from "../api/index.js";
 import { useAuth } from "../composables/useAuth.js";
 
@@ -291,68 +257,6 @@ async function revokeSession(sid) {
   }
 }
 
-// API Key
-const newApiKey = ref("");
-const keyRotating = ref(false);
-const keyMsg = ref("");
-const apiKeys = ref([]);
-const deleting = ref(null);
-
-async function loadApiKeys() {
-  try {
-    const data = await api("/api/api-keys");
-    apiKeys.value = data.keys || [];
-  } catch {
-    apiKeys.value = [];
-  }
-}
-
-async function rotateKey() {
-  keyRotating.value = true;
-  keyMsg.value = "";
-  try {
-    const data = await api("/api/api-keys/rotate", {
-      method: "POST",
-      body: { label: "Web UI" },
-    });
-    newApiKey.value = data.key;
-    keyMsg.value = "新 Key 已生成，请立即复制";
-  } catch (e) {
-    keyMsg.value = e.message || "生成失败";
-  } finally {
-    keyRotating.value = false;
-  }
-}
-
-async function deleteKey(id) {
-  confirmTarget.value = { id, label: "确定删除此 API Key？该 Key 将立即失效。" };
-}
-
-async function doDeleteKey() {
-  if (!confirmTarget.value) return;
-  const id = confirmTarget.value.id;
-  confirmTarget.value = null;
-  deleting.value = id;
-  keyMsg.value = "";
-  try {
-    await api(`/api/api-keys/${id}`, { method: "DELETE" });
-    apiKeys.value = apiKeys.value.filter((k) => k.id !== id);
-    keyMsg.value = "已删除";
-  } catch (e) {
-    showAlert(e.message || "删除失败");
-  } finally {
-    deleting.value = null;
-  }
-}
-
-function copyKey() {
-  navigator.clipboard.writeText(newApiKey.value).then(() => {
-    keyMsg.value = "已复制到剪贴板";
-  }).catch(() => {
-    keyMsg.value = "复制失败，请手动复制";
-  });
-}
-
 // Confirm / Alert modal state
 const confirmTarget = ref(null);
 const alertMsg = ref("");
@@ -384,7 +288,11 @@ onMounted(() => {
   document.addEventListener('keydown', onGlobalKeydown);
   loadUserInfo();
   loadSessions();
-  loadApiKeys();
+});
+
+onActivated(() => {
+  loadUserInfo();
+  loadSessions();
 });
 
 onUnmounted(() => {
@@ -512,60 +420,6 @@ onUnmounted(() => {
   font-size: 0.8rem;
   color: var(--fg-subtle);
   margin-top: 2px;
-}
-.new-api-key {
-  margin: 10px 0;
-  padding: 10px 12px;
-  background: var(--bg-muted);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.api-key-display {
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  word-break: break-all;
-  flex: 1;
-}
-
-.api-key-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 10px;
-}
-.api-key-card {
-  border: 1px solid var(--border-muted);
-  border-radius: var(--radius);
-  padding: 8px 12px;
-}
-.api-key-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.api-key-value {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: var(--fg-muted);
-  background: var(--bg-muted);
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-.api-key-label {
-  font-size: 0.8rem;
-  color: var(--fg-subtle);
-}
-.api-key-time {
-  font-size: 0.75rem;
-  color: var(--fg-subtle);
-  flex: 1;
-}
-.api-key-actions {
-  margin-top: 8px;
 }
 .modal-overlay {
   position: fixed;

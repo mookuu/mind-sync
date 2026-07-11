@@ -26,7 +26,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onActivated } from "vue";
 import { useRouter } from "vue-router";
 import api from "../api/index.js";
 
@@ -77,6 +77,10 @@ onMounted(() => {
   window.addEventListener("mind-sync-done", () => {
     events.value = events.value.map(e => ({ ...e, _highlight: false }));
   });
+});
+
+onActivated(() => {
+  refresh();
 });
 </script>
 

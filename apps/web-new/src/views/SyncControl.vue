@@ -74,7 +74,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onActivated } from "vue";
 import api from "../api/index.js";
 import { useAuth } from "../composables/useAuth.js";
 
@@ -243,6 +243,10 @@ onMounted(() => {
   loadStatus();
   loadSettings();
   loadMissingFiles();
+});
+
+onActivated(() => {
+  loadStatus();
 });
 </script>
 

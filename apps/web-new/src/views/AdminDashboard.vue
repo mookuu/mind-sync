@@ -39,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onActivated } from "vue";
 import api from "../api/index.js";
 
 const stats = ref({});
@@ -91,6 +91,7 @@ function fmtUser(u) {
 }
 
 onMounted(loadStats);
+onActivated(loadStats);
 </script>
 
 <style scoped>
