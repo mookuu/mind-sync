@@ -23,6 +23,9 @@ const toasts = ref([]);
 let nextId = 0;
 
 function addToast(message, type = "info", duration = 4000) {
+  // 去重：相同 message + type 只保留一条
+  const dup = toasts.value.find(t => t.message === message && t.type === type);
+  if (dup) return;
   const id = ++nextId;
   toasts.value.push({ id, message, type });
   if (duration > 0) {

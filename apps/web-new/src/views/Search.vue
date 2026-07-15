@@ -46,6 +46,9 @@
 import { ref, computed } from "vue";
 import api from "../api/index.js";
 import { toast } from "../composables/toast.js";
+import { useAuth } from "../composables/useAuth.js";
+
+const { displayName } = useAuth();
 
 const query = ref("");
 const sort = ref("relevance");
@@ -86,7 +89,7 @@ const filtered = computed(() => {
 });
 
 const searching = ref(false);
-const SEARCH_CACHE_KEY = 'mind_sync_last_search';
+function searchCacheKey() { return displayName.value ? `mind_sync_last_search_${displayName.value}` : 'mind_sync_last_search'; }
 
 async function doSearch() {
   if (!query.value.trim()) {
@@ -104,7 +107,7 @@ async function doSearch() {
     if (allResults.value.length === 0) {
       toast.info("未找到匹配结果");
     }
-    localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify({
+    localStorage.setItem(searchCacheKey(), JSON.stringify({
       q: query.value, items: allResults.value, ts: Date.now(),
     }));
   } catch (e) {
@@ -119,7 +122,7 @@ async function doSearch() {
 // 恢复上次搜索结果
 function restoreCachedSearch() {
   try {
-    const cached = JSON.parse(localStorage.getItem(SEARCH_CACHE_KEY));
+    const cached = JSON.parse(localStorage.getItem(searchCacheKey()));
     // 超过 10 分钟的缓存视为过期（rebuild 后 ID 会变化）
     const maxAge = 10 * 60 * 1000;
     if (cached && cached.q && cached.items?.length && cached.ts && (Date.now() - cached.ts) < maxAge) {
@@ -139,7 +142,7 @@ function resetSearch() {
   allResults.value = [];
   searched.value = false;
   page.value = 1;
-  localStorage.removeItem(SEARCH_CACHE_KEY);
+  localStorage.removeItem(searchCacheKey());
 }
 
 import { useRouter } from 'vue-router';
