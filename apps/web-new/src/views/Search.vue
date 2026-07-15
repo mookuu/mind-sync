@@ -125,7 +125,7 @@ function restoreCachedSearch() {
     const cached = JSON.parse(localStorage.getItem(searchCacheKey()));
     // 超过 10 分钟的缓存视为过期（rebuild 后 ID 会变化）
     const maxAge = 10 * 60 * 1000;
-    if (cached && cached.q && cached.items?.length && cached.ts && (Date.now() - cached.ts) < maxAge) {
+    if (cached && cached.q && Array.isArray(cached.items) && cached.ts && (Date.now() - cached.ts) < maxAge) {
       query.value = cached.q;
       allResults.value = cached.items;
       searched.value = true;
