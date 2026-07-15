@@ -111,10 +111,15 @@ watch(
   }
 );
 
-// 登录后跳转到上次页面
+// 登录后跳转到上次页面，受限路径非管理员回退到 /library
 function navigateToLastPage() {
   const saved = localStorage.getItem(LAST_PAGE_KEY);
   const target = saved && saved !== "/" ? saved : "/library";
+  const resolved = router.resolve(target);
+  if (resolved.meta?.adminOnly && userRole.value !== "admin") {
+    router.push("/library");
+    return;
+  }
   router.push(target);
 }
 
@@ -176,9 +181,6 @@ async function handleLogin() {
 }
 
 async function handleLogout() {
-  // 登出时清除上次页面记录，避免切换用户登录时恢复受限页面
-  localStorage.removeItem(LAST_PAGE_KEY);
-  localStorage.removeItem(LAST_DOC_KEY);
   await logout();
   router.push("/library");
 }
