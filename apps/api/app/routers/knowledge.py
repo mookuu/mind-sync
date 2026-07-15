@@ -1,6 +1,6 @@
 """Knowledge router: settings, library, sync, rebuild, search, browse, categories, purpose."""
 from __future__ import annotations
-import json, time
+import json, logging, time
 from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from ..config import settings
@@ -23,6 +23,7 @@ from ..services.sync_engine import SYNC_LOCK, SYNC_STATE, run_sync_job, get_sync
 from ..services.sync_settings import SYNC_PRESETS
 
 router = APIRouter(tags=["knowledge"])
+logger = logging.getLogger(__name__)
 
 @router.get("/api/settings")
 def get_settings(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
@@ -261,24 +262,28 @@ def search(
     if not q.strip():
         return {"items": []}
     q = q.strip()
-    conn = get_db()
     try:
-        username, role = resolve_current_user(request)
-        items = search_documents(
-            conn,
-            q,
-            limit=limit,
-            source_id=source_id,
-            file_type=file_type,
-            category=category,
-            topic=topic,
-            path_prefix=path_prefix,
-            sort=sort,
-            username=username,
-            role=role,
-        )
-    finally:
-        conn.close()
+        conn = get_db()
+        try:
+            username, role = resolve_current_user(request)
+            items = search_documents(
+                conn,
+                q,
+                limit=limit,
+                source_id=source_id,
+                file_type=file_type,
+                category=category,
+                topic=topic,
+                path_prefix=path_prefix,
+                sort=sort,
+                username=username,
+                role=role,
+            )
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.exception("搜索失败: q=%s", q)
+        raise HTTPException(status_code=500, detail=f"搜索服务异常: {e}")
     return {"items": items}
 
 

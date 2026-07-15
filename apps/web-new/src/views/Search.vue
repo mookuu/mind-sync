@@ -45,6 +45,7 @@
 <script setup>
 import { ref, computed } from "vue";
 import api from "../api/index.js";
+import { toast } from "../composables/toast.js";
 
 const query = ref("");
 const sort = ref("relevance");
@@ -100,12 +101,16 @@ async function doSearch() {
     const data = await api(`/api/search?q=${encodeURIComponent(query.value)}&limit=200`);
     allResults.value = data.results || data.items || [];
     searched.value = true;
+    if (allResults.value.length === 0) {
+      toast.info("未找到匹配结果");
+    }
     localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify({
       q: query.value, items: allResults.value, ts: Date.now(),
     }));
   } catch (e) {
     allResults.value = [];
     searched.value = true;
+    toast.error("搜索失败：" + (e.message || "服务器错误"));
   } finally {
     searching.value = false;
   }
