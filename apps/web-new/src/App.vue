@@ -176,7 +176,11 @@ async function handleLogin() {
 }
 
 async function handleLogout() {
+  // 登出时清除上次页面记录，避免切换用户登录时恢复受限页面
+  localStorage.removeItem(LAST_PAGE_KEY);
+  localStorage.removeItem(LAST_DOC_KEY);
   await logout();
+  router.push("/library");
 }
 </script>
 
