@@ -87,8 +87,9 @@ const rememberMe = ref(false);
 const loggingIn = ref(false);
 const loginError = ref("");
 
-const LAST_PAGE_KEY = "mind_sync_last_page";
-const LAST_DOC_KEY = "mind_sync_last_doc";
+// 按用户隔离 localStorage key，避免不同用户登录记录共享
+function pageKey() { return displayName.value ? `mind_sync_last_page_${displayName.value}` : "mind_sync_last_page"; }
+function docKey()  { return displayName.value ? `mind_sync_last_doc_${displayName.value}`  : "mind_sync_last_doc"; }
 
 // 保存当前路由到 localStorage
 // 路由守卫：拦截非管理员访问管理页面
@@ -102,10 +103,10 @@ watch(
   () => route.fullPath,
   (fullPath) => {
     if (fullPath && fullPath !== "/") {
-      localStorage.setItem(LAST_PAGE_KEY, fullPath);
+      localStorage.setItem(pageKey(), fullPath);
       // 保存 doc 参数
       if (route.query.doc) {
-        localStorage.setItem(LAST_DOC_KEY, route.query.doc);
+        localStorage.setItem(docKey(), route.query.doc);
       }
     }
   }
@@ -113,7 +114,7 @@ watch(
 
 // 登录后跳转到上次页面，受限路径非管理员回退到 /library
 function navigateToLastPage() {
-  const saved = localStorage.getItem(LAST_PAGE_KEY);
+  const saved = localStorage.getItem(pageKey());
   const target = saved && saved !== "/" ? saved : "/library";
   const resolved = router.resolve(target);
   if (resolved.meta?.adminOnly && userRole.value !== "admin") {
@@ -130,7 +131,7 @@ onMounted(async () => {
     if (isLoggedIn.value) {
       // 如果路由没有 doc 参数但有缓存的 doc，尝试恢复
       if (!route.query.doc) {
-        const cachedDoc = localStorage.getItem(LAST_DOC_KEY);
+        const cachedDoc = localStorage.getItem(docKey());
         if (cachedDoc && route.path === "/library") {
           router.replace(`/library?doc=${cachedDoc}`);
           return;
