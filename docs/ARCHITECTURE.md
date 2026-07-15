@@ -226,8 +226,8 @@ FastAPI 应用，负责：
 
 | 角色 | 能力 |
 |------|------|
-| **admin** | 同步、全量重建、素材管理、wiki 编辑、Vault、purpose、lint、操作记录、系统管理 |
-| **member** | 搜索、文档库、知识查询、同步控制、素材管理（个人库）、操作记录（仅自己） |
+| **admin** | 同步、全量重建、同步素材、wiki 编辑、Vault、purpose、lint、操作记录、系统管理 |
+| **member** | 搜索、文档库、知识查询、同步控制、同步素材（个人库）、操作记录（仅自己） |
 
 > Per-user 同步：每个用户独立管理自己的同步范围（`{username}:sync_preset` / `{username}:sync_source_ids`），同步/重建结果只对当前用户可见。
 
@@ -269,7 +269,7 @@ apps/web-new/
         ├── Graph.vue        # Wiki 图谱（Canvas 力导向图，仅管理员）
         ├── Account.vue      # 账户（个人信息、改密码、会话管理）
         ├── SyncControl.vue  # 同步控制（per-user 增量/全量）
-        ├── SyncSources.vue  # 素材管理（管理员 3 区：全局/我的/共享）
+        ├── SyncSources.vue  # 同步素材（管理员 3 区：全局/我的/共享）
         ├── SyncVault.vue    # 仓库管理
         ├── SyncPurpose.vue  # 规则约束（仅管理员）
         └── SyncAudit.vue    # 操作记录（角色过滤 + 高亮 + 跳转）

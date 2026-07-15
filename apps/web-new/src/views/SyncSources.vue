@@ -1,6 +1,6 @@
 <template>
   <div class="view-pane">
-    <div class="view-header"><h2>📦 素材管理</h2></div>
+    <div class="view-header"><h2>📦 同步素材</h2></div>
 
     <!-- 同步范围 -->
     <section class="settings-section">
@@ -32,14 +32,14 @@
             :key="p.id"
             class="preset-row"
             :class="{ 'path-invalid-row': p.path_exists === false }"
-            :style="isAll || !isAdmin ? disabledStyle : (p.path_exists === false ? disabledStyle : {})"
+            :style="isAll ? disabledStyle : (p.path_exists === false ? disabledStyle : {})"
           >
             <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id), 'path-invalid': p.path_exists === false }">
               <input
                 type="checkbox"
                 :value="p.id"
                 :checked="customPresetIds.includes(p.id)"
-                :disabled="isAll || !isAdmin"
+                :disabled="isAll"
                 @change="onTogglePreset(p.id)"
               />
               <div>
@@ -88,22 +88,38 @@
           <template v-for="group in myPrivateSources" :key="group.owner || '__ungrouped__'">
             <div
               v-for="p in group.sources"
-              :key="p.id"
+              :key="p.sync_key || p.id"
               class="preset-row"
               :class="{ 'path-invalid-row': p.path_exists === false }"
-              :style="p.path_exists === false ? disabledStyle : {}"
+              :style="isAll ? disabledStyle : (p.path_exists === false ? disabledStyle : {})"
             >
-              <div class="preset-info preset-info-admin">
-                <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
-                <div class="preset-desc" :class="{ 'path-invalid': p.path && p.path_exists === false }">
-                  {{ displayPath(p.path || p.description || '') }}
-                  <span v-if="p.path && p.path_exists === false" class="path-invalid-tag" title="此路径在服务器上不存在">⚠ 路径无效</span>
+              <label class="preset-option" :class="{ selected: customPresetIds.includes(p.sync_key || p.id), 'path-invalid': p.path_exists === false }">
+                <input
+                  type="checkbox"
+                  :value="p.sync_key || p.id"
+                  :checked="customPresetIds.includes(p.sync_key || p.id)"
+                  :disabled="isAll"
+                  @change="onTogglePreset(p.sync_key || p.id)"
+                />
+                <div>
+                  <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
+                  <div class="preset-desc" :class="{ 'path-invalid': p.path && p.path_exists === false }">
+                    {{ displayPath(p.path || p.description || '') }}
+                    <span v-if="p.path && p.path_exists === false" class="path-invalid-tag" title="此路径在服务器上不存在">⚠ 路径无效</span>
+                  </div>
                 </div>
-              </div>
+              </label>
               <button
-                v-if="p.path_exists === false"
+                v-if="!p.is_default"
+                class="btn btn-ghost btn-sm share-source-btn"
+                :title="p.shared ? '取消共享' : '共享给其他用户'"
+                :disabled="isAll || sharing === p.id"
+                @click="toggleShare(p)"
+              >{{ p.shared ? '🔓' : '🔒' }}</button>
+              <button
+                v-if="!p.is_default || p.path_exists === false"
                 class="btn btn-ghost btn-sm delete-source-btn"
-                title="此路径无效，点击删除"
+                title="删除"
                 :disabled="isAll || deleting === p.id"
                 @click="deletePrivateSource(p)"
               >✕</button>
@@ -142,15 +158,15 @@
               :key="p.id"
               class="preset-row"
               :class="{ 'path-invalid-row': p.path_exists === false }"
-              :style="isAll ? disabledStyle : {}"
+              :style="{}"
             >
-              <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id), 'path-invalid': p.path_exists === false }">
+              <label class="preset-option" :class="{ selected: customPresetIds.includes(p.sync_key || p.id), 'path-invalid': p.path_exists === false }">
                 <input
                   type="checkbox"
-                  :value="p.id"
-                  :checked="customPresetIds.includes(p.id)"
-                  :disabled="isAll"
-                  @change="onTogglePreset(p.id)"
+                  :value="p.sync_key || p.id"
+                  :checked="customPresetIds.includes(p.sync_key || p.id)"
+                  :disabled="false"
+                  @change="onTogglePreset(p.sync_key || p.id)"
                 />
                 <div>
                   <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
@@ -208,15 +224,15 @@
               :key="p.id"
               class="preset-row"
               :class="{ 'path-invalid-row': p.path_exists === false }"
-              :style="isAll ? disabledStyle : {}"
+              :style="{}"
             >
-              <label class="preset-option" :class="{ selected: customPresetIds.includes(p.id), 'path-invalid': p.path_exists === false }">
+              <label class="preset-option" :class="{ selected: customPresetIds.includes(p.sync_key || p.id), 'path-invalid': p.path_exists === false }">
                 <input
                   type="checkbox"
-                  :value="p.id"
-                  :checked="customPresetIds.includes(p.id)"
-                  :disabled="isAll"
-                  @change="onTogglePreset(p.id)"
+                  :value="p.sync_key || p.id"
+                  :checked="customPresetIds.includes(p.sync_key || p.id)"
+                  :disabled="false"
+                  @change="onTogglePreset(p.sync_key || p.id)"
                 />
                 <div>
                   <div class="preset-label">{{ p.label }}</div>
@@ -285,6 +301,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import api from "../api/index.js";
+import { toast } from "../composables/toast.js";
 import { useSyncSettings } from "../composables/useSyncSettings.js";
 
 const {
@@ -437,16 +454,15 @@ const sharedPresets = computed(() => {
     const seen = new Set(base.map(p => p.id));
     const merged = [...base];
 
-    // 非管理员：只显示被管理员选中的库
+    // 非管理员：只显示管理员已勾选的全局库（来自全局设置键）
     let filtered = merged.filter(p => p && !p.owner);
     if (!isAdmin.value) {
       if (syncPreset.value === "all") {
-        // 管理员选了全部同步 → 显示全部库
-        // 保持原样（filtered 不缩减）
+        // 管理员选了全部同步 → 显示全部全局库
       } else {
-        // 管理员选了特定库 → 只显示那些库
-        const activeKeys = new Set(syncSourceIds.value || []);
-        filtered = filtered.filter(p => activeKeys.has(p.id));
+        // 只显示管理员勾选的库（syncSourceIds 来自全局键）
+        const adminSelectedIds = new Set(syncSourceIds.value || []);
+        filtered = filtered.filter(p => adminSelectedIds.has(p.id));
       }
     }
 
@@ -676,7 +692,6 @@ async function addCustomPath() {
   const newSourceId = pathParts[pathParts.length - 1] || '';
   try {
     await api("/api/admin/sources/custom", { method: "POST", body: { path } });
-    pathMsg.value = `已添加：${path}`;
     customPath.value = "";
     await reload();
     // 新增的库不自动勾选：如原为「全部同步」则转为自定义并排除新库
@@ -689,6 +704,7 @@ async function addCustomPath() {
   } catch (e) {
     pathMsg.value = e.message || "添加失败";
     pathError.value = true;
+    toast.error(e.message || "添加失败");
   } finally {
     addingPath.value = false;
   }
@@ -709,7 +725,6 @@ async function addPrivateSource() {
   const newSourceId = pathParts[pathParts.length - 1] || '';
   try {
     await api("/api/user/sources", { method: "POST", body: { path } });
-    privateMsg.value = `已添加私有库：${path}`;
     privatePath.value = "";
     await reload();
     await loadPrivateSources();

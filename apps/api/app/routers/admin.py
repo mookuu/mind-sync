@@ -457,3 +457,181 @@ def admin_reindex(request: Request, _: Any = Depends(require_admin)) -> dict[str
         conn.close()
     add_audit_event("reindex", request, actor=resolve_actor(request), detail=f"sources={len(results)}")
     return {"ok": True, "results": results}
+
+
+# ── admin sources management ────────────────────────────────
+
+@router.get("/api/admin/sources-status")
+def admin_sources_status(request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """返回所有知识库状态列表（含全局默认源），owner=None 的显示为 admin。"""
+    from ..services.indexer import load_sources
+    from ..services.source_sync_key import source_sync_key, source_display_label
+
+    conn = get_db()
+    try:
+        # 获取每个源的文档统计
+        rows = conn.execute(
+            "SELECT source_id, source_owner, MAX(updated_at) AS max_updated, MIN(updated_at) AS min_updated, COUNT(1) AS doc_count "
+            "FROM documents GROUP BY source_id, source_owner"
+        ).fetchall()
+        update_map: dict[str, float] = {}
+        create_map: dict[str, float] = {}
+        doc_count_map: dict[str, int] = {}
+        for row in rows:
+            key = f"{row['source_id']}|{row['source_owner'] or ''}"
+            update_map[key] = row["max_updated"] or 0
+            create_map[key] = row["min_updated"] or 0
+            doc_count_map[key] = row["doc_count"] or 0
+    finally:
+        conn.close()
+
+    items = []
+    for src in load_sources():
+        root = resolve_source_root(src)
+        sk = source_sync_key(src)
+        key = f"{src.id}|{src.owner or ''}"
+        display_owner = src.owner or "admin"
+        owner_dn = _resolve_owner_display_name(src.owner) if src.owner else None
+
+        items.append({
+            "source_id": sk,
+            "label": source_display_label(src),
+            "owner": display_owner,
+            "owner_display_name": owner_dn or display_owner,
+            "path": str(root),
+            "path_exists": root.exists(),
+            "shared": bool(src.shared),
+            "source_type": src.source_type or "local",
+            "updated_at": update_map.get(key, 0),
+            "created_at": create_map.get(key, 0),
+            "doc_count": doc_count_map.get(key, 0),
+        })
+
+    # 按 owner 排序：admin（全局源）在前，其他按用户名排序
+    items.sort(key=lambda x: (0 if x["owner"] == "admin" else 1, x["owner"], x["source_id"]))
+    return {"sources": items}
+
+
+@router.post("/api/admin/sources/{source_id}/share")
+def admin_toggle_source_share(request: Request, source_id: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """管理员强制切换任意库的共享状态。"""
+    from ..services.user_manager import get_user_sources_path
+
+    # 查找源
+    all_sources = load_sources()
+    target = None
+    for s in all_sources:
+        sk = source_sync_key(s)
+        if sk == source_id or s.id == source_id:
+            target = s
+            break
+
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
+
+    if target.owner is None:
+        raise HTTPException(status_code=400, detail="全局库无需共享设置")
+
+    # 读取 user_sources.yaml
+    user_src = get_user_sources_path()
+    if not user_src.is_file():
+        raise HTTPException(status_code=404, detail="用户源配置文件不存在")
+
+    import yaml as _yaml
+    raw = user_src.read_text(encoding="utf-8")
+    config = _yaml.safe_load(raw) or {}
+    sources_list: list = config.get("sources", []) or []
+
+    new_state = None
+    for entry in sources_list:
+        if isinstance(entry, dict) and entry.get("id") == target.id and entry.get("owner") == target.owner:
+            current = bool(entry.get("shared", False))
+            entry["shared"] = not current
+            new_state = not current
+            config["sources"] = sources_list
+            user_src.write_text(_yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            break
+
+    if new_state is None:
+        raise HTTPException(status_code=404, detail=f"来源不在可编辑配置中：{source_id}")
+
+    reload_sources_config()
+    actor = resolve_actor(request)
+    action = "共享" if new_state else "取消共享"
+    if target.owner and target.owner != actor:
+        _add_notification(target.owner, f"{actor} {action}了 {target.id}，请通过同步控制页面更新库信息",
+                          action_link="/sync/control", highlight=True)
+    add_audit_event("admin_source_share_toggle", request, actor=actor,
+                    detail=f"id={source_id} owner={target.owner} shared={new_state}")
+    return {"ok": True, "shared": new_state}
+
+
+@router.post("/api/admin/sources/{source_id}/delete")
+def admin_delete_any_source(request: Request, source_id: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """管理员删除任意库（全局或私有）。"""
+    from ..services.user_manager import get_user_sources_path
+
+    all_sources = load_sources()
+    target = None
+    for s in all_sources:
+        sk = source_sync_key(s)
+        if sk == source_id or s.id == source_id:
+            target = s
+            break
+
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
+
+    fixed_ids = {"all", "obsidian", "web_snapshots", "wiki"}
+    if target.id in fixed_ids and target.owner is None:
+        raise HTTPException(status_code=400, detail=f"默认来源不可删除：{target.id}")
+
+    deleted = False
+    # 尝试从 sources.yaml 删除（全局源）
+    src_file = Path(settings.sources_file)
+    if src_file.is_file() and target.owner is None:
+        raw = yaml.safe_load(src_file.read_text(encoding="utf-8")) or {}
+        sources_list: list = raw.get("sources", []) or []
+        before = len(sources_list)
+        sources_list = [s for s in sources_list if isinstance(s, dict) and s.get("id") != target.id]
+        if len(sources_list) < before:
+            raw["sources"] = sources_list
+            src_file.write_text(yaml.dump(raw, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            deleted = True
+
+    # 尝试从 user_sources.yaml 删除（私有源）
+    if not deleted:
+        user_src = get_user_sources_path()
+        if user_src.is_file():
+            raw = yaml.safe_load(user_src.read_text(encoding="utf-8")) or {}
+            sources_list = raw.get("sources", []) or []
+            before = len(sources_list)
+            sources_list = [s for s in sources_list if not (isinstance(s, dict) and s.get("id") == target.id and s.get("owner") == target.owner)]
+            if len(sources_list) < before:
+                raw["sources"] = sources_list
+                user_src.write_text(yaml.dump(raw, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+                deleted = True
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"来源不可删除：{source_id}")
+
+    reload_sources_config()
+    # 清理索引
+    try:
+        conn = get_db()
+        from ..services.indexer import clear_source_index
+        clear_source_index(conn, target.id)
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        try: conn.close()
+        except Exception: pass
+
+    actor = resolve_actor(request)
+    if target.owner and target.owner != actor:
+        _add_notification(target.owner, f"{actor} 删除了您的库 {target.id}，请通过同步控制页面更新库信息",
+                          action_link="/sync/control", highlight=True)
+    add_audit_event("admin_source_deleted", request, actor=actor,
+                    detail=f"id={source_id} owner={target.owner or 'admin'}")
+    return {"ok": True, "deleted": source_id}

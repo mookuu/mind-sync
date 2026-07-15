@@ -45,7 +45,7 @@ def update_settings(
 ) -> dict[str, Any]:
     from ..db import save_user_setting
 
-    updater_username, _ = resolve_current_user(request)
+    updater_username, updater_role = resolve_current_user(request)
     conn = get_db()
     try:
         if payload.auto_sync_enabled is not None:
@@ -64,6 +64,12 @@ def update_settings(
             if preset != "custom" and preset not in SYNC_PRESETS:
                 preset = "all"
             save_user_setting(conn, updater_username, "sync_preset", preset)
+            # 管理员设置同步写入全局键，作为成员的默认值
+            if updater_role == "admin":
+                conn.execute(
+                    "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ("sync_preset", preset),
+                )
         if payload.sync_source_ids is not None:
             import json
 
@@ -78,6 +84,12 @@ def update_settings(
                 and (is_known_sync_key(str(x).strip(), all_src) or str(x).strip() in valid_preset_ids)
             ]
             save_user_setting(conn, updater_username, "sync_source_ids", json.dumps(ids, ensure_ascii=False))
+            # 管理员设置同步写入全局键，作为成员的默认值
+            if updater_role == "admin":
+                conn.execute(
+                    "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ("sync_source_ids", json.dumps(ids, ensure_ascii=False)),
+                )
         if payload.sync_source_order is not None:
             import json
 

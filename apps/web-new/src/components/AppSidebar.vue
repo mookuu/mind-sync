@@ -212,7 +212,7 @@ const orderedItems = computed(() => {
       path: "/sync/control",
       children: [
         { label: "同步控制", icon: "📊", path: "/sync/control" },
-        { label: "素材管理", icon: "📦", path: "/sync/sources" },
+        { label: "同步素材", icon: "📦", path: "/sync/sources" },
         { label: "仓库管理", icon: "🏪", path: "/sync/vault" },
         { label: "规则约束", icon: "📋", path: "/sync/purpose", admin: true },
         { label: "操作记录", icon: "📜", path: "/sync/audit" },
@@ -231,6 +231,7 @@ const orderedItems = computed(() => {
         { label: "系统概览", icon: "📊", path: "/admin/dashboard" },
         { label: "用户管理", icon: "👥", path: "/admin/users" },
         { label: "API keys", icon: "🔑", path: "/admin/api-keys" },
+        { label: "素材管理", icon: "📦", path: "/admin/sources" },
       ],
     });
   }

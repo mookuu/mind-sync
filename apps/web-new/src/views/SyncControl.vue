@@ -47,38 +47,14 @@
     </div>
   </div>
 
-  <!-- 路径有效性警告 -->
-  <div class="settings-section">
-    <h3>📁 知识库状态 <span class="shared-tag">同步范围中各知识库的文件夹路径状态</span></h3>
-    <div v-if="missingFiles.length" class="missing-list">
-      <div class="missing-file-header">
-        <span class="missing-source">库名</span>
-        <span class="missing-owner">拥有者</span>
-        <span class="missing-path">路径</span>
-        <span class="missing-status">状态</span>
-      </div>
-      <div v-for="mf in pagedFiles" :key="mf.source_id" class="missing-file-row">
-        <span class="missing-source">{{ mf.source_id }}</span>
-        <span class="missing-owner">{{ mf.owner ? formatOwner(mf) : '管理员' }}</span>
-        <span class="missing-path">{{ mf.path }}</span>
-        <span class="missing-status"><span class="path-invalid-tag">⚠ 路径无效</span></span>
-      </div>
-      <div v-if="totalPages > 1" class="pagination-row">
-        <button class="btn btn-ghost btn-xs" :disabled="page <= 1" @click="prevPage">‹ 上一页</button>
-        <span class="page-info">{{ page }} / {{ totalPages }}</span>
-        <button class="btn btn-ghost btn-xs" :disabled="page >= totalPages" @click="nextPage">下一页 ›</button>
-      </div>
-    </div>
-    <p v-else class="subtle" style="padding:8px 0">✅ 所有库路径均有效</p>
-  </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onActivated } from "vue";
+import { ref, onMounted, onActivated } from "vue";
 import api from "../api/index.js";
 import { useAuth } from "../composables/useAuth.js";
 
-const { canWrite, isLoggedIn, userRole } = useAuth();
+const { canWrite } = useAuth();
 
 const running = ref(false);
 const currentSource = ref("");
@@ -90,67 +66,7 @@ const statusError = ref(false);
 const autoSyncEnabled = ref(false);
 const autoSyncInterval = ref(60);
 const nextSyncAt = ref("");
-const missingFiles = ref([]);
 const showRebuildConfirm = ref(false);
-
-// 分页
-const pageSize = 10;
-const page = ref(1);
-
-const totalPages = computed(() => Math.max(1, Math.ceil(missingFiles.value.length / pageSize)));
-
-const pagedFiles = computed(() => {
-  const start = (page.value - 1) * pageSize;
-  return missingFiles.value.slice(start, start + pageSize);
-});
-
-function prevPage() { if (page.value > 1) page.value--; }
-function nextPage() { if (page.value < totalPages.value) page.value++; }
-
-function formatOwner(src) {
-  if (!src.owner) return "";
-  const dn = src.owner_display_name;
-  if (!dn || dn === src.owner) return src.owner;
-  return `${dn}(${src.owner})`;
-}
-
-async function loadMissingFiles() {
-  try {
-    const [me, data] = await Promise.all([
-      api("/api/user/me"),
-      api("/api/sources"),
-    ]);
-    const isAdmin = userRole.value === "admin";
-    const currentUser = me.username || "";
-    const items = [];
-    for (const src of (data.sources || [])) {
-      if (src.path && src.path_exists === false) {
-        // 权限过滤：管理员全看，个人只看全局库+自己的库
-        if (!isAdmin && src.owner && src.owner !== currentUser) continue;
-        items.push({
-          source_id: src.id,
-          path: src.path,
-          owner: src.owner,
-          owner_display_name: src.owner_display_name,
-        });
-      }
-    }
-    // 排序：共享库（无 owner）排最前按名称序，有 owner 的按 用户名+库名 排序
-    const ns = (x, y) => String(x || '').localeCompare(String(y || ''), undefined, { numeric: true, sensitivity: 'base' });
-    items.sort((a, b) => {
-      if (!a.owner && !b.owner) return ns(a.source_id, b.source_id);
-      if (!a.owner) return -1;
-      if (!b.owner) return 1;
-      const byOwner = ns(a.owner, b.owner);
-      if (byOwner !== 0) return byOwner;
-      return ns(a.source_id, b.source_id);
-    });
-    missingFiles.value = items;
-    page.value = 1;
-  } catch {
-    missingFiles.value = [];
-  }
-}
 
 async function loadStatus() {
   try {
@@ -242,7 +158,6 @@ async function saveAutoSync() {
 onMounted(() => {
   loadStatus();
   loadSettings();
-  loadMissingFiles();
 });
 
 onActivated(() => {
@@ -275,56 +190,6 @@ onActivated(() => {
 .settings-section h3 { font-size: 1rem; margin-bottom: 8px; }
 .field-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .input-sm { width: 80px; }
-.missing-file-header {
-  display: flex;
-  gap: 12px;
-  padding: 6px 10px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--fg-muted);
-  border-bottom: 2px solid var(--border-default);
-  align-items: center;
-}
-.missing-status {
-  min-width: 80px;
-  text-align: center;
-}
-.missing-file-row {
-  display: flex;
-  gap: 12px;
-  padding: 6px 10px;
-  font-size: 0.85rem;
-  border-bottom: 1px solid var(--border-muted);
-  align-items: center;
-}
-.missing-source {
-  font-weight: 500;
-  min-width: 120px;
-}
-.missing-path {
-  color: var(--fg-subtle);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  flex: 1;
-}
-.missing-owner {
-  font-size: 0.78rem;
-  color: var(--fg-muted);
-  min-width: 100px;
-}
-.pagination-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 10px 0;
-}
-.page-info {
-  font-size: 0.82rem;
-  color: var(--fg-subtle);
-}
-.shared-tag { font-size: 0.7rem; color: var(--fg-subtle); font-weight: 400; opacity: 0.7; margin-left: 6px; }
-.status-msg { margin-top: 8px; font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
 
 /* 确认弹窗 */

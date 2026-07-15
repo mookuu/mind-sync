@@ -11,6 +11,7 @@ import Account from "../views/Account.vue";
 import UsersAdmin from "../views/UsersAdmin.vue";
 import AdminDashboard from "../views/AdminDashboard.vue";
 import ApiKeys from "../views/ApiKeys.vue";
+import SyncSourcesAdmin from "../views/SyncSourcesAdmin.vue";
 
 const routes = [
   {
@@ -51,7 +52,7 @@ const routes = [
     path: "/sync/sources",
     name: "sync-sources",
     component: SyncSources,
-    meta: { title: "素材管理", parent: "sync" },
+    meta: { title: "同步素材", parent: "sync" },
   },
   {
     path: "/sync/vault",
@@ -94,6 +95,12 @@ const routes = [
     name: "admin-api-keys",
     component: ApiKeys,
     meta: { title: "API keys", parent: "admin", adminOnly: true },
+  },
+  {
+    path: "/admin/sources",
+    name: "admin-sources",
+    component: SyncSourcesAdmin,
+    meta: { title: "素材管理", parent: "admin", adminOnly: true },
   },
 ];
 
