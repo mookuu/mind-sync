@@ -20,7 +20,7 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
     volumes:
       - ${DATA_ROOT:-/home/moku/data/mind-sync-data}:/data
-      - ./sources.yaml:/workspace/sources.yaml:ro
+      - ./sources.yaml:/workspace/sources.yaml
       - ./apps/api/app:/app/app
       # 通配映射：用户可添加 /home/moku/ 下任意路径作为素材
       - /home/moku:/home/moku:ro

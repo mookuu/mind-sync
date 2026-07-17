@@ -269,8 +269,9 @@ apps/web-new/
         ├── Graph.vue        # Wiki 图谱（Canvas 力导向图，仅管理员）
         ├── Account.vue      # 账户（个人信息、改密码、会话管理）
         ├── SyncControl.vue  # 同步控制（per-user 增量/全量）
-        ├── SyncSources.vue  # 同步素材（管理员 3 区：全局/我的/共享）
-        ├── SyncVault.vue    # 仓库管理
+        ├── SyncSources.vue       # 同步素材（radio 范围 + 全局/我的/共享折叠区）
+        ├── SyncSourcesAdmin.vue  # 素材管理（admin 专属表格：分页+筛选+操作）
+        ├── SyncVault.vue         # 仓库管理
         ├── SyncPurpose.vue  # 规则约束（仅管理员）
         └── SyncAudit.vue    # 操作记录（角色过滤 + 高亮 + 跳转）
         ├── UsersAdmin.vue   # 用户管理（仅管理员）

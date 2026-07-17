@@ -12,7 +12,7 @@
       - SOURCES_FILE=${SOURCES_FILE:-/workspace/sources.yaml}
     volumes:
       - prod_data:/data
-      - ./sources.yaml:/workspace/sources.yaml:ro
+      - ./sources.yaml:/workspace/sources.yaml
       - ${SOURCE_KNOWLEDGE_ENGINEERING:-./sources/knowledge_engineering}:/sources/knowledge_engineering:ro
       - ${SOURCE_JAVA_BASIC:-./sources/JavaBasic}:/sources/JavaBasic:ro
       - ${SOURCE_PYTHON_BASIC:-./sources/PythonBasic}:/sources/PythonBasic:ro
