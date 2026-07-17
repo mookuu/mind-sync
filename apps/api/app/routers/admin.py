@@ -514,7 +514,7 @@ def admin_sources_status(request: Request, _: Any = Depends(require_admin)) -> d
 
 @router.post("/api/admin/sources/{source_id}/share")
 def admin_toggle_source_share(request: Request, source_id: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
-    """管理员强制切换任意库的共享状态。"""
+    """管理员强制切换任意库的共享状态（含全局库）。"""
     from ..services.user_manager import get_user_sources_path
 
     # 查找源
@@ -529,31 +529,51 @@ def admin_toggle_source_share(request: Request, source_id: str, _: Any = Depends
     if target is None:
         raise HTTPException(status_code=404, detail=f"来源不存在：{source_id}")
 
-    if target.owner is None:
-        raise HTTPException(status_code=400, detail="全局库无需共享设置")
-
-    # 读取 user_sources.yaml
-    user_src = get_user_sources_path()
-    if not user_src.is_file():
-        raise HTTPException(status_code=404, detail="用户源配置文件不存在")
-
     import yaml as _yaml
-    raw = user_src.read_text(encoding="utf-8")
-    config = _yaml.safe_load(raw) or {}
-    sources_list: list = config.get("sources", []) or []
 
-    new_state = None
-    for entry in sources_list:
-        if isinstance(entry, dict) and entry.get("id") == target.id and entry.get("owner") == target.owner:
-            current = bool(entry.get("shared", False))
-            entry["shared"] = not current
-            new_state = not current
+    if target.owner is None:
+        # 全局库：修改 sources.yaml
+        src_file = Path(settings.sources_file)
+        if not src_file.is_file():
+            raise HTTPException(status_code=404, detail="全局源配置文件不存在")
+        raw = src_file.read_text(encoding="utf-8")
+        config = _yaml.safe_load(raw) or {}
+        sources_list: list = config.get("sources", []) or []
+        new_state = None
+        for entry in sources_list:
+            if isinstance(entry, dict) and entry.get("id") == target.id:
+                current = bool(entry.get("shared", False))
+                entry["shared"] = not current
+                new_state = not current
+                config["sources"] = sources_list
+                src_file.write_text(_yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+                break
+        if new_state is None:
+            # 源不在 sources.yaml 中，追加
+            new_state = True
+            sources_list.append({"id": target.id, "type": target.source_type, "path": target.path,
+                                 "include": target.include, "shared": True})
             config["sources"] = sources_list
-            user_src.write_text(_yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
-            break
-
-    if new_state is None:
-        raise HTTPException(status_code=404, detail=f"来源不在可编辑配置中：{source_id}")
+            src_file.write_text(_yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+    else:
+        # 私有库：修改 user_sources.yaml
+        user_src = get_user_sources_path()
+        if not user_src.is_file():
+            raise HTTPException(status_code=404, detail="用户源配置文件不存在")
+        raw = user_src.read_text(encoding="utf-8")
+        config = _yaml.safe_load(raw) or {}
+        sources_list: list = config.get("sources", []) or []
+        new_state = None
+        for entry in sources_list:
+            if isinstance(entry, dict) and entry.get("id") == target.id and entry.get("owner") == target.owner:
+                current = bool(entry.get("shared", False))
+                entry["shared"] = not current
+                new_state = not current
+                config["sources"] = sources_list
+                user_src.write_text(_yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+                break
+        if new_state is None:
+            raise HTTPException(status_code=404, detail=f"来源不在可编辑配置中：{source_id}")
 
     reload_sources_config()
     actor = resolve_actor(request)

@@ -89,18 +89,18 @@ def load_sources_for_user(username: str | None = None, role: str | None = None) 
     """返回当前用户可见的源列表。
 
     - admin → 全部源（含私有）
-    - member → 共享源（owner=None） + 自己的私有源（owner=username）
+    - member → 已共享的全局源（shared=True） + 自己的私有源（owner=username）
        + 其他用户设为共享的源（shared=True 且 owner≠username）
-    - 未登录（username=None） → 仅共享源
+    - 未登录（username=None） → 仅已共享全局源
     """
     all_sources = load_sources()
     if role and role.strip().lower() == "admin":
         return all_sources
     if not username:
-        return [s for s in all_sources if s.owner is None]
+        return [s for s in all_sources if s.owner is None and s.shared]
     return [
         s for s in all_sources
-        if s.owner is None or s.owner == username or (s.shared and s.owner is not None)
+        if (s.owner is None and s.shared) or s.owner == username or (s.shared and s.owner is not None)
     ]
 
 

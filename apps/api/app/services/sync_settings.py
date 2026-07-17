@@ -95,6 +95,7 @@ def list_sync_presets() -> list[dict[str, Any]]:
                 "path_exists": Path(spath).exists() if spath and not spath.startswith(('http://', 'https://', 'git@')) else None,
                 "type": stype,
                 "owner": getattr(src, "owner", None),
+                "shared": bool(getattr(src, "shared", False)),
             }
         )
     return items

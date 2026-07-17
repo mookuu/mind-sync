@@ -49,7 +49,8 @@
         <tbody>
           <tr v-for="s in pagedSources" :key="s.source_id">
             <td>
-              <span v-if="s.owner === 'admin'" class="admin-tag">admin</span>
+              <span v-if="s.owner === null" class="admin-tag">全局</span>
+              <span v-else-if="s.owner === 'admin'" class="admin-tag">admin</span>
               <span v-else>{{ s.owner_display_name || s.owner }}</span>
             </td>
             <td><strong>{{ s.label }}</strong></td>
@@ -59,14 +60,12 @@
               <span v-else class="tag-err">⚠ 无效</span>
             </td>
             <td>
-              <span v-if="s.owner === 'admin'" class="subtle">—</span>
-              <span v-else-if="s.shared" class="tag-shared">🔓 共享中</span>
+              <span v-if="s.shared" class="tag-shared">🔓 共享中</span>
               <span v-else class="tag-private">🔒 私有</span>
             </td>
             <td>{{ formatTime(s.created_at || s.updated_at) }}</td>
             <td class="action-cell">
               <button
-                v-if="s.owner !== 'admin'"
                 class="btn btn-ghost btn-xs"
                 :disabled="acting === s.source_id"
                 @click="toggleShare(s)"

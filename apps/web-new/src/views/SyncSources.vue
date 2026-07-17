@@ -4,21 +4,31 @@
 
     <!-- 同步范围 -->
     <section class="settings-section">
-      <h3>同步范围 <span class="shared-tag">勾选要同步的库，修改后立即生效</span></h3>
+      <h3>同步范围 <span class="shared-tag">选择同步方式，修改后立即生效</span></h3>
 
       <template v-if="dataLoaded">
       <div class="preset-list">
-        <!-- 全部知识库（master toggle） -->
-        <label class="preset-option" :class="{ selected: isAll }">
-          <input type="checkbox" :checked="isAll" @change="onToggleAll" />
-          <div>
-            <div class="preset-label">全部同步</div>
-            <div class="preset-desc">{{ isAdmin ? '同步全部全局知识库' : '同步我的全部知识库' }}</div>
-          </div>
-        </label>
+        <!-- 同步范围：radio button -->
+        <div class="sync-range-radios">
+          <label class="preset-option radio-option" :class="{ selected: isAll }">
+            <input type="radio" name="syncRange" :checked="isAll" @change="onToggleAll" />
+            <div>
+              <div class="preset-label">全部同步</div>
+              <div class="preset-desc">同步所有共享中的全局库和其他用户共享库</div>
+            </div>
+          </label>
+          <label class="preset-option radio-option" :class="{ selected: !isAll }">
+            <input type="radio" name="syncRange" :checked="!isAll" @change="onToggleCustom" />
+            <div>
+              <div class="preset-label">自定义</div>
+              <div class="preset-desc">手动选择要同步的库</div>
+            </div>
+          </label>
+        </div>
 
+        <div v-show="!isAll">
         <!-- ===== 全局知识库（折叠） ===== -->
-        <div class="section-label collapsible" @click="toggleSection('shared')">
+        <div v-if="sharedPresets.length > 0" class="section-label collapsible" @click="toggleSection('shared')">
           <span class="chevron">{{ sectionExpanded.shared ? '▾' : '▸' }}</span>
           <span>📚 全局知识库</span>
           <span class="subtle">管理员配置，{{ isAdmin ? '可管理' : '只读' }}</span>
@@ -51,16 +61,16 @@
               </div>
             </label>
             <button
-              v-if="!defaultPresetIds.includes(p.id) && isAdmin"
+              v-if="isAdmin"
+              class="btn btn-ghost btn-sm share-source-btn"
+              :title="p.shared ? '取消共享' : '共享给角色用户'"
+              :disabled="isAll || sharing === p.id"
+              @click="toggleGlobalShare(p)"
+            >{{ p.shared ? '🔓' : '🔒' }}</button>
+            <button
+              v-if="isAdmin"
               class="btn btn-ghost btn-sm delete-source-btn"
               title="删除此库"
-              :disabled="isAll || deleting === p.id"
-              @click="deleteSharedSource(p)"
-            >✕</button>
-            <button
-              v-if="p.path_exists === false && isAdmin"
-              class="btn btn-ghost btn-sm delete-source-btn"
-              title="此路径无效，点击删除"
               :disabled="isAll || deleting === p.id"
               @click="deleteSharedSource(p)"
             >✕</button>
@@ -147,12 +157,6 @@
         </div>
         <template v-if="!isAdmin && sectionExpanded.private">
           <template v-for="group in groupedPrivateSources" :key="group.owner || '__ungrouped__'">
-            <div v-if="group.owner" class="owner-group-label collapsible" @click="togglePrivateGroup(group.owner)">
-              <span class="chevron">{{ privateGroupExpanded[group.owner] !== false ? '▾' : '▸' }}</span>
-              <span class="owner-label">👤 {{ formatOwnerLabel(group.owner) }}<span class="role-tag">{{ getOwnerRoleLabel(group.owner) }}</span></span>
-              <span class="subtle" style="font-size:0.7rem;margin-left:4px">({{ group.sources.length }})</span>
-            </div>
-            <div v-if="!group.owner || privateGroupExpanded[group.owner] !== false">
             <div
               v-for="p in group.sources"
               :key="p.id"
@@ -191,7 +195,6 @@
                 @click="deletePrivateSource(p)"
               >✕</button>
             </div>
-            </div>
           </template>
 
           <!-- 添加私有库：仅非管理员 -->
@@ -206,7 +209,7 @@
         </template>
 
         <!-- ===== 共享知识库 ===== -->
-        <div class="section-label collapsible" @click="toggleSection('shared_public')" style="margin-top:8px">
+        <div v-if="groupedSharedPublicSources.length > 0" class="section-label collapsible" @click="toggleSection('shared_public')" style="margin-top:8px">
           <span class="chevron">{{ sectionExpanded.shared_public ? '▾' : '▸' }}</span>
           <span>🌐 共享知识库</span>
           <span class="subtle">其他用户共享的个人库</span>
@@ -246,6 +249,7 @@
           </template>
           <p v-if="!groupedSharedPublicSources.length" class="subtle" style="padding:8px 4px">暂无其他用户共享的知识库</p>
         </template>
+        </div>
       </div>
       </template>
 
@@ -454,16 +458,10 @@ const sharedPresets = computed(() => {
     const seen = new Set(base.map(p => p.id));
     const merged = [...base];
 
-    // 非管理员：只显示管理员已勾选的全局库（来自全局设置键）
+    // 非管理员：只显示已共享的全局库（shared=true）
     let filtered = merged.filter(p => p && !p.owner);
     if (!isAdmin.value) {
-      if (syncPreset.value === "all") {
-        // 管理员选了全部同步 → 显示全部全局库
-      } else {
-        // 只显示管理员勾选的库（syncSourceIds 来自全局键）
-        const adminSelectedIds = new Set(syncSourceIds.value || []);
-        filtered = filtered.filter(p => adminSelectedIds.has(p.id));
-      }
+      filtered = filtered.filter(p => p.shared === true);
     }
 
     // 排序：Obsidian/Web快照/Wiki 固定在最前，其余按 label 字母序
@@ -582,23 +580,24 @@ async function loadPrivateSources() {
 }
 
 function onToggleAll() {
-  if (isAll.value) {
-    // 从全部同步切回自定义：恢复之前保存的选择
-    if (isAdmin.value) {
-      setCustomSources(backupIds.value);
-    }
-    localStorage.removeItem(backupKey());
-    if (!isAdmin.value) {
-      localAllMode.value = false;
-    }
+  // 切换到全部同步
+  backupIds.value = [...syncSourceIds.value];
+  localStorage.setItem(backupKey(), JSON.stringify(backupIds.value));
+  if (isAdmin.value) {
+    setPreset("all");
   } else {
-    backupIds.value = [...syncSourceIds.value];
-    localStorage.setItem(backupKey(), JSON.stringify(backupIds.value));
-    if (isAdmin.value) {
-      setPreset("all");
-    } else {
-      localAllMode.value = true;
-    }
+    localAllMode.value = true;
+  }
+}
+
+function onToggleCustom() {
+  // 切换到自定义：恢复之前保存的选择
+  if (isAdmin.value) {
+    setCustomSources(backupIds.value);
+  }
+  localStorage.removeItem(backupKey());
+  if (!isAdmin.value) {
+    localAllMode.value = false;
   }
 }
 
@@ -650,6 +649,20 @@ async function toggleShare(p) {
     await loadPrivateSources();
   } catch (e) {
     // ignore
+  } finally {
+    sharing.value = "";
+  }
+}
+
+async function toggleGlobalShare(p) {
+  sharing.value = p.id;
+  try {
+    const data = await api(`/api/admin/sources/${encodeURIComponent(p.sync_key || p.id)}/share`, { method: "POST" });
+    p.shared = data.shared;
+    await reload();
+    await loadPrivateSources();
+  } catch (e) {
+    toast.error(e.message || "操作失败");
   } finally {
     sharing.value = "";
   }
@@ -1035,4 +1048,19 @@ onUnmounted(() => {
 }
 .status-msg { margin-top: 6px; font-size: 0.85rem; color: var(--fg-muted); }
 .status-msg.error { color: var(--danger-fg); }
+
+/* Sync range radios */
+.sync-range-radios {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sync-range-radios .radio-option {
+  flex: 1;
+  justify-content: center;
+  text-align: center;
+}
+.sync-range-radios .radio-option input[type="radio"] {
+  margin-top: 3px;
+}
 </style>
