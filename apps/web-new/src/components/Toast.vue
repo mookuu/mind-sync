@@ -50,6 +50,8 @@ onUnmounted(() => window.removeEventListener("mind-toast", onToastEvent));
   position: fixed;
   top: 16px;
   left: 50%;
+  right: auto;
+  bottom: auto;
   transform: translateX(-50%);
   z-index: 9999;
   display: flex;
@@ -57,6 +59,8 @@ onUnmounted(() => window.removeEventListener("mind-toast", onToastEvent));
   align-items: center;
   gap: 8px;
   pointer-events: none;
+  width: max-content;
+  max-width: 90vw;
 }
 .toast {
   pointer-events: auto;
