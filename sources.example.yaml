@@ -13,6 +13,7 @@ sources:
       - "**/*.java"
 
   # Obsidian Web Clipper 导出目录
+  # 本地路径示例：/home/moku/data/mind-sync-data/obsidian
   - id: obsidian
     type: local
     order: 20
@@ -59,15 +60,18 @@ sources:
       - "**/*.py"
 
   # Web 源：见 .env WEB_FETCH_* 与 fetch_confirmed
+  # 占位示例，启用时替换 url 并将 fetch_confirmed 设为 true
   - id: example_web
     type: web
     order: 60
     url: "https://example.com"
-    fetch_confirmed: true
+    fetch_confirmed: false
     path: "/sources/web_snapshots/example_web"
     include:
       - "**/*.md"
 
+  # Wiki 知识库
+  # 本地路径示例：/home/moku/data/mind-sync-data/wiki
   - id: wiki
     type: local
     order: 100

@@ -4,7 +4,7 @@
 
     <!-- 同步范围 -->
     <section class="settings-section">
-      <h3>同步范围 <span class="shared-tag">选择同步方式，修改后立即生效</span></h3>
+      <h3>同步范围</h3>
 
       <template v-if="dataLoaded">
       <div class="preset-list">
@@ -53,7 +53,7 @@
                 @change="onTogglePreset(p.id)"
               />
               <div>
-                <div class="preset-label">{{ p.label }}</div>
+                <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
                 <div class="preset-desc" :class="{ 'path-invalid': p.path && p.path_exists === false }">
                   {{ displayPath(p.path || p.description || '') }}
                   <span v-if="p.path && p.path_exists === false" class="path-invalid-tag" title="此路径在服务器上不存在，请删除或更新">⚠ 路径无效</span>
