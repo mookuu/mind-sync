@@ -4,7 +4,7 @@
 
     <!-- 同步范围 -->
     <section class="settings-section">
-      <h3>同步范围</h3>
+      
 
       <template v-if="dataLoaded">
       <div class="preset-list">
