@@ -1,10 +1,22 @@
 <template>
   <div class="view-pane">
-    <div class="view-header">
+    <div class="view-header" style="display:flex;align-items:center">
       <h2>👥 用户管理</h2>
+      <div style="margin-left:auto">
+        <button class="btn btn-ghost btn-sm" @click="refresh" :disabled="refreshing" title="刷新">↻</button>
+      </div>
     </div>
 
     <p class="subtle">管理团队用户。新用户会自动创建专属目录和默认私有库。</p>
+
+    <!-- 全局统计 -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-value">{{ stats.doc_count ?? '-' }}</div><div class="stat-label">文档总数</div></div>
+      <div class="stat-card"><div class="stat-value">{{ stats.src_count ?? '-' }}</div><div class="stat-label">库总数</div></div>
+      <div class="stat-card"><div class="stat-value">{{ stats.user_count ?? '-' }}</div><div class="stat-label">用户数</div></div>
+      <div class="stat-card"><div class="stat-value">{{ stats.wiki_pages ?? '-' }}</div><div class="stat-label">Wiki 页面</div></div>
+      <div class="stat-card"><div class="stat-value">{{ formatBytes(stats.db_size) }}</div><div class="stat-label">数据库</div></div>
+    </div>
 
     <div class="toolbar">
       <button class="btn btn-primary btn-sm" @click="openCreate">＋ 创建用户</button>
@@ -17,6 +29,9 @@
           <th>表示名</th>
           <th>状态</th>
           <th>角色</th>
+          <th>源数</th>
+          <th>文档数</th>
+          <th>专属目录</th>
           <th>创建时间</th>
           <th>操作</th>
         </tr>
@@ -36,6 +51,9 @@
               <option value="admin">admin</option>
             </select>
           </td>
+          <td>{{ u.source_count ?? '-' }}</td>
+          <td>{{ u.doc_count ?? '-' }}</td>
+          <td>{{ u.has_dir ? '✅' : '❌' }}</td>
           <td>{{ formatTime(u.created_at) }}</td>
           <td class="action-cell">
             <button class="btn btn-ghost btn-xs" @click="showResetPwd(u)">重置密码</button>
@@ -153,6 +171,8 @@ import { ref, onMounted, onUnmounted, onActivated } from "vue";
 import api from "../api/index.js";
 
 const users = ref([]);
+const stats = ref({});
+const refreshing = ref(false);
 const showCreate = ref(false);
 const createMsg = ref("");
 const createError = ref(false);
@@ -160,8 +180,8 @@ const creating = ref(false);
 const deleteTarget = ref(null);
 const deleting = ref(false);
 const resetTarget = ref(null);
-const resetPassword = ref("");
-const resetPasswordConfirm = ref("");
+const resetPassword = [redacted]"");
+const resetPasswordConfirm = [redacted]"");
 const resetting = ref(false);
 const resetMsg = ref("");
 const resetError = ref(false);
@@ -176,16 +196,40 @@ const newUser = ref({ username: "", password: "", role: "member", display_name: 
 
 async function loadUsers() {
   try {
-    const data = await api("/api/admin/users");
-    const list = data.users || [];
+    const [data, s] = await Promise.all([
+      api("/api/admin/users"),
+      api("/api/admin/stats"),
+    ]);
+    const docMap = s.user_doc_counts || {};
+    const totalDocs = s.doc_count || 0;
+    const list = (data.users || []).map(u => ({
+      ...u,
+      doc_count: u.role === 'admin' ? totalDocs : (docMap[u.username] || 0),
+      source_count: u.source_count ?? (u.role === 'admin' ? (s.src_count || 0) : 0),
+    }));
     list.sort((a, b) => {
       if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
       return (a.username || '').localeCompare(b.username || '', undefined, { numeric: true });
     });
     users.value = list;
+    stats.value = s;
   } catch {
     users.value = [];
+    stats.value = {};
   }
+}
+
+async function refresh() {
+  refreshing.value = true;
+  await loadUsers();
+  refreshing.value = false;
+}
+
+function formatBytes(bytes) {
+  if (!bytes && bytes !== 0) return "-";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 async function doCreateUser() {
@@ -289,7 +333,7 @@ async function doResetPassword() {
   try {
     await api(`/api/admin/users/${encodeURIComponent(resetTarget.value.username)}/reset-password`, {
       method: "POST",
-      body: { new_password: resetPassword.value },
+      body: { new_password: rese***********alue },
     });
     resetMsg.value = "密码已重置";
     setTimeout(() => { resetTarget.value = null; }, 1200);
@@ -331,6 +375,21 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+.stat-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: center;
+}
+.stat-value { font-size: 1.4rem; font-weight: 700; }
+.stat-label { font-size: 0.75rem; color: var(--fg-muted); margin-top: 2px; }
+
 .user-table {
   width: 100%;
   border-collapse: collapse;
@@ -346,33 +405,10 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--fg-muted);
   font-size: 0.8rem;
-  text-transform: uppercase;
 }
 .role-select {
   font-size: 0.85rem;
   padding: 2px 6px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  background: var(--bg-card);
-  color: var(--fg-default);
-}
-.modal-sm {
-  width: 400px;
-}
-.field {
-  margin-bottom: 12px;
-}
-.field label {
-  display: block;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--fg-muted);
-  margin-bottom: 4px;
-}
-.field input, .field select {
-  width: 100%;
-  padding: 8px 10px;
-  font-size: 0.9rem;
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
   background: var(--bg-card);
@@ -419,9 +455,7 @@ onUnmounted(() => {
   flex-direction: column;
   box-shadow: var(--shadow-lg);
 }
-.modal-sm {
-  width: 400px;
-}
+.modal-sm { width: 400px; }
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -430,17 +464,29 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border-muted);
 }
 .modal-header h4 { font-size: 1rem; font-weight: 600; }
-.modal-body {
-  padding: 12px 16px;
-  overflow-y: auto;
-  flex: 1;
-}
-.subtle-tag { font-size: 0.7rem; color: var(--fg-subtle); margin-left: 4px; }
+.modal-body { padding: 12px 16px; overflow-y: auto; flex: 1; }
 .modal-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
   border-top: 1px solid var(--border-muted);
+}
+.field { margin-bottom: 12px; }
+.field label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--fg-muted);
+  margin-bottom: 4px;
+}
+.field input, .field select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--fg-default);
 }
 </style>

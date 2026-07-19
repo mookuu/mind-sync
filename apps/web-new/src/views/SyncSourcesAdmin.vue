@@ -12,7 +12,7 @@
       <div class="filter-bar">
         <div class="filter-dropdown-wrapper">
           <button class="btn btn-ghost btn-sm" @click="ownerDropdownOpen = !ownerDropdownOpen">
-            👤 {{ filterOwner || '拥有者' }} ▾
+            👤 {{ filterOwner || '用户名' }} ▾
           </button>
           <div v-if="ownerDropdownOpen" class="filter-dropdown">
             <div class="filter-dropdown-item" @click="filterOwner = ''; ownerDropdownOpen = false">全部</div>
@@ -37,7 +37,7 @@
       <table class="sources-table">
         <thead>
           <tr>
-            <th>拥有者</th>
+            <th>用户名</th>
             <th>库名</th>
             <th>库路径</th>
             <th>库状态</th>

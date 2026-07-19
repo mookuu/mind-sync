@@ -9,7 +9,6 @@ import SyncPurpose from "../views/SyncPurpose.vue";
 import SyncAudit from "../views/SyncAudit.vue";
 import Account from "../views/Account.vue";
 import UsersAdmin from "../views/UsersAdmin.vue";
-import AdminDashboard from "../views/AdminDashboard.vue";
 import ApiKeys from "../views/ApiKeys.vue";
 import SyncSourcesAdmin from "../views/SyncSourcesAdmin.vue";
 
@@ -83,12 +82,6 @@ const routes = [
     name: "admin-users",
     component: UsersAdmin,
     meta: { title: "用户管理", parent: "admin", adminOnly: true },
-  },
-  {
-    path: "/admin/dashboard",
-    name: "admin-dashboard",
-    component: AdminDashboard,
-    meta: { title: "系统概览", parent: "admin", adminOnly: true },
   },
   {
     path: "/admin/api-keys",

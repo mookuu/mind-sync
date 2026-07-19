@@ -274,8 +274,7 @@ apps/web-new/
         ├── SyncVault.vue         # 仓库管理
         ├── SyncPurpose.vue  # 规则约束（仅管理员）
         └── SyncAudit.vue    # 操作记录（角色过滤 + 高亮 + 跳转）
-        ├── UsersAdmin.vue   # 用户管理（仅管理员）
-        ├── AdminDashboard.vue # 系统概览（仅管理员）
+        ├── UsersAdmin.vue   # 用户管理 + 系统概览（统计卡片 + 用户 CRUD，仅管理员）
         └── ApiKeys.vue      # API key 管理（仅管理员）
 ```
 

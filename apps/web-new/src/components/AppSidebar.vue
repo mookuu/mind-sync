@@ -170,7 +170,7 @@ const expanded = ref({});
 // 根据当前路由自动展开对应父级
 function expandForRoute(path) {
   if (path.startsWith('/sync/')) return { '/sync/control': true };
-  if (path.startsWith('/admin/')) return { '/admin/dashboard': true };
+  if (path.startsWith('/admin/')) return { '/admin/users': true };
   if (path === '/library') return { '/library': true };
   return {};
 }
@@ -226,9 +226,8 @@ const orderedItems = computed(() => {
     items.push({
       label: "系统管理",
       icon: "⚙️",
-      path: "/admin/dashboard",
+      path: "/admin/users",
       children: [
-        { label: "系统概览", icon: "📊", path: "/admin/dashboard" },
         { label: "用户管理", icon: "👥", path: "/admin/users" },
         { label: "API keys", icon: "🔑", path: "/admin/api-keys" },
         { label: "素材管理", icon: "📦", path: "/admin/sources" },
