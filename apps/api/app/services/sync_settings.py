@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from ..models import Source
-from .indexer import load_sources, load_sources_for_user
+from .indexer import load_sources, load_sources_for_user, resolve_source_root
 from .source_sync_key import (
     expand_sync_keys,
     filter_sources_by_sync_keys,
@@ -62,8 +62,9 @@ def list_sync_presets() -> list[dict[str, Any]]:
     items = []
     fixed_ids = {"all", "obsidian", "web_snapshots", "wiki"}
     all_sources = load_sources()
-    # 构建 fixed_id → shared 映射
+    # 构建 fixed_id → shared 映射；用 resolve_source_root 检查路径存在性
     src_shared = {s.id: bool(s.shared) for s in all_sources}
+    src_path_exists = {s.id: resolve_source_root(s).exists() for s in all_sources}
 
     for key, meta in SYNC_PRESETS.items():
         presets_path = meta.get("path", "")
@@ -74,7 +75,7 @@ def list_sync_presets() -> list[dict[str, Any]]:
                 "description": meta.get("description", ""),
                 "source_ids": meta.get("source_ids"),
                 "path": presets_path,
-                "path_exists": Path(presets_path).expanduser().exists() if presets_path else None,
+                "path_exists": src_path_exists.get(key),
                 "shared": src_shared.get(key, False),
             }
         )

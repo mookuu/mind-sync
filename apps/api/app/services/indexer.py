@@ -105,7 +105,7 @@ def load_sources_for_user(username: str | None = None, role: str | None = None) 
 
 
 def resolve_source_root(source: Source) -> Path:
-    p = adapter_resolve_source_root(source_to_spec(source))
+    p = adapter_resolve_source_root(source_to_spec(source)).expanduser()
     if p.exists():
         return p
     fallback = Path("/sources") / source.id
