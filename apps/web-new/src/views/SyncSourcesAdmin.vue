@@ -12,7 +12,7 @@
       <div class="filter-bar">
         <div class="filter-dropdown-wrapper">
           <button class="btn btn-ghost btn-sm" @click="ownerDropdownOpen = !ownerDropdownOpen">
-            👤 {{ filterOwner || '用户名' }} ▾
+            👤 {{ filterOwner || '用户' }} ▾
           </button>
           <div v-if="ownerDropdownOpen" class="filter-dropdown">
             <div class="filter-dropdown-item" @click="filterOwner = ''; ownerDropdownOpen = false">全部</div>
@@ -37,7 +37,7 @@
       <table class="sources-table">
         <thead>
           <tr>
-            <th>用户名</th>
+            <th>用户</th>
             <th>库名</th>
             <th>库路径</th>
             <th>库状态</th>
@@ -53,8 +53,8 @@
               <span v-else-if="s.owner === 'admin'" class="admin-tag">admin</span>
               <span v-else>{{ s.owner_display_name || s.owner }}</span>
             </td>
-            <td>{{ s.label }}</td>
-            <td class="path-cell">{{ s.path }}</td>
+            <td>{{ labelName(s.label) }}<span class="label-type-tag">{{ labelType(s.label) }}</span></td>
+            <td class="path-cell">{{ displayPath(s.path) }}</td>
             <td>
               <span v-if="s.path_exists" class="tag-ok">✅ 有效</span>
               <span v-else class="tag-err">⚠ 无效</span>
@@ -174,6 +174,28 @@ const pagedSources = computed(() => {
 function formatTime(ts) {
   if (!ts || ts <= 0) return "—";
   return new Date(ts * 1000).toLocaleString();
+}
+
+// 从 "库名:类型" label 中提取库名
+function labelName(label) {
+  if (!label) return "";
+  const idx = label.lastIndexOf(":");
+  return idx > 0 ? label.slice(0, idx) : label;
+}
+// 从 "库名:类型" label 中提取类型标签
+function labelType(label) {
+  if (!label) return "";
+  const idx = label.lastIndexOf(":");
+  return idx > 0 ? label.slice(idx) : "";
+}
+
+// 路径显示：容器内路径转为 ~ 格式
+function displayPath(path) {
+  if (!path) return "";
+  return path
+    .replace(/^\/home\/moku\//, "~/")
+    .replace(/^\/data\/users\//, "~/data/mind-sync-data/users/")
+    .replace(/^\/data\//, "~/data/mind-sync-data/");
 }
 
 async function loadSources() {
@@ -345,6 +367,7 @@ onActivated(() => {
 .tag-err { color: #dc2626; font-size: 0.8rem; }
 .tag-shared { color: var(--accent-fg); font-size: 0.8rem; }
 .tag-private { color: var(--fg-subtle); font-size: 0.8rem; }
+.label-type-tag { font-size: 0.72rem; color: var(--fg-subtle); margin-left: 2px; }
 
 .pagination-row {
   display: flex;
