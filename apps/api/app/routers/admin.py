@@ -498,7 +498,7 @@ def admin_sources_status(request: Request, _: Any = Depends(require_admin)) -> d
             "label": source_display_label(src),
             "owner": display_owner,
             "owner_display_name": owner_dn or display_owner,
-            "path": str(root),
+            "path": src.path or str(root),
             "path_exists": root.exists(),
             "shared": bool(src.shared),
             "source_type": src.source_type or "local",

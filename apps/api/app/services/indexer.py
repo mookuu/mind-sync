@@ -108,6 +108,9 @@ def resolve_source_root(source: Source) -> Path:
     p = adapter_resolve_source_root(source_to_spec(source)).expanduser()
     if p.exists():
         return p
+    fallback = Path("/data") / source.id
+    if fallback.exists():
+        return fallback
     fallback = Path("/sources") / source.id
     if fallback.exists():
         return fallback
