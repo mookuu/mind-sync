@@ -19,18 +19,27 @@ services:
       - VAULT_GIT_BRANCH=${VAULT_GIT_BRANCH:-main}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
     volumes:
+    #  容器内外路径映射：确保容器能访问到目录
       - ${DATA_ROOT:-${HOME}/data/mind-sync-data}:/data
       - ./sources.yaml:/workspace/sources.yaml
       - ./apps/api/app:/app/app
       # 通配映射：用户可添加 HOME 下任意路径作为素材
       - ${HOME}:/home/moku:ro
       # 默认共享库
-      - ${SOURCE_OBSIDIAN:-./sources/obsidian}:/sources/obsidian:ro
-      - ${SOURCE_WEB_SNAPSHOTS:-./sources/web_snapshots}:/sources/web_snapshots
+      - ${SOURCE_OBSIDIAN:-${HOME}/data/mind-sync-data/obsidian}:/sources/obsidian:ro
+      - ${SOURCE_WEB_SNAPSHOTS:-${HOME}/data/mind-sync-data/web_snapshots}:/sources/web_snapshots
+      - ${SOURCE_WIKI:-${HOME}/data/mind-sync-data/wiki}:/sources/wiki
+      # - ${SOURCE_EXAMPLE_GITHUB:-${HOME}/data/mind-sync-data}/example_github}:/sources/example_github
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
