@@ -78,3 +78,12 @@ sources:
     path: "/data/wiki"
     include:
       - "**/*.md"
+
+  # Web 快照库
+  # 本地路径示例：/home/moku/data/mind-sync-data/web_snapshots
+  - id: web_snapshots
+    type: local
+    order: 80
+    path: "/sources/web_snapshots"
+    include:
+      - "**/*.md"

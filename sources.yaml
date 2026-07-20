@@ -1,91 +1,22 @@
 sources:
-- id: obsidian
-  type: local
-  order: 20
-  path: /home/moku/data/mind-sync-data/obsidian
-  include:
-  - '**/*.md'
-- id: wiki
-  type: local
-  order: 100
-  path: /home/moku/data/mind-sync-data/wiki
-  include:
-  - '**/*.md'
-  shared: true
-- id: example_web
-  type: web
-  order: 60
-  url: https://example.com
-  fetch_confirmed: false
-  path: /home/moku/data/mind-sync-data/web_snapshots/example_web
-  include:
-  - '**/*.md'
-- id: JavaBasic
-  type: local
-  path: /home/moku/projects/JavaBasic
-  include:
-  - '**/*.md'
-  - '**/*.py'
-  - '**/*.java'
-  - '**/*.txt'
-  - '**/*.json'
-  - '**/*.yaml'
-  - '**/*.yml'
-  - '**/*.xml'
-  - '**/*.html'
-  - '**/*.css'
-  - '**/*.js'
-  - '**/*.ts'
-  - '**/*.sh'
-  - '**/*.bash'
-  - '**/*.sql'
-  - '**/*.cfg'
-  - '**/*.ini'
-  - '**/*.toml'
-  shared: true
-- id: data
-  type: local
-  path: /home/moku/projects/data
-  include:
-  - '**/*.md'
-  - '**/*.py'
-  - '**/*.java'
-  - '**/*.txt'
-  - '**/*.json'
-  - '**/*.yaml'
-  - '**/*.yml'
-  - '**/*.xml'
-  - '**/*.html'
-  - '**/*.css'
-  - '**/*.js'
-  - '**/*.ts'
-  - '**/*.sh'
-  - '**/*.bash'
-  - '**/*.sql'
-  - '**/*.cfg'
-  - '**/*.ini'
-  - '**/*.toml'
-  shared: true
-- id: AI
-  type: local
-  path: /home/moku/projects/AI
-  include:
-  - '**/*.md'
-  - '**/*.py'
-  - '**/*.java'
-  - '**/*.txt'
-  - '**/*.json'
-  - '**/*.yaml'
-  - '**/*.yml'
-  - '**/*.xml'
-  - '**/*.html'
-  - '**/*.css'
-  - '**/*.js'
-  - '**/*.ts'
-  - '**/*.sh'
-  - '**/*.bash'
-  - '**/*.sql'
-  - '**/*.cfg'
-  - '**/*.ini'
-  - '**/*.toml'
-  shared: false
+  - id: obsidian
+    type: local
+    order: 20
+    path: ~/data/mind-sync-data/obsidian
+    include:
+      - "**/*.md"
+    shared: true
+  - id: wiki
+    type: local
+    order: 100
+    path: ~/data/mind-sync-data/wiki
+    include:
+      - "**/*.md"
+    shared: true
+  - id: web_snapshots
+    type: local
+    order: 80
+    path: ~/data/mind-sync-data/web_snapshots
+    include:
+      - "**/*.md"
+    shared: true
