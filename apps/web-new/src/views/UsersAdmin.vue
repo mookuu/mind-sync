@@ -333,7 +333,7 @@ async function doResetPassword() {
   try {
     await api(`/api/admin/users/${encodeURIComponent(resetTarget.value.username)}/reset-password`, {
       method: "POST",
-      body: { new_password: rese***********alue },
+      body: { new_password: resetPassword.value },
     });
     resetMsg.value = "密码已重置";
     setTimeout(() => { resetTarget.value = null; }, 1200);
