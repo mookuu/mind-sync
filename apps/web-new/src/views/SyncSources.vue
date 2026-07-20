@@ -13,15 +13,13 @@
           <label class="preset-option radio-option" :class="{ selected: isAll }">
             <input type="radio" name="syncRange" :checked="isAll" @change="onToggleAll" />
             <div>
-              <div class="preset-label">全部同步</div>
-              <div class="preset-desc">同步所有共享中的全局库和其他用户共享库</div>
+              <div class="preset-label">全部同步 <span class="shared-tag">同步所有共享库和个人库</span></div>
             </div>
           </label>
           <label class="preset-option radio-option" :class="{ selected: !isAll }">
             <input type="radio" name="syncRange" :checked="!isAll" @change="onToggleCustom" />
             <div>
-              <div class="preset-label">自定义</div>
-              <div class="preset-desc">手动选择要同步的库</div>
+              <div class="preset-label">自定义 <span class="shared-tag">自定义同步库</span></div>
             </div>
           </label>
         </div>
@@ -53,9 +51,9 @@
                 @change="onTogglePreset(p.id)"
               />
               <div>
-                <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span></div>
+                <div class="preset-label">{{ p.label }}<span v-if="p.shared" class="shared-tag">共享中</span><span v-if="p.description" class="shared-tag">{{ p.description }}</span></div>
                 <div class="preset-desc" :class="{ 'path-invalid': p.path && p.path_exists === false }">
-                  {{ displayPath(p.path || p.description || '') }}
+                  {{ displayPath(p.path || '') }}
                   <span v-if="p.path && p.path_exists === false" class="path-invalid-tag" title="此路径在服务器上不存在，请删除或更新">⚠ 路径无效</span>
                 </div>
               </div>

@@ -23,16 +23,19 @@ SYNC_PRESETS: dict[str, dict[str, Any]] = {
         "label": "Obsidian 剪藏",
         "description": "Obsidian Web Clipper 等导出的 Markdown",
         "source_ids": ["obsidian"],
+        "path": "~/data/mind-sync-data/obsidian",
     },
     "web_snapshots": {
         "label": "Web 快照",
         "description": "type: web 抓取并转换的 Markdown",
         "source_ids": ["example_web"],
+        "path": "~/data/mind-sync-data/web_snapshots",
     },
     "wiki": {
         "label": "Wiki",
         "description": "摘要与问答沉淀目录",
         "source_ids": ["wiki"],
+        "path": "~/data/mind-sync-data/wiki",
     },
 }
 
@@ -58,6 +61,10 @@ SOURCE_LABELS = {
 def list_sync_presets() -> list[dict[str, Any]]:
     items = []
     fixed_ids = {"all", "obsidian", "web_snapshots", "wiki"}
+    all_sources = load_sources()
+    # 构建 fixed_id → shared 映射
+    src_shared = {s.id: bool(s.shared) for s in all_sources}
+
     for key, meta in SYNC_PRESETS.items():
         presets_path = meta.get("path", "")
         items.append(
@@ -67,12 +74,12 @@ def list_sync_presets() -> list[dict[str, Any]]:
                 "description": meta.get("description", ""),
                 "source_ids": meta.get("source_ids"),
                 "path": presets_path,
-                "path_exists": Path(presets_path).exists() if presets_path else None,
+                "path_exists": Path(presets_path).expanduser().exists() if presets_path else None,
+                "shared": src_shared.get(key, False),
             }
         )
     from .source_sync_key import source_sync_key
 
-    all_sources = load_sources()
     seen_ids = set()
     for src in all_sources:
         if src.id in fixed_ids:

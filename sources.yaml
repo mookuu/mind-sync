@@ -1,22 +1,22 @@
 sources:
-  - id: obsidian
-    type: local
-    order: 20
-    path: ~/data/mind-sync-data/obsidian
-    include:
-      - "**/*.md"
-    shared: true
-  - id: wiki
-    type: local
-    order: 100
-    path: ~/data/mind-sync-data/wiki
-    include:
-      - "**/*.md"
-    shared: true
-  - id: web_snapshots
-    type: local
-    order: 80
-    path: ~/data/mind-sync-data/web_snapshots
-    include:
-      - "**/*.md"
-    shared: true
+- id: obsidian
+  type: local
+  order: 20
+  path: ~/data/mind-sync-data/obsidian
+  include:
+  - '**/*.md'
+  shared: false
+- id: wiki
+  type: local
+  order: 100
+  path: ~/data/mind-sync-data/wiki
+  include:
+  - '**/*.md'
+  shared: false
+- id: web_snapshots
+  type: local
+  order: 80
+  path: ~/data/mind-sync-data/web_snapshots
+  include:
+  - '**/*.md'
+  shared: true
