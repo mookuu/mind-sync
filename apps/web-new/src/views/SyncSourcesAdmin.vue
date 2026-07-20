@@ -108,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, onActivated } from "vue";
 import api from "../api/index.js";
 
 const sources = ref([]);
@@ -254,6 +254,11 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('keydown', onGlobalKeydown);
   document.removeEventListener('click', onClickOutside);
+});
+
+// 从同步素材页切回时刷新（如添加/删除源后）
+onActivated(() => {
+  loadSources();
 });
 </script>
 
