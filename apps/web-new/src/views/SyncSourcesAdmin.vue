@@ -21,6 +21,17 @@
         </div>
         <input v-model="filterName" type="text" placeholder="🔍 筛选库名…" class="filter-input" />
         <div class="filter-dropdown-wrapper">
+          <button class="btn btn-ghost btn-sm" @click="typeDropdownOpen = !typeDropdownOpen">
+            {{ typeFilterLabel }} ▾
+          </button>
+          <div v-if="typeDropdownOpen" class="filter-dropdown">
+            <div class="filter-dropdown-item" @click="filterType = ''; typeDropdownOpen = false">全部</div>
+            <div class="filter-dropdown-item" @click="filterType = 'local'; typeDropdownOpen = false">📁 本地</div>
+            <div class="filter-dropdown-item" @click="filterType = 'github'; typeDropdownOpen = false">🌐 远程</div>
+            <div class="filter-dropdown-item" @click="filterType = 'web'; typeDropdownOpen = false">🌍 网页</div>
+          </div>
+        </div>
+        <div class="filter-dropdown-wrapper">
           <button class="btn btn-ghost btn-sm" @click="statusDropdownOpen = !statusDropdownOpen">
             {{ statusFilterLabel }} ▾
           </button>
@@ -53,7 +64,7 @@
               <span v-else-if="s.owner === 'admin'" class="admin-tag">admin</span>
               <span v-else>{{ s.owner_display_name || s.owner }}</span>
             </td>
-            <td>{{ labelName(s.label) }}<span class="label-type-tag">{{ labelType(s.label) }}</span></td>
+            <td>{{ labelName(s.label) }}<span class="label-type-tag">{{ typeLabel(s.source_type) }}</span></td>
             <td class="path-cell">{{ displayPath(s.path) }}</td>
             <td>
               <span v-if="s.path_exists" class="tag-ok">✅ 有效</span>
@@ -120,8 +131,10 @@ const deleteTarget = ref(null);
 const filterName = ref("");
 const filterOwner = ref("");
 const filterStatus = ref("");
+const filterType = ref("");
 const ownerDropdownOpen = ref(false);
 const statusDropdownOpen = ref(false);
+const typeDropdownOpen = ref(false);
 
 // Pagination
 const pageSize = 15;
@@ -136,6 +149,11 @@ function isDefaultSource(s) {
 const ownerList = computed(() => {
   const owners = new Set(sources.value.map(s => s.owner === "admin" ? "admin" : (s.owner_display_name || s.owner)));
   return Array.from(owners).sort();
+});
+
+const typeFilterLabel = computed(() => {
+  const m = { local: "📁 本地", github: "🌐 远程", web: "🌍 网页" };
+  return m[filterType.value] || "类型";
 });
 
 const statusFilterLabel = computed(() => {
@@ -161,6 +179,9 @@ const filteredSources = computed(() => {
   } else if (filterStatus.value === "invalid") {
     list = list.filter(s => !s.path_exists);
   }
+  if (filterType.value) {
+    list = list.filter(s => (s.source_type || "local") === filterType.value);
+  }
   return list;
 });
 
@@ -179,14 +200,12 @@ function formatTime(ts) {
 // 从 "库名:类型" label 中提取库名
 function labelName(label) {
   if (!label) return "";
-  const idx = label.lastIndexOf(":");
-  return idx > 0 ? label.slice(0, idx) : label;
+  return label.replace(/:本地$|:远程$|:网页$/, "");
 }
 // 从 "库名:类型" label 中提取类型标签
-function labelType(label) {
-  if (!label) return "";
-  const idx = label.lastIndexOf(":");
-  return idx > 0 ? label.slice(idx) : "";
+function typeLabel(sourceType) {
+  const m = { local: "本地", github: "远程", web: "网页" };
+  return m[sourceType] || "";
 }
 
 // 路径显示：容器内路径转为 ~ 格式
@@ -254,6 +273,7 @@ function onGlobalKeydown(e) {
     deleteTarget.value = null;
     ownerDropdownOpen.value = false;
     statusDropdownOpen.value = false;
+    typeDropdownOpen.value = false;
   }
 }
 
