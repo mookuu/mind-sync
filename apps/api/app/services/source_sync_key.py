@@ -80,6 +80,8 @@ def is_known_sync_key(key: str, sources: list[Source]) -> bool:
 
 def source_display_label(source: Source) -> str:
     st = (source.source_type or "local").strip().lower()
+    cn = {"local": "本地", "github": "远程", "web": "网页"}.get(st, st)
     if source.id.endswith("-default"):
-        return "默认"
-    return f"{source.id} ({st})"
+        owner = (source.owner or "")
+        return f"{owner}默认库" if owner else "默认库"
+    return f"{source.id}:{cn}"

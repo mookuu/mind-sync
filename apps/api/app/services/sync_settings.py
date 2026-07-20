@@ -27,7 +27,7 @@ SYNC_PRESETS: dict[str, dict[str, Any]] = {
     },
     "web_snapshots": {
         "label": "Web 快照",
-        "description": "type: web 抓取并转换的 Markdown",
+        "description": "抓取并转换的 Markdown",
         "source_ids": ["example_web"],
         "path": "~/data/mind-sync-data/web_snapshots",
     },

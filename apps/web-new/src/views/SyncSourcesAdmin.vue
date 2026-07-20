@@ -53,7 +53,7 @@
               <span v-else-if="s.owner === 'admin'" class="admin-tag">admin</span>
               <span v-else>{{ s.owner_display_name || s.owner }}</span>
             </td>
-            <td><strong>{{ s.label }}</strong></td>
+            <td>{{ s.label }}</td>
             <td class="path-cell">{{ s.path }}</td>
             <td>
               <span v-if="s.path_exists" class="tag-ok">✅ 有效</span>

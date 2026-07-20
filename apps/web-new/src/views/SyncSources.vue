@@ -301,7 +301,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, onActivated, watch } from "vue";
 import api from "../api/index.js";
 import { toast } from "../composables/toast.js";
 import { useSyncSettings } from "../composables/useSyncSettings.js";
@@ -491,7 +491,7 @@ const privateSourceList = computed(() => {
   try {
     return (privateSources.value || []).map(p => ({
       ...p,
-      label: (p.label || p.id || "").replace(/\s*\(local\)\s*$/i, ""),
+      label: (p.label || p.id || "").replace(/\s*\(local\)\s*$|\s*:本地\s*$/i, ""),
       path: p.path || "",
     }));
   } catch {
@@ -536,7 +536,7 @@ const groupedSharedPublicSources = computed(() => {
     if (!groups[owner]) groups[owner] = { owner, sources: [] };
     groups[owner].sources.push({
       ...p,
-      label: (p.label || p.id || "").replace(/\s*\(local\)\s*$/i, ""),
+      label: (p.label || p.id || "").replace(/\s*\(local\)\s*$|\s*:本地\s*$/i, ""),
       path: p.path || "",
     });
   }
@@ -826,6 +826,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onGlobalKeydown);
+});
+
+// 从其他页面切回时刷新数据（如素材管理页修改共享状态后）
+onActivated(() => {
+  load().then(() => loadPrivateSources());
 });
 </script>
 
