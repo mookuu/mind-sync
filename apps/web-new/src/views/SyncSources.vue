@@ -388,6 +388,12 @@ function userRole(username) {
   return u ? u.role : '';
 }
 
+function formatDeadline(deletedAt) {
+  if (!deletedAt) return "";
+  const deadline = new Date((deletedAt + 30 * 86400) * 1000);
+  return deadline.toLocaleString();
+}
+
 function formatOwnerLabel(username) {
   const u = userDisplayNames.value[username];
   if (u && u.dn) {
