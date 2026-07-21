@@ -15,8 +15,8 @@
             👤 {{ filterOwner || '用户' }} ▾
           </button>
           <div v-if="openDropdown === 'owner'" class="filter-dropdown">
-            <div class="filter-dropdown-item" @click="filterOwner = ''; openDropdown = """>全部</div>
-            <div class="filter-dropdown-item" v-for="o in ownerList" :key="o" @click="filterOwner = o; openDropdown = """>{{ o }}</div>
+            <div class="filter-dropdown-item" @click="filterOwner = ''; openDropdown = ''>全部</div>
+            <div class="filter-dropdown-item" v-for="o in ownerList" :key="o" @click="filterOwner = o; openDropdown = ''>{{ o }}</div>
           </div>
         </div>
         <input v-model="filterName" type="text" placeholder="🔍 筛选库名…" class="filter-input" />
@@ -25,10 +25,10 @@
             {{ typeFilterLabel }} ▾
           </button>
           <div v-if="openDropdown === 'type'" class="filter-dropdown">
-            <div class="filter-dropdown-item" @click="filterType = ''; openDropdown = """>全部</div>
-            <div class="filter-dropdown-item" @click="filterType = 'local'; openDropdown = """>📁 本地</div>
-            <div class="filter-dropdown-item" @click="filterType = 'github'; openDropdown = """>🌐 远程</div>
-            <div class="filter-dropdown-item" @click="filterType = 'web'; openDropdown = """>🌍 网页</div>
+            <div class="filter-dropdown-item" @click="filterType = ''; openDropdown = ''>全部</div>
+            <div class="filter-dropdown-item" @click="filterType = 'local'; openDropdown = ''>📁 本地</div>
+            <div class="filter-dropdown-item" @click="filterType = 'github'; openDropdown = ''>🌐 远程</div>
+            <div class="filter-dropdown-item" @click="filterType = 'web'; openDropdown = ''>🌍 网页</div>
           </div>
         </div>
         <div class="filter-dropdown-wrapper">
@@ -36,9 +36,9 @@
             {{ statusFilterLabel }} ▾
           </button>
           <div v-if="openDropdown === 'status'" class="filter-dropdown">
-            <div class="filter-dropdown-item" @click="filterStatus = ''; openDropdown = """>全部</div>
-            <div class="filter-dropdown-item" @click="filterStatus = 'valid'; openDropdown = """>✅ 有效</div>
-            <div class="filter-dropdown-item" @click="filterStatus = 'invalid'; openDropdown = """>⚠ 无效</div>
+            <div class="filter-dropdown-item" @click="filterStatus = ''; openDropdown = ''>全部</div>
+            <div class="filter-dropdown-item" @click="filterStatus = 'valid'; openDropdown = ''>✅ 有效</div>
+            <div class="filter-dropdown-item" @click="filterStatus = 'invalid'; openDropdown = ''>⚠ 无效</div>
           </div>
         </div>
         <div class="filter-dropdown-wrapper">
@@ -46,9 +46,9 @@
             {{ shareFilterLabel }} ▾
           </button>
           <div v-if="openDropdown === 'share'" class="filter-dropdown">
-            <div class="filter-dropdown-item" @click="filterShared = ''; openDropdown = """>全部</div>
-            <div class="filter-dropdown-item" @click="filterShared = 'true'; openDropdown = """>🔓 共享中</div>
-            <div class="filter-dropdown-item" @click="filterShared = 'false'; openDropdown = """>🔒 私有</div>
+            <div class="filter-dropdown-item" @click="filterShared = ''; openDropdown = ''>全部</div>
+            <div class="filter-dropdown-item" @click="filterShared = 'true'; openDropdown = ''>🔓 共享中</div>
+            <div class="filter-dropdown-item" @click="filterShared = 'false'; openDropdown = ''>🔒 私有</div>
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" @click="refresh">↻ 刷新</button>
