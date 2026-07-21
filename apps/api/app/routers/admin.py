@@ -247,7 +247,7 @@ def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends
     actor = resolve_actor(request)
     if deleted_owner and deleted_owner != actor:
         _add_notification(deleted_owner, f"{actor} 删除了 {deleted_label}，请通过同步控制页面更新库信息",
-                          action_link="/sync/control", highlight=True)
+                          action_link="/sync/sources", highlight=True)
     add_audit_event("sources_deleted", request, actor=actor, detail=f"id={source_id}")
     return {"ok": True, "deleted": source_id}
 
@@ -271,6 +271,11 @@ def admin_list_users(request: Request, _: Any = Depends(require_admin)) -> dict[
             if isinstance(s, dict):
                 user_map.setdefault(s.get("owner"), 0)
                 user_map[s.get("owner")] += 1
+        # 从 documents 表按用户聚合文档数
+        doc_rows = conn.execute(
+            "SELECT source_owner, COUNT(1) AS doc_cnt FROM documents WHERE source_owner IS NOT NULL AND source_owner != '' GROUP BY source_owner"
+        ).fetchall()
+        doc_map = {r["source_owner"]: r["doc_cnt"] for r in doc_rows}
         items = []
         now = time.time()
         for row in rows:
@@ -278,6 +283,7 @@ def admin_list_users(request: Request, _: Any = Depends(require_admin)) -> dict[
             role = row["role"]
             udir = get_user_dir(uname)
             source_count = admin_source_count if role == "admin" else user_map.get(uname, 0)
+            doc_count = doc_map.get(uname, 0)
             deleted_at = row["deleted_at"] or 0
             locked_until = row["locked_until"] or 0
             if deleted_at > 0: status = "deleted"
@@ -285,7 +291,7 @@ def admin_list_users(request: Request, _: Any = Depends(require_admin)) -> dict[
             else: status = "normal"
             items.append({"username": uname, "display_name": row["display_name"] or uname, "role": role,
                           "created_at": row["created_at"], "has_dir": udir.exists(),
-                          "source_count": source_count, "status": status})
+                          "source_count": source_count, "doc_count": doc_count, "status": status})
         return {"users": items}
     finally:
         conn.close()
@@ -351,9 +357,36 @@ def admin_delete_user(request: Request, username: str, _: Any = Depends(require_
         conn.commit()
     finally:
         conn.close()
-    remove_user_source_from_yaml(username)
-    reload_sources_config()
+    # 软删除：保留源配置和索引数据，30天后物理删除时再清理
     add_audit_event("user_deleted", request, actor=resolve_actor(request), detail=f"username={username}")
+    return {"ok": True, "username": username}
+
+
+@router.post("/api/admin/users/{username}/restore")
+def admin_restore_user(request: Request, username: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """恢复已注销用户。"""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT deleted_at FROM users WHERE username = ?", (username,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"用户不存在：{username}")
+        if not row["deleted_at"] or row["deleted_at"] <= 0:
+            raise HTTPException(status_code=400, detail="用户未注销")
+        conn.execute("UPDATE users SET deleted_at = 0 WHERE username = ?", (username,))
+        conn.commit()
+    finally:
+        conn.close()
+    # 恢复时重建默认私有库（如果之前被移除了）
+    from ..services.user_manager import build_user_source_entry, append_user_source_to_yaml, ensure_user_dir, load_user_sources as _check_src2
+    try:
+        ensure_user_dir(username)
+        existing = [s for s in _check_src2() if isinstance(s, dict) and s.get("owner") == username]
+        if not existing:
+            append_user_source_to_yaml(build_user_source_entry(username))
+        reload_sources_config()
+    except Exception:
+        pass
+    add_audit_event("user_restored", request, actor=resolve_actor(request), detail=f"username={username}")
     return {"ok": True, "username": username}
 
 
@@ -580,7 +613,7 @@ def admin_toggle_source_share(request: Request, source_id: str, _: Any = Depends
     action = "共享" if new_state else "取消共享"
     if target.owner and target.owner != actor:
         _add_notification(target.owner, f"{actor} {action}了 {target.id}，请通过同步控制页面更新库信息",
-                          action_link="/sync/control", highlight=True)
+                          action_link="/sync/sources", highlight=True)
     add_audit_event("admin_source_share_toggle", request, actor=actor,
                     detail=f"id={source_id} owner={target.owner} shared={new_state}")
     return {"ok": True, "shared": new_state}
@@ -651,7 +684,7 @@ def admin_delete_any_source(request: Request, source_id: str, _: Any = Depends(r
     actor = resolve_actor(request)
     if target.owner and target.owner != actor:
         _add_notification(target.owner, f"{actor} 删除了您的库 {target.id}，请通过同步控制页面更新库信息",
-                          action_link="/sync/control", highlight=True)
+                          action_link="/sync/sources", highlight=True)
     add_audit_event("admin_source_deleted", request, actor=actor,
                     detail=f"id={source_id} owner={target.owner or 'admin'}")
     return {"ok": True, "deleted": source_id}

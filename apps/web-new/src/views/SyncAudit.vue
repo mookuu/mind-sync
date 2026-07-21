@@ -16,7 +16,7 @@
           <span class="audit-time">{{ formatTime(item.created_at) }}</span>
         </div>
         <div class="audit-meta">{{ item.actor || "unknown" }} · {{ item.ip || "unknown" }}</div>
-        <div v-if="item.detail" class="audit-detail">{{ item.detail }}</div>
+        <div v-if="item.detail" class="audit-detail">{{ formatDetail(item.detail) }}</div>
       </div>
       <p v-if="!events.length" class="subtle">暂无操作记录</p>
     </div>
@@ -51,6 +51,20 @@ function formatTime(ts) {
   const n = Number(ts);
   if (!Number.isFinite(n) || n <= 0) return "--";
   return new Date(n * 1000).toLocaleString();
+}
+function formatDetail(detail) {
+  if (!detail) return "";
+  return detail
+    .replace(/^id=([^\s]+)\s+owner=([^\s]+)\s+shared=(\w+)$/, (_, id, owner, shared) =>
+      shared === "True" ? `${owner} 共享了 ${id}` : `${owner} 取消了 ${id} 的共享`)
+    .replace(/^id=([^\s]+)\s+owner=([^\s]+)$/, (_, id, owner) => `${owner} 删除了 ${id}`)
+    .replace(/^id=([^\s]+)$/, (_, id) => `删除了 ${id}`)
+    .replace(/^username=([^\s]+)\s+role=(\w+)$/, (_, u, r) => `${r === "admin" ? "管理员" : "成员"} ${u}`)
+    .replace(/^username=([^\s]+)$/, `用户 $1`)
+    .replace(/^count=(\d+)/, (_, n) => `共 ${n} 个库`)
+    .replace(/^sources=([^\s]+)$/, (_, n) => `共 ${n} 个库`)
+    .replace(/auto_sync=([^,]+),\s*preset=([^\s]+)/, (_, a, p) => `自动同步:${a}, 预设:${p}`)
+    .replace(/\bsession deleted\b/, "已注销");
 }
 
 function goSync() {

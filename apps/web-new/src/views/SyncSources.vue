@@ -76,7 +76,7 @@
 
           <!-- 添加全局库（admin only） -->
           <div v-if="isAdmin" class="custom-path-row" style="margin-top:8px">
-            <input v-model="customPath" type="text" placeholder="输入文件夹路径，如 /sources/my-notes" class="custom-path-input" />
+            <input v-model="customPath" type="text" placeholder="输入文件夹路径，如 ~/data/mind-sync-data/xxx" class="custom-path-input" />
             <button class="btn btn-ghost" @click="openDirPicker">📁 浏览</button>
             <button class="btn btn-primary" @click="addCustomPath" :disabled="addingPath">{{ addingPath ? "验证中…" : "添加" }}</button>
           </div>
@@ -135,7 +135,7 @@
           </template>
           <!-- 管理员添加自己的私有库 -->
           <div class="custom-path-row" style="margin-top:8px">
-            <input v-model="privatePath" type="text" placeholder="输入服务器文件夹路径" class="custom-path-input" />
+            <input v-model="privatePath" type="text" placeholder="输入文件夹路径，如 ~/data/mind-sync-data/xxx" class="custom-path-input" />
             <button class="btn btn-ghost" @click="openPrivateDirPicker">📁 浏览</button>
             <button class="btn btn-primary" @click="addPrivateSource" :disabled="addingPrivate">
               {{ addingPrivate ? "添加中…" : "添加" }}
@@ -197,7 +197,7 @@
 
           <!-- 添加私有库：仅非管理员 -->
           <div v-if="!isAdmin" class="custom-path-row" style="margin-top:8px">
-            <input v-model="privatePath" type="text" placeholder="输入服务器文件夹路径" class="custom-path-input" />
+            <input v-model="privatePath" type="text" placeholder="输入文件夹路径，如 ~/data/mind-sync-data/xxx" class="custom-path-input" />
             <button class="btn btn-ghost" @click="openPrivateDirPicker">📁 浏览</button>
             <button class="btn btn-primary" @click="addPrivateSource" :disabled="addingPrivate">
               {{ addingPrivate ? "添加中…" : "添加" }}
@@ -219,6 +219,7 @@
           <template v-for="group in groupedSharedPublicSources" :key="group.owner || '__ungrouped__'">
             <div class="owner-group-label" v-if="group.owner">
               <span class="owner-label">👤 {{ formatOwnerLabel(group.owner) }}</span>
+              <span v-if="group.deletedAt > 0" class="deleted-owner-tag">已注销，共享截止 {{ formatDeadline(group.deletedAt) }}</span>
             </div>
             <div
               v-for="p in group.sources"
@@ -245,7 +246,6 @@
               </label>
             </div>
           </template>
-          <p v-if="!groupedSharedPublicSources.length" class="subtle" style="padding:8px 4px">暂无其他用户共享的知识库</p>
         </template>
         </div>
       </div>
@@ -302,6 +302,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onActivated, watch } from "vue";
+import { useRoute } from "vue-router";
 import api from "../api/index.js";
 import { toast } from "../composables/toast.js";
 import { useSyncSettings } from "../composables/useSyncSettings.js";
@@ -315,7 +316,7 @@ const {
 const backupIds = ref([]);
 // 非管理员本地「全部同步」模式（不修改后端 preset）
 const LOCAL_ALL_KEY = "sync_local_all";
-const localAllMode = ref(localStorage.getItem(LOCAL_ALL_KEY) === "true");
+const localAllMode = ref(localStorage.getItem(LOCAL_ALL_KEY) !== "false");
 // localAllMode 变化时持久化
 watch(localAllMode, (val) => {
   localStorage.setItem(LOCAL_ALL_KEY, val ? "true" : "false");
@@ -533,7 +534,7 @@ const groupedSharedPublicSources = computed(() => {
   const groups = {};
   for (const p of sharedFromOthers) {
     const owner = p.owner || "__ungrouped__";
-    if (!groups[owner]) groups[owner] = { owner, sources: [] };
+    if (!groups[owner]) groups[owner] = { owner, sources: [], deletedAt: p.owner_deleted_at || 0 };
     groups[owner].sources.push({
       ...p,
       label: (p.label || p.id || "").replace(/\s*\(local\)\s*$|\s*:本地\s*$/i, ""),
@@ -819,7 +820,12 @@ onMounted(() => {
       if (saved) {
         try { backupIds.value = JSON.parse(saved); } catch { backupIds.value = []; }
       }
-      loadPrivateSources().finally(() => { dataLoaded.value = true; });
+      loadPrivateSources().finally(() => {
+        dataLoaded.value = true;
+        if (route.query.mode === "custom" && isAll.value) {
+          onToggleCustom();
+        }
+      });
     });
   });
 });
@@ -956,6 +962,7 @@ onActivated(() => {
   font-weight: 500;
   color: var(--fg-muted);
 }
+.deleted-owner-tag { font-size: 0.7rem; color: var(--fg-subtle); margin-left: 4px; }
 .owner-label {
   display: inline-flex;
   align-items: center;

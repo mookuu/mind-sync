@@ -114,20 +114,30 @@ def user_list_sources(request: Request, _: Any = Depends(require_any_auth)) -> d
     username, role = resolve_current_user(request)
     sources_enriched = load_ordered_sources(username=username, role=role)
     items = []
+    # 批量查询所有 owner 的 deleted_at
+    owner_display_map: dict[str, str] = {}
+    owner_deleted_map: dict[str, float] = {}
+    owners = {s.owner for s in sources_enriched if s.owner}
+    if owners:
+        conn = get_db()
+        try:
+            placeholders = ",".join("?" * len(owners))
+            rows = conn.execute(
+                f"SELECT username, display_name, deleted_at FROM users WHERE username IN ({placeholders})",
+                tuple(owners),
+            ).fetchall()
+            for row in rows:
+                owner_deleted_map[row["username"]] = row["deleted_at"] or 0
+                owner_display_map[row["username"]] = row["display_name"]
+        finally:
+            conn.close()
     for source in sources_enriched:
         spath = str(source.path or "")
-        owner_display_name = None
-        if source.owner:
-            conn = get_db()
-            try:
-                row = conn.execute("SELECT display_name FROM users WHERE username = ?", (source.owner,)).fetchone()
-                if row and row["display_name"]:
-                    owner_display_name = row["display_name"]
-            finally:
-                conn.close()
+        owner_del = owner_deleted_map.get(source.owner or "", 0)
         items.append({"id": source.id, "sync_key": source_sync_key(source), "label": source_display_label(source),
                       "type": source.source_type, "path": spath, "path_exists": Path(spath).exists() if spath else False,
-                      "owner": source.owner, "owner_display_name": owner_display_name,
+                      "owner": source.owner, "owner_display_name": owner_display_map.get(source.owner or ""),
+                      "owner_deleted_at": owner_del,
                       "is_shared": source.owner is None, "is_owned": source.owner == username, "shared": source.shared})
     return {"sources": items}
 
@@ -195,7 +205,7 @@ def user_toggle_source_share(request: Request, source_id: str, _: Any = Depends(
                     target_user = row["key"].split(":")[0]
                     if target_user != username:
                         _add_notification(target_user, f"{username} {action}了 {source_id}，请通过同步控制页面更新库信息",
-                                          action_link="/sync/control")
+                                          action_link="/sync/sources")
             except Exception:
                 pass
     finally:

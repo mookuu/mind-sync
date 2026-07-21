@@ -1,21 +1,10 @@
 <template>
   <div class="view-pane">
     <div class="view-header" style="display:flex;align-items:center">
-      <h2>👥 用户管理</h2>
+      <h2>👥 用户管理 <span class="subtle" style="font-size:0.75rem;font-weight:400">管理团队用户。新用户会自动创建专属目录和默认私有库。</span></h2>
       <div style="margin-left:auto">
         <button class="btn btn-ghost btn-sm" @click="refresh" :disabled="refreshing" title="刷新">↻</button>
       </div>
-    </div>
-
-    <p class="subtle">管理团队用户。新用户会自动创建专属目录和默认私有库。</p>
-
-    <!-- 全局统计 -->
-    <div class="stats-grid">
-      <div class="stat-card"><div class="stat-value">{{ stats.doc_count ?? '-' }}</div><div class="stat-label">文档总数</div></div>
-      <div class="stat-card"><div class="stat-value">{{ stats.src_count ?? '-' }}</div><div class="stat-label">库总数</div></div>
-      <div class="stat-card"><div class="stat-value">{{ stats.user_count ?? '-' }}</div><div class="stat-label">用户数</div></div>
-      <div class="stat-card"><div class="stat-value">{{ stats.wiki_pages ?? '-' }}</div><div class="stat-label">Wiki 页面</div></div>
-      <div class="stat-card"><div class="stat-value">{{ formatBytes(stats.db_size) }}</div><div class="stat-label">数据库</div></div>
     </div>
 
     <div class="toolbar">
@@ -29,7 +18,7 @@
           <th>表示名</th>
           <th>状态</th>
           <th>角色</th>
-          <th>源数</th>
+          <th>库数</th>
           <th>文档数</th>
           <th>专属目录</th>
           <th>创建时间</th>
@@ -41,8 +30,8 @@
           <td><strong>{{ u.username }}</strong></td>
           <td>{{ u.display_name || u.username }}</td>
           <td>
-            <span class="status-badge" :class="u.status === 'locked' ? 'status-locked' : 'status-normal'">
-              {{ u.status === 'locked' ? '🔒 锁定' : '✅ 正常' }}
+            <span class="status-badge" :class="u.status === 'deleted' ? 'status-deleted' : u.status === 'locked' ? 'status-locked' : 'status-normal'">
+              {{ u.status === 'deleted' ? '⏳ 已注销' : u.status === 'locked' ? '🔒 锁定' : '✅ 正常' }}
             </span>
           </td>
           <td>
@@ -56,8 +45,9 @@
           <td>{{ u.has_dir ? '✅' : '❌' }}</td>
           <td>{{ formatTime(u.created_at) }}</td>
           <td class="action-cell">
-            <button class="btn btn-ghost btn-xs" @click="showResetPwd(u)">重置密码</button>
-            <button class="btn btn-ghost btn-xs" @click="confirmDeleteUser(u)">删除</button>
+            <button v-if="u.status !== 'deleted'" class="btn btn-ghost btn-xs" @click="showResetPwd(u)">重置密码</button>
+            <button v-if="u.status !== 'deleted'" class="btn btn-ghost btn-xs" @click="confirmDeleteUser(u)">删除</button>
+            <button v-if="u.status === 'deleted'" class="btn btn-ghost btn-xs" @click="restoreUser(u)">恢复</button>
           </td>
         </tr>
       </tbody>
@@ -83,6 +73,10 @@
           <div class="field">
             <label>密码</label>
             <input v-model="newUser.password" type="password" placeholder="至少 4 个字符" />
+          </div>
+          <div class="field">
+            <label>确认密码</label>
+            <input v-model="newUser.passwordConfirm" type="password" placeholder="再次输入" />
           </div>
           <div class="field">
             <label>角色</label>
@@ -169,9 +163,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted, onActivated } from "vue";
 import api from "../api/index.js";
+import { toast } from "../composables/toast.js";
 
 const users = ref([]);
-const stats = ref({});
 const refreshing = ref(false);
 const showCreate = ref(false);
 const createMsg = ref("");
@@ -192,50 +186,31 @@ function showAlert(msg) {
   alertMsg.value = msg;
 }
 
-const newUser = ref({ username: "", password: "", role: "member", display_name: "" });
+const newUser = ref({ username: "", password: "", role: "member", display_name: "", passwordConfirm: "" });
 
 async function loadUsers() {
   try {
-    const [data, s] = await Promise.all([
-      api("/api/admin/users"),
-      api("/api/admin/stats"),
-    ]);
-    const docMap = s.user_doc_counts || {};
-    const totalDocs = s.doc_count || 0;
-    const list = (data.users || []).map(u => ({
-      ...u,
-      doc_count: u.role === 'admin' ? totalDocs : (docMap[u.username] || 0),
-      source_count: u.source_count ?? (u.role === 'admin' ? (s.src_count || 0) : 0),
-    }));
+    const data = await api("/api/admin/users");
+    const list = (data.users || []).map(u => ({ ...u }));
     list.sort((a, b) => {
       if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
       return (a.username || '').localeCompare(b.username || '', undefined, { numeric: true });
     });
     users.value = list;
-    stats.value = s;
   } catch {
     users.value = [];
-    stats.value = {};
   }
-}
-
-async function refresh() {
-  refreshing.value = true;
-  await loadUsers();
-  refreshing.value = false;
-}
-
-function formatBytes(bytes) {
-  if (!bytes && bytes !== 0) return "-";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 async function doCreateUser() {
   const { username, password, role } = newUser.value;
   if (!username.trim() || !password) {
     createMsg.value = "请填写用户名和密码";
+    createError.value = true;
+    return;
+  }
+  if (password !== newUser.value.passwordConfirm) {
+    createMsg.value = "两次密码不一致";
     createError.value = true;
     return;
   }
@@ -247,9 +222,11 @@ async function doCreateUser() {
       method: "POST",
       body: { username: username.trim(), password, role, display_name: newUser.value.display_name?.trim() || '' },
     });
-    createMsg.value = `用户 ${username} 创建成功`;
+    toast.success("用户 " + username + " 已创建");
     showCreate.value = false;
-    newUser.value = { username: "", password: "", role: "member", display_name: "" };
+    createMsg.value = "";
+    createError.value = false;
+    newUser.value = { username: "", password: "", role: "member", display_name: "", passwordConfirm: "" };
     await loadUsers();
   } catch (e) {
     createMsg.value = e.message || "创建失败";
@@ -259,9 +236,18 @@ async function doCreateUser() {
   }
 }
 
+async function refresh() {
+  refreshing.value = true;
+  await loadUsers();
+  refreshing.value = false;
+}
+
 function openCreate() {
   deleteTarget.value = null;
   resetTarget.value = null;
+  newUser.value = { username: "", password: "", role: "member", display_name: "", passwordConfirm: "" };
+  createMsg.value = "";
+  createError.value = false;
   showCreate.value = true;
 }
 
@@ -271,6 +257,16 @@ function confirmDeleteUser(u) {
   deleteTarget.value = u;
 }
 
+async function restoreUser(u) {
+  try {
+    await api("/api/admin/users/" + encodeURIComponent(u.username) + "/restore", { method: "POST" });
+    toast.success("用户 " + u.username + " 已恢复");
+    await loadUsers();
+  } catch (e) {
+    showAlert("恢复失败: " + (e.message || "未知错误"));
+  }
+}
+
 async function doDeleteUser() {
   if (!deleteTarget.value) return;
   const u = deleteTarget.value;
@@ -278,6 +274,7 @@ async function doDeleteUser() {
   deleting.value = true;
   try {
     await api(`/api/admin/users/${encodeURIComponent(u.username)}`, { method: "DELETE" });
+    toast.success("用户 " + u.username + " 已删除");
     await loadUsers();
   } catch (e) {
     showAlert(`删除失败: ${e.message || "未知错误"}`);
@@ -335,7 +332,7 @@ async function doResetPassword() {
       method: "POST",
       body: { new_password: resetPassword.value },
     });
-    resetMsg.value = "密码已重置";
+    toast.success("用户 " + resetTarget.value.username + " 密码已重置");
     setTimeout(() => { resetTarget.value = null; }, 1200);
   } catch (e) {
     resetMsg.value = e.message || "重置失败";
@@ -375,21 +372,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-  margin: 16px 0;
-}
-.stat-card {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  padding: 14px;
-  text-align: center;
-}
-.stat-value { font-size: 1.4rem; font-weight: 700; }
-.stat-label { font-size: 0.75rem; color: var(--fg-muted); margin-top: 2px; }
-
 .user-table {
   width: 100%;
   border-collapse: collapse;
@@ -419,6 +401,7 @@ onUnmounted(() => {
 .status-badge { font-size: 0.75rem; font-weight: 600; padding: 2px 6px; border-radius: 3px; }
 .status-normal { color: #16a34a; background: rgba(22,163,74,0.1); }
 .status-locked { color: #dc2626; background: rgba(220,38,38,0.1); }
+.status-deleted { color: #92400e; background: rgba(217,119,6,0.1); }
 .confirm-dialog {
   background: var(--bg-card);
   border: 1px solid var(--border-default);

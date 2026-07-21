@@ -91,16 +91,33 @@ def load_sources_for_user(username: str | None = None, role: str | None = None) 
     - admin → 全部源（含私有）
     - member → 已共享的全局源（shared=True） + 自己的私有源（owner=username）
        + 其他用户设为共享的源（shared=True 且 owner≠username）
+       - 已注销超30天用户的共享源不可见
     - 未登录（username=None） → 仅已共享全局源
     """
     all_sources = load_sources()
     if role and role.strip().lower() == "admin":
         return all_sources
+
+    # 获取已注销超30天的用户列表
+    expired_owners: set = set()
+    if role:
+        from ..db import get_db as _get_db
+        conn = _get_db()
+        try:
+            cutoff = time.time() - 30 * 86400
+            rows = conn.execute(
+                "SELECT username FROM users WHERE deleted_at > 0 AND deleted_at < ?", (cutoff,)
+            ).fetchall()
+            expired_owners = {r["username"] for r in rows}
+        finally:
+            conn.close()
+
     if not username:
         return [s for s in all_sources if s.owner is None and s.shared]
     return [
         s for s in all_sources
-        if (s.owner is None and s.shared) or s.owner == username or (s.shared and s.owner is not None)
+        if (s.owner is None and s.shared) or s.owner == username
+        or (s.shared and s.owner is not None and s.owner not in expired_owners)
     ]
 
 

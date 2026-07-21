@@ -11,34 +11,44 @@
       <!-- 筛选栏 -->
       <div class="filter-bar">
         <div class="filter-dropdown-wrapper">
-          <button class="btn btn-ghost btn-sm" @click="ownerDropdownOpen = !ownerDropdownOpen">
+          <button class="btn btn-ghost btn-sm" @click="toggleDropdown('owner')">
             👤 {{ filterOwner || '用户' }} ▾
           </button>
-          <div v-if="ownerDropdownOpen" class="filter-dropdown">
-            <div class="filter-dropdown-item" @click="filterOwner = ''; ownerDropdownOpen = false">全部</div>
-            <div class="filter-dropdown-item" v-for="o in ownerList" :key="o" @click="filterOwner = o; ownerDropdownOpen = false">{{ o }}</div>
+          <div v-if="openDropdown === 'owner'" class="filter-dropdown">
+            <div class="filter-dropdown-item" @click="filterOwner = ''; openDropdown = """>全部</div>
+            <div class="filter-dropdown-item" v-for="o in ownerList" :key="o" @click="filterOwner = o; openDropdown = """>{{ o }}</div>
           </div>
         </div>
         <input v-model="filterName" type="text" placeholder="🔍 筛选库名…" class="filter-input" />
         <div class="filter-dropdown-wrapper">
-          <button class="btn btn-ghost btn-sm" @click="typeDropdownOpen = !typeDropdownOpen">
+          <button class="btn btn-ghost btn-sm" @click="toggleDropdown('type')">
             {{ typeFilterLabel }} ▾
           </button>
-          <div v-if="typeDropdownOpen" class="filter-dropdown">
-            <div class="filter-dropdown-item" @click="filterType = ''; typeDropdownOpen = false">全部</div>
-            <div class="filter-dropdown-item" @click="filterType = 'local'; typeDropdownOpen = false">📁 本地</div>
-            <div class="filter-dropdown-item" @click="filterType = 'github'; typeDropdownOpen = false">🌐 远程</div>
-            <div class="filter-dropdown-item" @click="filterType = 'web'; typeDropdownOpen = false">🌍 网页</div>
+          <div v-if="openDropdown === 'type'" class="filter-dropdown">
+            <div class="filter-dropdown-item" @click="filterType = ''; openDropdown = """>全部</div>
+            <div class="filter-dropdown-item" @click="filterType = 'local'; openDropdown = """>📁 本地</div>
+            <div class="filter-dropdown-item" @click="filterType = 'github'; openDropdown = """>🌐 远程</div>
+            <div class="filter-dropdown-item" @click="filterType = 'web'; openDropdown = """>🌍 网页</div>
           </div>
         </div>
         <div class="filter-dropdown-wrapper">
-          <button class="btn btn-ghost btn-sm" @click="statusDropdownOpen = !statusDropdownOpen">
+          <button class="btn btn-ghost btn-sm" @click="toggleDropdown('status')">
             {{ statusFilterLabel }} ▾
           </button>
-          <div v-if="statusDropdownOpen" class="filter-dropdown">
-            <div class="filter-dropdown-item" @click="filterStatus = ''; statusDropdownOpen = false">全部</div>
-            <div class="filter-dropdown-item" @click="filterStatus = 'valid'; statusDropdownOpen = false">✅ 有效</div>
-            <div class="filter-dropdown-item" @click="filterStatus = 'invalid'; statusDropdownOpen = false">⚠ 无效</div>
+          <div v-if="openDropdown === 'status'" class="filter-dropdown">
+            <div class="filter-dropdown-item" @click="filterStatus = ''; openDropdown = """>全部</div>
+            <div class="filter-dropdown-item" @click="filterStatus = 'valid'; openDropdown = """>✅ 有效</div>
+            <div class="filter-dropdown-item" @click="filterStatus = 'invalid'; openDropdown = """>⚠ 无效</div>
+          </div>
+        </div>
+        <div class="filter-dropdown-wrapper">
+          <button class="btn btn-ghost btn-sm" @click="toggleDropdown('share')">
+            {{ shareFilterLabel }} ▾
+          </button>
+          <div v-if="openDropdown === 'share'" class="filter-dropdown">
+            <div class="filter-dropdown-item" @click="filterShared = ''; openDropdown = """>全部</div>
+            <div class="filter-dropdown-item" @click="filterShared = 'true'; openDropdown = """>🔓 共享中</div>
+            <div class="filter-dropdown-item" @click="filterShared = 'false'; openDropdown = """>🔒 私有</div>
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" @click="refresh">↻ 刷新</button>
@@ -132,9 +142,8 @@ const filterName = ref("");
 const filterOwner = ref("");
 const filterStatus = ref("");
 const filterType = ref("");
-const ownerDropdownOpen = ref(false);
-const statusDropdownOpen = ref(false);
-const typeDropdownOpen = ref(false);
+const openDropdown = ref("");
+const filterShared = ref("");
 
 // Pagination
 const pageSize = 15;
@@ -149,6 +158,10 @@ function isDefaultSource(s) {
 const ownerList = computed(() => {
   const owners = new Set(sources.value.map(s => s.owner === "admin" ? "admin" : (s.owner_display_name || s.owner)));
   return Array.from(owners).sort();
+});
+
+const shareFilterLabel = computed(() => {
+  return filterShared.value === "true" ? "🔓 共享中" : filterShared.value === "false" ? "🔒 私有" : "共享状态";
 });
 
 const typeFilterLabel = computed(() => {
@@ -181,6 +194,11 @@ const filteredSources = computed(() => {
   }
   if (filterType.value) {
     list = list.filter(s => (s.source_type || "local") === filterType.value);
+  }
+  if (filterShared.value === "true") {
+    list = list.filter(s => s.shared);
+  } else if (filterShared.value === "false") {
+    list = list.filter(s => !s.shared);
   }
   return list;
 });
@@ -271,18 +289,19 @@ async function doDelete() {
 function onGlobalKeydown(e) {
   if (e.key === 'Escape') {
     deleteTarget.value = null;
-    ownerDropdownOpen.value = false;
-    statusDropdownOpen.value = false;
-    typeDropdownOpen.value = false;
+    openDropdown.value = "";
   }
 }
 
+function toggleDropdown(name) {
+  openDropdown.value = openDropdown.value === name ? "" : name;
+}
+
 function onClickOutside(e) {
-  if (ownerDropdownOpen.value || statusDropdownOpen.value) {
+  if (openDropdown.value) {
     const target = e.target;
     if (!target.closest('.filter-dropdown-wrapper')) {
-      ownerDropdownOpen.value = false;
-      statusDropdownOpen.value = false;
+      openDropdown.value = "";
     }
   }
 }
