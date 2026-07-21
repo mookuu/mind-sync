@@ -307,6 +307,7 @@ import api from "../api/index.js";
 import { toast } from "../composables/toast.js";
 import { useSyncSettings } from "../composables/useSyncSettings.js";
 
+const route = useRoute();
 const {
   syncPreset, syncSourceIds, syncPresets, availableSources,
   load, reload, setPreset, setCustomSources,
