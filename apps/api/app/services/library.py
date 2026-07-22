@@ -192,7 +192,7 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
     if username:
         from .fts import _user_synced_sources
         synced = _user_synced_sources(username)
-        if synced is not None:  # None = all synced
+        if synced is not None and len(synced) > 0:  # None=全同步, []=未配置, 均不过滤
             synced_set = set(synced)
             by_source = {k: v for k, v in by_source.items() if k in synced_set}
 
