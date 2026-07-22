@@ -5,7 +5,7 @@ from typing import Any
 
 
 from .categories import classify_document
-
+from .indexer import load_sources
 from .sync_settings import LANG_LABELS, SOURCE_LABELS
 
 
@@ -202,6 +202,8 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
     raw_blocks: list[dict[str, Any]] = []
     web_docs: list[dict[str, Any]] = []
+    all_sources = load_sources()
+    web_source_ids = {s.id for s in all_sources if (s.source_type or "local").lower() == "web"}
 
 
     for source_id in sorted(by_source.keys(), key=str.lower):
@@ -214,7 +216,7 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
             continue
 
-        is_web = any((s.source_type or "local").lower() == "web" for s in all_sources if s.id == source_id)
+        is_web = source_id in web_source_ids
 
         if is_web:
 
