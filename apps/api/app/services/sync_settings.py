@@ -157,6 +157,14 @@ def read_sync_settings(settings_map: dict[str, str], username: str | None = None
     preset = (settings_map.get("sync_preset") or "all").strip() or "all"
     custom_ids = _parse_source_ids(settings_map.get("sync_source_ids"))
     manual_order = _parse_source_ids(settings_map.get("sync_source_order"))
+    if role is None and username:
+        from ..db import get_db as _gdb
+        conn = _gdb()
+        try:
+            r = conn.execute("SELECT role FROM users WHERE username = ?", (username,)).fetchone()
+            if r: role = r["role"]
+        finally:
+            conn.close()
     all_sources = load_sources_for_user(username, role)
     known_keys = {source_sync_key(s) for s in all_sources}
     expanded_custom = expand_sync_keys(custom_ids, all_sources)
