@@ -231,6 +231,7 @@ const orderedItems = computed(() => {
         { label: "用户管理", icon: "👥", path: "/admin/users" },
         { label: "API keys", icon: "🔑", path: "/admin/api-keys" },
         { label: "素材管理", icon: "📦", path: "/admin/sources" },
+        { label: "Web 快照", icon: "🌍", path: "/admin/web-snapshots" },
       ],
     });
   }

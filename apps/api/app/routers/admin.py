@@ -592,6 +592,9 @@ def admin_sources_status(request: Request, _: Any = Depends(require_admin)) -> d
             update_map[key] = row["max_updated"] or 0
             create_map[key] = row["min_updated"] or 0
             doc_count_map[key] = row["doc_count"] or 0
+        # 管理员创建时间（默认库用）
+        admin_row = conn.execute("SELECT created_at FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+        admin_created_at = admin_row["created_at"] if admin_row else 0
     finally:
         conn.close()
 
@@ -603,6 +606,8 @@ def admin_sources_status(request: Request, _: Any = Depends(require_admin)) -> d
         display_owner = src.owner or "admin"
         owner_dn = _resolve_owner_display_name(src.owner) if src.owner else None
 
+        is_default = src.id in ("obsidian", "wiki", "web_snapshots") and (src.owner is None or src.owner == "admin")
+        src_created = admin_created_at if is_default else create_map.get(key, 0)
         items.append({
             "source_id": sk,
             "label": source_display_label(src),
@@ -613,7 +618,7 @@ def admin_sources_status(request: Request, _: Any = Depends(require_admin)) -> d
             "shared": bool(src.shared),
             "source_type": src.source_type or "local",
             "updated_at": update_map.get(key, 0),
-            "created_at": create_map.get(key, 0),
+            "created_at": src_created,
             "doc_count": doc_count_map.get(key, 0),
         })
 

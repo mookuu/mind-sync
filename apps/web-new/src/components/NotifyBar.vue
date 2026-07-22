@@ -19,7 +19,6 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import api from "../api/index.js";
-import { toast } from "../composables/toast.js";
 
 const router = useRouter();
 const notices = ref([]);
@@ -34,12 +33,6 @@ async function loadNotices() {
   try {
     const data = await api("/api/user/notifications");
     const items = data.notifications || [];
-    // 检测新通知：带 highlight 且之前未出现过 → 弹 toast
-    for (const n of items) {
-      if (n.highlight && !knownIds.has(n.id)) {
-        toast.warning(n.message, 8000);
-      }
-    }
     knownIds.clear();
     for (const n of items) knownIds.add(n.id);
     notices.value = items;
