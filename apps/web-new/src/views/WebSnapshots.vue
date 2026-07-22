@@ -39,8 +39,8 @@
             <input v-model="newSnap.url" type="text" placeholder="https://example.com/docs" />
           </div>
           <div class="field">
-            <label>存储路径（可选）</label>
-            <input v-model="newSnap.path" type="text" placeholder="默认：~/data/mind-sync-data/web_snapshots" />
+            <label>存储目录（可选）</label>
+            <input v-model="newSnap.path" type="text" placeholder="默认目录：~/data/mind-sync-data/web_snapshots" />
           </div>
           <p v-if="addMsg" class="status-msg" :class="{ error: addError }">{{ addMsg }}</p>
         </div>
