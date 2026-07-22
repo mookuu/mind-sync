@@ -48,6 +48,83 @@ def _add_notification(target_username: str, message: str, *, action_link: str = 
 
 # ── sources (shared + admin) ────────────────────────────────
 
+@router.get("/api/admin/web-snapshots")
+def admin_list_web_snapshots(_: Any = Depends(require_admin)) -> dict[str, Any]:
+    """列出所有 type:web 源。"""
+    all_srcs = load_sources()
+    items = []
+    for s in all_srcs:
+        if (s.source_type or "local").lower() != "web":
+            continue
+        sk = source_sync_key(s)
+        base_path = s.path or f"/sources/web_snapshots/{s.id}"
+        items.append({
+            "id": sk,
+            "label": s.id,
+            "url": s.url or "",
+            "path": base_path,
+            "fetch_confirmed": s.fetch_confirmed,
+        })
+    return {"snapshots": items}
+
+
+@router.post("/api/admin/web-snapshots")
+def admin_add_web_snapshot(request: Request, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """添加 Web 快照源到 sources.yaml。"""
+    source_id = (body.get("id") or "").strip()
+    url = (body.get("url") or "").strip()
+    if not source_id or not url:
+        raise HTTPException(status_code=400, detail="id 和 url 不能为空")
+    base_path = (body.get("path") or "").strip()
+    if not base_path:
+        base_path = str(Path(settings.data_root) / "web_snapshots")
+    src_file = Path(settings.sources_file)
+    if src_file.is_file():
+        raw = src_file.read_text(encoding="utf-8")
+        config = yaml.safe_load(raw) or {}
+    else:
+        config = {}
+    sources_list: list = config.get("sources", []) or []
+    for entry in sources_list:
+        if isinstance(entry, dict) and entry.get("id") == source_id:
+            raise HTTPException(status_code=409, detail=f"快照 ID 已存在：{source_id}")
+    new_entry = {
+        "id": source_id, "type": "web", "url": url,
+        "path": base_path, "include": ["**/*.md"],
+        "fetch_confirmed": True, "order": 80,
+    }
+    sources_list.append(new_entry)
+    config["sources"] = sources_list
+    src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+    reload_sources_config()
+    add_audit_event("web_snapshot_added", request, actor=resolve_actor(request), detail=f"id={source_id} url={url}")
+    return {"ok": True, "id": source_id, "url": url, "path": base_path}
+
+
+@router.delete("/api/admin/web-snapshots/{snapshot_id}")
+def admin_delete_web_snapshot(request: Request, snapshot_id: str, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """删除 sources.yaml 中的 Web 快照源。"""
+    src_file = Path(settings.sources_file)
+    if not src_file.is_file():
+        raise HTTPException(status_code=404, detail="sources.yaml 不存在")
+    raw = src_file.read_text(encoding="utf-8")
+    config = yaml.safe_load(raw) or {}
+    sources_list: list = config.get("sources", []) or []
+    found = False
+    for entry in sources_list:
+        if isinstance(entry, dict) and entry.get("id") == snapshot_id:
+            sources_list.remove(entry)
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail=f"快照不存在：{snapshot_id}")
+    config["sources"] = sources_list
+    src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+    reload_sources_config()
+    add_audit_event("web_snapshot_deleted", request, actor=resolve_actor(request), detail=f"id={snapshot_id}")
+    return {"ok": True, "id": snapshot_id}
+
+
 @router.get("/api/sources")
 def sources(request: Request, _: Any = Depends(require_any_auth)) -> dict[str, Any]:
     username, role = resolve_current_user(request)

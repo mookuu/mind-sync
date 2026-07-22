@@ -11,6 +11,7 @@ import Account from "../views/Account.vue";
 import UsersAdmin from "../views/UsersAdmin.vue";
 import ApiKeys from "../views/ApiKeys.vue";
 import SyncSourcesAdmin from "../views/SyncSourcesAdmin.vue";
+import WebSnapshots from "../views/WebSnapshots.vue";
 
 const routes = [
   {
@@ -94,6 +95,12 @@ const routes = [
     name: "admin-sources",
     component: SyncSourcesAdmin,
     meta: { title: "素材管理", parent: "admin", adminOnly: true },
+  },
+  {
+    path: "/admin/web-snapshots",
+    name: "admin-web-snapshots",
+    component: WebSnapshots,
+    meta: { title: "Web 快照", parent: "admin", adminOnly: true },
   },
 ];
 

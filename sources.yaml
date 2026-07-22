@@ -1,22 +1,25 @@
 sources:
-- id: obsidian
-  type: local
-  order: 20
-  path: ~/data/mind-sync-data/obsidian
-  include:
-  - '**/*.md'
-  shared: true
-- id: wiki
-  type: local
-  order: 100
-  path: ~/data/mind-sync-data/wiki
-  include:
-  - '**/*.md'
-  shared: true
-- id: web_snapshots
-  type: web
-  order: 80
-  path: ~/data/mind-sync-data/web_snapshots
-  include:
-  - '**/*.md'
-  shared: false
+  - id: obsidian
+    type: local
+    order: 40
+    path: ~/data/mind-sync-data/obsidian
+    include:
+      - "**/*.md"
+    shared: true
+
+  - id: wiki
+    type: local
+    order: 20
+    path: ~/data/mind-sync-data/wiki
+    include:
+      - "**/*.md"
+    shared: true
+
+  - id: web_snapshots
+    type: web
+    order: 60
+    url: "https://example.com" # 要抓取的网页
+    path: ~/data/mind-sync-data/web_snapshots
+    fetch_confirmed: true # 首次抓取需管理员确认
+    include:
+      - "**/*.md"

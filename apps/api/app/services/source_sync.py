@@ -116,11 +116,15 @@ def _sync_web_source_fetch(source: Source) -> dict[str, Any]:
     if not url:
         return {"source_id": source.id, "type": "web", "ok": False, "error": "missing url"}
     from .source_adapters.web_page import resolve_web_output_dir
+    import hashlib
 
+    url_hash = hashlib.sha256(url.encode()).hexdigest()[:12]
     out_dir = resolve_web_output_dir(source_to_spec(source))
     out_dir.mkdir(parents=True, exist_ok=True)
-    index_path = out_dir / "index.md"
-    meta_path = out_dir / "meta.json"
+    index_name = f"{url_hash}.md"
+    meta_name = f"{url_hash}.json"
+    index_path = out_dir / index_name
+    meta_path = out_dir / meta_name
     prior_meta = _load_web_meta(meta_path)
     max_bytes = max(64_000, int(settings.web_fetch_max_bytes))
     base_headers = {"User-Agent": build_user_agent()}
