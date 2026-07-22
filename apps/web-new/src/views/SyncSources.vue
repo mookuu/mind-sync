@@ -470,6 +470,21 @@ const sharedPresets = computed(() => {
       filtered = filtered.filter(p => p.shared === true);
     }
 
+    // 合并所有 type=web 的预设为单一的 "Web 快照"
+    const webPresets = filtered.filter(p => (p.type || "") === "web");
+    if (webPresets.length > 1) {
+      const webIds = webPresets.map(p => p.id);
+      const mergedWeb = {
+        ...webPresets[0],
+        id: "web_snapshots",
+        label: "Web 快照",
+        source_ids: webIds,
+        _web_ids: webIds,
+      };
+      filtered = filtered.filter(p => (p.type || "") !== "web");
+      filtered.push(mergedWeb);
+    }
+
     // 排序：Obsidian/Web快照/Wiki 固定在最前，其余按 label 字母序
     const pinIds = ["obsidian", "web_snapshots", "wiki"];
     const pinned = [];
@@ -609,6 +624,21 @@ function onToggleCustom() {
 
 function onTogglePreset(id) {
   let ids = [...syncSourceIds.value];
+  // 合并的 Web 快照：批量添加/移除所有 web 源
+  const preset = syncPresets.value.find(p => p.id === id);
+  if (preset && preset._web_ids) {
+    const webIds = preset._web_ids;
+    const allChecked = webIds.every(wid => ids.includes(wid));
+    if (allChecked) {
+      ids = ids.filter(i => !webIds.includes(i));
+    } else {
+      for (const wid of webIds) {
+        if (!ids.includes(wid)) ids.push(wid);
+      }
+    }
+    setCustomSources(ids);
+    return;
+  }
   const idx = ids.indexOf(id);
   if (idx >= 0) ids.splice(idx, 1);
   else ids.push(id);

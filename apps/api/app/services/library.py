@@ -201,7 +201,7 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
     wiki_docs: list[dict[str, Any]] | None = None
 
     raw_blocks: list[dict[str, Any]] = []
-
+    web_docs: list[dict[str, Any]] = []
 
 
     for source_id in sorted(by_source.keys(), key=str.lower):
@@ -211,6 +211,14 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
         if source_id == "wiki":
 
             wiki_docs = docs
+
+            continue
+
+        is_web = any((s.source_type or "local").lower() == "web" for s in all_sources if s.id == source_id)
+
+        if is_web:
+
+            web_docs.extend(docs)
 
             continue
 
@@ -231,6 +239,14 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
         )
 
 
+
+    if web_docs:
+        raw_blocks.insert(0, {
+            "id": "web_snapshots",
+            "label": "Web 快照",
+            "count": len(web_docs),
+            "tree": _build_lang_tree(web_docs),
+        })
 
     if raw_blocks:
 

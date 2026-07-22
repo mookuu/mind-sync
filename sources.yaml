@@ -29,3 +29,11 @@ sources:
   - '**/*.md'
   fetch_confirmed: true
   order: 80
+- id: 测试2
+  type: web
+  url: https://reasonix.io/docs/#config
+  path: /data/web_snapshots
+  include:
+  - '**/*.md'
+  fetch_confirmed: true
+  order: 80
