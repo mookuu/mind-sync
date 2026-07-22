@@ -51,7 +51,11 @@ def run_rebuild_job(trigger: str = "manual", source_ids: list[str] | None = None
     try:
         conn = get_db()
         settings_map = load_settings_map(username)
-        all_sources = load_ordered_sources(settings_map, username=username)
+        role = None
+        if username:
+            r = conn.execute("SELECT role FROM users WHERE username = ?", (username,)).fetchone()
+            if r: role = r["role"]
+        all_sources = load_ordered_sources(settings_map, username=username, role=role)
         if source_ids:
             all_sources = apply_source_order(
                 filter_sources_by_sync_keys(all_sources, source_ids),
