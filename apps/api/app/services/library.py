@@ -204,6 +204,7 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
     web_docs: list[dict[str, Any]] = []
     all_sources = load_sources()
     web_source_ids = {s.id for s in all_sources if (s.source_type or "local").lower() == "web"}
+    seen_web_paths: set = set()
 
 
     for source_id in sorted(by_source.keys(), key=str.lower):
@@ -220,7 +221,11 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
         if is_web:
 
-            web_docs.extend(docs)
+            for d in docs:
+                rp = d.get("rel_path", "")
+                if rp not in seen_web_paths:
+                    seen_web_paths.add(rp)
+                    web_docs.append(d)
 
             continue
 
