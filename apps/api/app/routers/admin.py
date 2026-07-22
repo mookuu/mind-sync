@@ -607,7 +607,9 @@ def admin_sources_status(request: Request, _: Any = Depends(require_admin)) -> d
         owner_dn = _resolve_owner_display_name(src.owner) if src.owner else None
 
         is_default = src.id in ("obsidian", "wiki", "web_snapshots") and (src.owner is None or src.owner == "admin")
-        src_created = admin_created_at if is_default else create_map.get(key, 0)
+        src_created = admin_created_at if is_default else (create_map.get(key, 0) or 0)
+        if src_created <= 0 and root.exists():
+            src_created = root.stat().st_mtime
         items.append({
             "source_id": sk,
             "label": source_display_label(src),
