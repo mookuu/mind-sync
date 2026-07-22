@@ -5,16 +5,16 @@ sources:
   path: ~/data/mind-sync-data/obsidian
   include:
   - '**/*.md'
-  shared: false
+  shared: true
 - id: wiki
   type: local
   order: 100
   path: ~/data/mind-sync-data/wiki
   include:
   - '**/*.md'
-  shared: false
+  shared: true
 - id: web_snapshots
-  type: local
+  type: web
   order: 80
   path: ~/data/mind-sync-data/web_snapshots
   include:
