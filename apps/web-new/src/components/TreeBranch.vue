@@ -9,8 +9,6 @@
       <span class="chevron">{{ expanded ? "▾" : "▸" }}</span>
       <span class="branch-icon">{{ icon }}</span>
       <span class="branch-label">{{ label }}</span>
-      <span v-if="count != null" class="branch-count">({{ count }})</span>
-      <span v-if="sourceId" class="branch-source-id">{{ sourceId }}</span>
     </button>
     <div v-if="expanded" class="branch-body">
       <slot />
@@ -88,11 +86,6 @@ const icon = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.branch-count {
-  font-size: 0.75rem;
-  color: var(--fg-subtle);
-  flex-shrink: 0;
 }
 .branch-source-id {
   font-size: 0.7rem;
