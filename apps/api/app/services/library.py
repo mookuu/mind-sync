@@ -189,7 +189,7 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
 
 
     # 只保留当前用户已同步的源
-    if username and role and role.strip().lower() != "admin":
+    if username:
         from .fts import _user_synced_sources
         synced = _user_synced_sources(username)
         if synced is not None:  # None = all synced
