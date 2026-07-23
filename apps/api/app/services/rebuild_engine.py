@@ -125,6 +125,20 @@ def run_rebuild_job(trigger: str = "manual", source_ids: list[str] | None = None
             SYNC_STATE["sources"] = source_stats
             SYNC_STATE["current_source"] = None
 
+    from .sync_engine import persist_last_sync_summary
+    persist_last_sync_summary({
+        "status": "success" if not run_error else "failed",
+        "mode": "rebuild",
+        "trigger": trigger,
+        "started_at": started_at,
+        "finished_at": time.time(),
+        "indexed": indexed,
+        "skipped": skipped,
+        "deleted": deleted,
+        "cleared": cleared,
+        "error": run_error,
+    }, username or "")
+
     result = {
         "mode": "rebuild",
         "indexed": indexed,

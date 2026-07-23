@@ -206,8 +206,9 @@ def rebuild_index(
 
 
 @router.get("/api/sync-status", response_model=SyncStatusResponse)
-def sync_status(_: Any = Depends(require_any_auth)):
-    return get_sync_status_payload()
+def sync_status(request: Request, _: Any = Depends(require_any_auth)):
+    username, _ = resolve_current_user(request) if require_any_auth else ("", "")
+    return get_sync_status_payload(username)
 
 
 @router.get("/api/purpose")

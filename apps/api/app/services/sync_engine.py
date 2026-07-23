@@ -58,10 +58,11 @@ def _update_sync_counts(processed_files: int, indexed: int, skipped: int, delete
         SYNC_STATE["deleted"] = deleted
 
 
-def load_last_sync_summary() -> dict[str, Any]:
+def load_last_sync_summary(username: str = "") -> dict[str, Any]:
     conn = get_db()
     try:
-        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", ("last_sync_summary",)).fetchone()
+        key = f"last_sync_summary_{username}" if username else "last_sync_summary"
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
         if not row:
             return {}
         data = json.loads(row["value"])
@@ -72,27 +73,36 @@ def load_last_sync_summary() -> dict[str, Any]:
         conn.close()
 
 
-def persist_last_sync_summary(summary: dict[str, Any]) -> None:
+def persist_last_sync_summary(summary: dict[str, Any], username: str = "") -> None:
     conn = get_db()
     try:
+        key = f"last_sync_summary_{username}" if username else "last_sync_summary"
         conn.execute(
             "INSERT INTO app_settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ("last_sync_summary", json.dumps(summary, ensure_ascii=False)),
+            (key, json.dumps(summary, ensure_ascii=False)),
         )
         conn.commit()
     finally:
         conn.close()
+    # 同步更新内存
+    with SYNC_LOCK:
+        if username:
+            LAST_SYNC_SUMMARY[username] = summary
+        else:
+            LAST_SYNC_SUMMARY[""] = summary
 
 
-def restore_last_sync_summary() -> None:
-    loaded = load_last_sync_summary()
+def restore_last_sync_summary(username: str = "") -> None:
+    loaded = load_last_sync_summary(username)
     if loaded:
         with SYNC_LOCK:
-            LAST_SYNC_SUMMARY.clear()
-            LAST_SYNC_SUMMARY.update(loaded)
+            if username:
+                LAST_SYNC_SUMMARY[username] = loaded
+            else:
+                LAST_SYNC_SUMMARY[""] = loaded
 
 
-def finalize_sync_run(trigger: str, started_at: float, result: dict[str, Any]) -> None:
+def finalize_sync_run(trigger: str, started_at: float, result: dict[str, Any], username: str = "") -> None:
     summary = {
         "status": "failed" if result.get("error") else "success",
         "mode": result.get("mode", "sync"),
@@ -108,7 +118,7 @@ def finalize_sync_run(trigger: str, started_at: float, result: dict[str, Any]) -
     with SYNC_LOCK:
         LAST_SYNC_SUMMARY.clear()
         LAST_SYNC_SUMMARY.update(summary)
-    persist_last_sync_summary(summary)
+    persist_last_sync_summary(summary, username or "")
     detail = (
         f"trigger={trigger} indexed={summary['indexed']} "
         f"skipped={summary['skipped']} deleted={summary['deleted']}"
@@ -123,12 +133,17 @@ def is_sync_running() -> bool:
         return bool(SYNC_STATE["running"])
 
 
-def get_sync_status_payload() -> dict[str, Any]:
+def get_sync_status_payload(username: str = "") -> dict[str, Any]:
     from .sync_backoff import list_backoff_status
+
+    # 从 DB 加载上次同步记录（若内存为空则回退到 DB）
+    u = username or ""
+    if u not in LAST_SYNC_SUMMARY:
+        restore_last_sync_summary(u)
 
     with SYNC_LOCK:
         data = dict(SYNC_STATE)
-        data["last_completed"] = dict(LAST_SYNC_SUMMARY)
+        data["last_completed"] = dict(LAST_SYNC_SUMMARY.get(u, {}))
     data["source_backoff"] = list_backoff_status()
     return data
 
@@ -319,5 +334,5 @@ def run_sync_job(
         "vault": vault_meta,
         "error": run_error,
     }
-    finalize_sync_run(trigger, started_at, result)
+    finalize_sync_run(trigger, started_at, result, username or "")
     return result

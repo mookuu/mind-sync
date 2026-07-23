@@ -5,7 +5,7 @@
 
     <div class="toolbar">
       <button class="btn btn-primary btn-sm" @click="openAdd">＋ 添加快照</button>
-      <button class="btn btn-ghost btn-sm" @click="refresh">↻ 刷新</button>
+      <button class="btn btn-ghost btn-sm" @click="refresh" :disabled="refreshing">{{ refreshing ? '刷新中…' : '↻ 刷新' }}</button>
     </div>
 
     <table class="snapshot-table" v-if="snapshots.length">
@@ -13,26 +13,26 @@
         <tr><th>ID</th><th>URL</th><th>存储路径</th><th>操作</th></tr>
       </thead>
       <tbody>
-        <tr v-for="s in snapshots" :key="s.id">
+        <tr v-for="s in snapshots" :key="s.id" class="clickable-row" @click="openEdit(s)">
           <td><strong>{{ s.label }}</strong></td>
           <td class="url-cell">{{ s.url }}</td>
           <td class="path-cell">{{ displayPath(s.path) }}</td>
           <td>
-            <button class="btn btn-ghost btn-xs btn-danger-text" @click="confirmDelete(s)" :disabled="deleting === s.id">删除</button>
+            <button class="btn btn-ghost btn-xs btn-danger-text" @click.stop="confirmDelete(s)" :disabled="deleting === s.id">删除</button>
           </td>
         </tr>
       </tbody>
     </table>
     <p v-else class="subtle" style="padding:20px">暂无 Web 快照</p>
 
-    <!-- 添加弹窗 -->
+    <!-- 添加/编辑弹窗 -->
     <div v-if="showAdd" class="modal-overlay" @click.self="showAdd = false">
       <div class="modal modal-sm">
-        <div class="modal-header"><h4>添加 Web 快照</h4><button class="btn btn-ghost btn-sm" @click="showAdd = false">✕</button></div>
+        <div class="modal-header"><h4>{{ editingSnap ? '编辑 Web 快照' : '添加 Web 快照' }}</h4><button class="btn btn-ghost btn-sm" @click="showAdd = false">✕</button></div>
         <div class="modal-body">
           <div class="field">
             <label>快照 ID</label>
-            <input v-model="newSnap.id" type="text" placeholder="如 my-docs" />
+            <input v-model="newSnap.id" type="text" placeholder="如 my-docs" :disabled="!!editingSnap" />
           </div>
           <div class="field">
             <label>URL</label>
@@ -40,13 +40,13 @@
           </div>
           <div class="field">
             <label>存储目录（可选）</label>
-            <input v-model="newSnap.path" type="text" placeholder="默认目录：~/data/mind-sync-data/web_snapshots" />
+            <input v-model="newSnap.path" type="text" placeholder="默认目录：~/data/mind-sync-data/web_snapshots，可填相对路径如 ./my-site" />
           </div>
           <p v-if="addMsg" class="status-msg" :class="{ error: addError }">{{ addMsg }}</p>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" @click="showAdd = false">取消</button>
-          <button class="btn btn-primary" @click="doAdd" :disabled="adding">添加</button>
+          <button class="btn btn-primary" @click="doSave" :disabled="saving">{{ saving ? '保存中…' : (editingSnap ? '保存' : '添加') }}</button>
         </div>
       </div>
     </div>
@@ -59,10 +59,12 @@ import api from "../api/index.js";
 
 const snapshots = ref([]);
 const showAdd = ref(false);
-const adding = ref(false);
+const editingSnap = ref(null);
+const saving = ref(false);
 const addMsg = ref("");
 const addError = ref(false);
 const deleting = ref("");
+const refreshing = ref(false);
 
 const newSnap = ref({ id: "", url: "", path: "" });
 
@@ -80,16 +82,29 @@ async function load() {
   }
 }
 
-async function refresh() { await load(); }
+async function refresh() {
+  refreshing.value = true;
+  await load();
+  refreshing.value = false;
+}
 
 function openAdd() {
+  editingSnap.value = null;
   newSnap.value = { id: "", url: "", path: "" };
   addMsg.value = "";
   addError.value = false;
   showAdd.value = true;
 }
 
-async function doAdd() {
+function openEdit(s) {
+  editingSnap.value = s;
+  newSnap.value = { id: s.label, url: s.url, path: s.path };
+  addMsg.value = "";
+  addError.value = false;
+  showAdd.value = true;
+}
+
+async function doSave() {
   const id = newSnap.value.id.trim();
   const url = newSnap.value.url.trim();
   if (!id || !url) {
@@ -97,16 +112,20 @@ async function doAdd() {
     addError.value = true;
     return;
   }
-  adding.value = true;
+  saving.value = true;
   try {
-    await api("/api/admin/web-snapshots", { method: "POST", body: { id, url, path: newSnap.value.path.trim() } });
+    if (editingSnap.value) {
+      await api("/api/admin/web-snapshots/" + encodeURIComponent(id), { method: "PUT", body: { url, path: newSnap.value.path.trim() } });
+    } else {
+      await api("/api/admin/web-snapshots", { method: "POST", body: { id, url, path: newSnap.value.path.trim() } });
+    }
     showAdd.value = false;
     await load();
   } catch (e) {
-    addMsg.value = e.message || "添加失败";
+    addMsg.value = e.message || "保存失败";
     addError.value = true;
   } finally {
-    adding.value = false;
+    saving.value = false;
   }
 }
 
@@ -128,6 +147,8 @@ onMounted(load);
 .snapshot-table th { font-weight: 600; color: var(--fg-muted); font-size: 0.78rem; }
 .url-cell { font-family: var(--font-mono); font-size: 0.78rem; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .path-cell { font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-subtle); }
+.clickable-row { cursor: pointer; }
+.clickable-row:hover { background: var(--bg-hover); }
 .toolbar { display: flex; gap: 8px; margin: 12px 0; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-lg); max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }

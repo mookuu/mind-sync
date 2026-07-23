@@ -15,10 +15,10 @@
     </div>
     <div class="sync-actions">
       <button class="btn btn-primary" @click="startSync" :disabled="running">增量同步</button>
-      <button class="btn btn-danger" @click="showRebuildConfirm = true">全量重建</button>
-      <button class="btn btn-ghost" @click="runLint">Wiki Lint</button>
+      <button class="btn btn-danger" @click="showRebuildConfirm = true" :disabled="running">全量重建</button>
+      <button class="btn btn-ghost" @click="runLint" :disabled="running || !canWrite">Wiki Lint</button>
     </div>
-    <p v-if="statusText" class="status-msg" :class="{ error: statusError }">{{ statusText }}</p>
+    <p v-if="statusText && statusError" class="status-msg error">{{ statusText }}</p>
 
     <!-- 全量重建确认弹窗 -->
     <div v-if="showRebuildConfirm" class="modal-overlay" @click.self="showRebuildConfirm = false">
@@ -36,12 +36,12 @@
     <div class="settings-section">
       <h3>定时同步</h3>
       <label class="checkbox-row">
-        <input v-model="autoSyncEnabled" type="checkbox" @change="saveAutoSync" />
+        <input v-model="autoSyncEnabled" type="checkbox" :disabled="running" @change="saveAutoSync" />
         启用自动同步
       </label>
       <div class="field-row">
         <label>间隔（分钟）</label>
-        <input v-model.number="autoSyncInterval" type="number" min="10" class="input-sm" @change="saveAutoSync" />
+        <input v-model.number="autoSyncInterval" :disabled="running" type="number" min="10" class="input-sm" @change="saveAutoSync" />
       </div>
       <p class="subtle">下次自动同步：{{ nextSyncAt || '--' }}</p>
     </div>
@@ -50,8 +50,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onActivated } from "vue";
+import { ref, onMounted, onActivated, onUnmounted } from "vue";
 import api from "../api/index.js";
+import { toast } from "../composables/toast.js";
 import { useAuth } from "../composables/useAuth.js";
 
 const { canWrite } = useAuth();
@@ -67,10 +68,12 @@ const autoSyncEnabled = ref(false);
 const autoSyncInterval = ref(60);
 const nextSyncAt = ref("");
 const showRebuildConfirm = ref(false);
+let pollTimer = null;
 
 async function loadStatus() {
   try {
     const st = await api("/api/sync-status");
+    const wasRunning = running.value;
     running.value = st.running || false;
     currentSource.value = st.current_source || "";
     processed.value = st.processed_files || 0;
@@ -79,9 +82,23 @@ async function loadStatus() {
     if (last.finished_at) {
       lastSyncText.value = `${last.status === "failed" ? "失败" : "成功"} @ ${new Date(last.finished_at * 1000).toLocaleString()}`;
     }
+    // 同步完成后停止轮询
+    if (wasRunning && !running.value) {
+      stopPolling();
+      toast.success(last.mode === "rebuild" ? "全量重建完成" : "同步完成");
+      window.dispatchEvent(new CustomEvent('mind-sync-tree-refresh'));
+      window.dispatchEvent(new CustomEvent('mind-sync-done'));
+    }
   } catch {
     // ignore
   }
+}
+
+function startPolling() {
+  if (!pollTimer) pollTimer = setInterval(loadStatus, 2000);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
 async function loadSettings() {
@@ -96,51 +113,46 @@ async function loadSettings() {
 }
 
 async function startSync() {
-  statusText.value = "同步中…";
+  statusText.value = "";
   statusError.value = false;
-  // 增量同步后文档 ID 可能变化，清空搜索缓存
   localStorage.removeItem('mind_sync_last_search');
+  running.value = true;
+  startPolling();
   try {
     await api("/api/sync", { method: "POST", body: { use_saved_defaults: true } });
-    statusText.value = "同步完成";
-    window.dispatchEvent(new CustomEvent('mind-sync-tree-refresh'));
-    window.dispatchEvent(new CustomEvent('mind-sync-done'));
-    await loadStatus();
   } catch (e) {
-    statusText.value = `同步失败: ${e.message}`;
-    statusError.value = true;
+    running.value = false;
+    stopPolling();
+    toast.error("同步失败：" + (e.message || "未知错误"));
   }
 }
 
 async function doRebuild() {
   showRebuildConfirm.value = false;
-  statusText.value = "全量重建中…";
+  statusText.value = "";
   statusError.value = false;
-  // 全量重建后文档 ID 全部变化，清空搜索缓存
   localStorage.removeItem('mind_sync_last_search');
+  running.value = true;
+  startPolling();
   try {
     await api("/api/rebuild-index", { method: "POST", body: { use_saved_defaults: true } });
-    statusText.value = "全量重建完成";
-    window.dispatchEvent(new CustomEvent('mind-sync-tree-refresh'));
-    window.dispatchEvent(new CustomEvent('mind-sync-done'));
-    await loadStatus();
   } catch (e) {
-    statusText.value = `全量重建失败: ${e.message}`;
-    statusError.value = true;
+    running.value = false;
+    stopPolling();
+    toast.error("全量重建失败：" + (e.message || "未知错误"));
   }
 }
 
 async function runLint() {
   if (!canWrite.value) return;
-  statusText.value = "Lint 运行中…";
+  statusText.value = "";
   statusError.value = false;
   try {
     const data = await api("/api/lint", { method: "POST", body: { stale_days: 180 } });
     const issues = data.issues || [];
-    statusText.value = `Lint 完成：${issues.length} 个问题`;
+    toast.info(`Lint 完成：${issues.length} 个问题`);
   } catch (e) {
-    statusText.value = `Lint 失败: ${e.message}`;
-    statusError.value = true;
+    toast.error("Lint 失败：" + (e.message || "未知错误"));
   }
 }
 
@@ -155,14 +167,18 @@ async function saveAutoSync() {
   }
 }
 
-onMounted(() => {
-  loadStatus();
+onMounted(async () => {
+  await loadStatus();
+  if (running.value) startPolling();
   loadSettings();
 });
 
-onActivated(() => {
-  loadStatus();
+onActivated(async () => {
+  await loadStatus();
+  if (running.value) startPolling();
 });
+
+onUnmounted(() => stopPolling());
 </script>
 
 <style scoped>

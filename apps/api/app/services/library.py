@@ -220,9 +220,17 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
         is_web = source_id in web_source_ids
 
         if is_web:
-
+            # 对于子目录 web 源，rel_path 前加上目录名以支持递归树显示
+            src_path = next((s.path or "") for s in all_sources if s.id == source_id)
+            web_root = "/data/web_snapshots/"
+            prefix = ""
+            if src_path.startswith(web_root) and src_path != web_root.rstrip("/"):
+                prefix = src_path[len(web_root):] + "/"
             for d in docs:
                 rp = d.get("rel_path", "")
+                if prefix:
+                    d = dict(d)
+                    d["rel_path"] = prefix + rp
                 if rp not in seen_web_paths:
                     seen_web_paths.add(rp)
                     web_docs.append(d)

@@ -76,8 +76,17 @@ def admin_add_web_snapshot(request: Request, body: dict[str, Any], _: Any = Depe
     if not source_id or not url:
         raise HTTPException(status_code=400, detail="id 和 url 不能为空")
     base_path = (body.get("path") or "").strip()
+    default_dir = str(Path(settings.data_root) / "web_snapshots")
     if not base_path:
-        base_path = str(Path(settings.data_root) / "web_snapshots")
+        base_path = default_dir
+    elif base_path.startswith("./") or not base_path.startswith("/"):
+        # 相对路径：拼接默认目录
+        base_path = str(Path(default_dir) / base_path)
+    else:
+        # 绝对路径：验证父目录可写
+        p = Path(base_path)
+        if not p.parent.exists():
+            raise HTTPException(status_code=400, detail=f"父目录不存在：{p.parent}")
     src_file = Path(settings.sources_file)
     if src_file.is_file():
         raw = src_file.read_text(encoding="utf-8")
@@ -99,6 +108,35 @@ def admin_add_web_snapshot(request: Request, body: dict[str, Any], _: Any = Depe
     reload_sources_config()
     add_audit_event("web_snapshot_added", request, actor=resolve_actor(request), detail=f"id={source_id} url={url}")
     return {"ok": True, "id": source_id, "url": url, "path": base_path}
+
+
+@router.put("/api/admin/web-snapshots/{snapshot_id}")
+def admin_update_web_snapshot(request: Request, snapshot_id: str, body: dict[str, Any], _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """更新 Web 快照源的 URL 和路径。"""
+    url = (body.get("url") or "").strip()
+    base_path = (body.get("path") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="url 不能为空")
+    default_dir = str(Path(settings.data_root) / "web_snapshots")
+    if base_path:
+        if base_path.startswith("./") or not base_path.startswith("/"):
+            base_path = str(Path(default_dir) / base_path)
+    src_file = Path(settings.sources_file)
+    if not src_file.is_file():
+        raise HTTPException(status_code=404, detail="sources.yaml 不存在")
+    raw = src_file.read_text(encoding="utf-8")
+    config = yaml.safe_load(raw) or {}
+    sources_list: list = config.get("sources", []) or []
+    for entry in sources_list:
+        if isinstance(entry, dict) and entry.get("id") == snapshot_id:
+            entry["url"] = url
+            if base_path:
+                entry["path"] = base_path
+            src_file.write_text(yaml.dump(config, allow_unicode=True, default_flow_style=False, sort_keys=False), encoding="utf-8")
+            reload_sources_config()
+            add_audit_event("web_snapshot_updated", request, actor=resolve_actor(request), detail=f"id={snapshot_id}")
+            return {"ok": True, "id": snapshot_id, "url": url, "path": base_path or entry.get("path", "")}
+    raise HTTPException(status_code=404, detail=f"快照不存在：{snapshot_id}")
 
 
 @router.delete("/api/admin/web-snapshots/{snapshot_id}")

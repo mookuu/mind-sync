@@ -37,3 +37,11 @@ sources:
   - '**/*.md'
   fetch_confirmed: true
   order: 80
+- id: 自定义路径
+  type: web
+  url: https://api-docs.deepseek.com/zh-cn/
+  path: /data/web_snapshots/mydir1
+  include:
+  - '**/*.md'
+  fetch_confirmed: true
+  order: 80
