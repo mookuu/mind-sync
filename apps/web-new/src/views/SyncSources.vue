@@ -315,27 +315,30 @@ const {
 
 // 用于在「全部同步」灰掉时保留勾选显示
 const backupIds = ref([]);
+function localAllKey() { return currentUser.value ? `sync_local_all_${currentUser.value}` : 'sync_local_all'; }
+function sectionsKey() { return currentUser.value ? `sync_sections_${currentUser.value}` : 'sync_sections'; }
+function privateGroupsKey() { return currentUser.value ? `sync_private_groups_${currentUser.value}` : 'sync_private_groups'; }
+
 // 非管理员本地「全部同步」模式（不修改后端 preset）
-const LOCAL_ALL_KEY = "sync_local_all";
-const localAllMode = ref(localStorage.getItem(LOCAL_ALL_KEY) !== "false");
+const localAllMode = ref(localStorage.getItem(localAllKey()) !== "false");
 // localAllMode 变化时持久化
 watch(localAllMode, (val) => {
-  localStorage.setItem(LOCAL_ALL_KEY, val ? "true" : "false");
+  localStorage.setItem(localAllKey(), val ? "true" : "false");
 });
 
 // 折叠状态（持久化到 localStorage，刷新后保留）
-const sectionExpanded = ref(JSON.parse(localStorage.getItem('sync_sections') || '{"shared":false,"private":false,"my_private":false}'));
+const sectionExpanded = ref(JSON.parse(localStorage.getItem(sectionsKey()) || '{"shared":false,"private":false,"my_private":false}'));
 watch(sectionExpanded, (val) => {
-  localStorage.setItem('sync_sections', JSON.stringify(val));
+  localStorage.setItem(sectionsKey(), JSON.stringify(val));
 }, { deep: true });
 function toggleSection(name) {
   sectionExpanded.value[name] = !sectionExpanded.value[name];
 }
 
 // 个人知识库分组展开/折叠状态
-const privateGroupExpanded = ref(JSON.parse(localStorage.getItem('sync_private_groups') || '{}'));
+const privateGroupExpanded = ref(JSON.parse(localStorage.getItem(privateGroupsKey()) || '{}'));
 watch(privateGroupExpanded, (val) => {
-  localStorage.setItem('sync_private_groups', JSON.stringify(val));
+  localStorage.setItem(privateGroupsKey(), JSON.stringify(val));
 }, { deep: true });
 function togglePrivateGroup(owner) {
   const current = privateGroupExpanded.value[owner];

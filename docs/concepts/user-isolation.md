@@ -47,12 +47,12 @@ admin 不是「超级用户」，而是拥有**额外管理功能**的成员：
 | `mind_sync_last_doc_{user}` | `App.vue` | `doc_id` | 服务器重启后恢复文档 | 按用户 |
 | `mind_sync_last_search_{user}` | `Search.vue` | `{q, items[], ts}` | 搜索缓存，10 分钟过期 | 按用户 |
 | `sync_all_backup_{user}` | `SyncSources.vue` | `[sourceId...]` | 全选前备份勾选，取消时恢复 | 按用户 |
-| `sync_local_all` | `SyncSources.vue` | `"true"/"false"` | 非管理员「全部同步」开关 | 全局 |
-| `sync_sections` | `SyncSources.vue` | `{shared, private, ...}` | 素材页分区展开/折叠 | 全局 |
-| `sync_private_groups` | `SyncSources.vue` | `{group: bool}` | 私有库分组展开/折叠 | 全局 |
-| `mind_sync_kbd_mode` | `Library.vue` | 键盘模式标识 | 文档库键盘操作模式 | 全局 |
+| `sync_local_all_{user}` | `SyncSources.vue` | `"true"/"false"` | 非管理员「全部同步」开关 | 按用户 |
+| `sync_sections_{user}` | `SyncSources.vue` | `{shared, private, ...}` | 素材页分区展开/折叠 | 按用户 |
+| `sync_private_groups_{user}` | `SyncSources.vue` | `{group: bool}` | 私有库分组展开/折叠 | 按用户 |
+| `mind_sync_kbd_mode_{user}` | `Library.vue` | `"scroll"/"highlight"` | 文档库键盘操作模式 | 按用户 |
 
-> **规则**：跨用户共享的 UI 偏好（展开/折叠、开关）用裸键；数据类缓存（搜索、备份）必须按用户隔离，避免跨用户数据泄漏或 A 用户操作误清 B 用户缓存。
+> **规则**：所有 localStorage 键均按用户隔离（`_{username}` 后缀），匿名/未登录时回退裸键兜底。不同用户在同一浏览器切换登录时各自拥有独立的 UI 偏好，互不干扰。
 
 ---
 

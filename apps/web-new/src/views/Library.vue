@@ -95,7 +95,7 @@ function highlightContent(html) {
 
 const { displayName } = useAuth();
 
-const KEYBOARD_MODE_KEY = 'mind_sync_kbd_mode';
+function kbdModeKey() { return displayName.value ? `mind_sync_kbd_mode_${displayName.value}` : 'mind_sync_kbd_mode'; }
 function searchCacheKey() {
   return displayName.value ? `mind_sync_last_search_${displayName.value}` : 'mind_sync_last_search';
 }
@@ -183,15 +183,15 @@ watch(() => route.path, (newPath, oldPath) => {
   if (oldPath === '/library' && newPath !== '/library') {
     // 离开文档库时保存键盘模式
     const mode = currentDoc.value?._searchQuery ? 'highlight' : 'scroll';
-    localStorage.setItem(KEYBOARD_MODE_KEY, mode);
+    localStorage.setItem(kbdModeKey(), mode);
   }
   if (newPath === '/library' && oldPath !== '/library') {
     // 回到文档库时恢复键盘模式
-    const saved = localStorage.getItem(KEYBOARD_MODE_KEY);
+    const saved = localStorage.getItem(kbdModeKey());
     if (saved === 'highlight' && currentDoc.value?._searchQuery) {
       // 自动激活高亮模式
     } else {
-      localStorage.removeItem(KEYBOARD_MODE_KEY);
+      localStorage.removeItem(kbdModeKey());
     }
   }
 });
@@ -201,7 +201,7 @@ async function loadOrRestoreDoc(docId) {
     await openDoc(docId);
     setTimeout(() => navigateHighlights("next"), 100);
   } else {
-    const saved = localStorage.getItem(KEYBOARD_MODE_KEY);
+    const saved = localStorage.getItem(kbdModeKey());
     if (saved === 'highlight') {
       setTimeout(() => navigateHighlights("next"), 200);
     }
