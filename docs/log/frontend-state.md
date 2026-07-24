@@ -124,3 +124,40 @@ if (syncPreset.value === "all") {
 **教训**：`syncPreset === "all"` 和 `syncPreset === "custom"` 是互斥的语义。当处理 `syncSourceIds` 时，必须考虑它为空是否因为 preset 是 "all"（有效空）还是真的没有选择任何源（无效空）。
 
 ---
+
+### 18. onActivated 静默刷新时无条件重置分页
+
+**症状**：素材管理页面切换到第 2 页 → 切到其他 tab → 切回来，分页回到第 1 页。用户管理/Web 快照等页面不存在此问题（无分页或无需 onActivated 刷新）。
+
+**根因**：`SyncSourcesAdmin.loadSources()` 中 `page.value = 1` 无条件执行。`onActivated` 时通过 keep-alive 切回组件，虽 DOM 仍在，但 `loadSources()` 第一行就 `loading.value = true`（模板 `v-if="loading"` 导致表格瞬闪），随后 `page.value = 1` 丢弃了用户之前选择的分页位置。
+
+```javascript
+// 修复前
+async function loadSources() {
+  loading.value = true;        // 瞬闪根因
+  try {
+    const data = await api("/api/admin/sources-status");
+    sources.value = data.sources || [];
+    page.value = 1;             // ← 切回 tab 时无条件重置
+  } ...
+}
+
+onActivated(() => { loadSources(); });   // keep-alive 切回时触发
+```
+
+**修复**：`loadSources(silent)` — `onMounted` 及手动「刷新」调 `loadSources()` 正常设 loading + 重置分页；`onActivated` 调 `loadSources(true)` 跳过 `loading` 和 `page` 重置，已有表格原地保留，数据静默刷新。
+
+```javascript
+// 修复后
+async function loadSources(silent = false) {
+  if (!silent) loading.value = true;
+  try { ...
+    sources.value = data.sources || [];
+    if (!silent) page.value = 1;    // 仅首次/手动刷新时重置
+  } ...
+}
+
+onActivated(() => { loadSources(true); });
+```
+
+**教训**：keep-alive 组件的 `onActivated` 刷新策略应区分「首次挂载」和「切回刷新」——前者需要 loading 态 + 状态重置，后者应在保留现有 UI 的前提下静默更新数据。`loading` 和分页位置都属于 UI 状态，不应在背景刷新时被重置。

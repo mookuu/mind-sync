@@ -74,5 +74,35 @@ if (cached && cached.q && Array.isArray(cached.items) && cached.ts && ...) {
 
 **教训**：用 `.length` 做存在性检查时要警惕 falsy 边缘情况。空数组 `[]`、空字符串 `""`、数字 `0` 的 `.length` 都是 `0`（falsy）。正确做法是用 `Array.isArray()`、`typeof x === 'string'` 等类型判断代替 `.length` 作为存在性守卫。这也呼应了通用原则 #11「空值判语义」——空数组可能是有效状态，需结合上下文判断。
 
+---
+
+### 66. sync/rebuild 清搜索缓存漏了带用户名的键
+
+**症状**：用户 `alice` 触发增量同步或全量重建后，切回搜索页仍看到旧的搜索结果（含过期 doc_id），点击文档返回 404。用户 `bob` 不受影响。
+
+**根因**：`Search.vue` 在 #64 中已将搜索缓存键改为 `mind_sync_last_search_{username}`，但 `SyncControl.vue` 和 `Library.vue` 清除缓存时仍使用硬编码裸键 `'mind_sync_last_search'`。用户登录后 `displayName` 有值 → Search 写入带后缀的键 → SyncControl/Library 清的却是裸键 → 两处键名不匹配，缓存清不掉。
+
+```javascript
+// Search.vue — 写入带用户名后缀
+function searchCacheKey() {
+  return displayName.value
+    ? `mind_sync_last_search_${displayName.value}`  // → mind_sync_last_search_alice
+    : 'mind_sync_last_search';
+}
+
+// SyncControl.vue — 清除硬编码裸键（bug）
+localStorage.removeItem('mind_sync_last_search');   // ← 永远清不到 alice 的缓存
+
+// Library.vue — 同样
+const SEARCH_CACHE_KEY = 'mind_sync_last_search';   // ← 同样
+```
+
+**修复**：`SyncControl.vue` 和 `Library.vue` 改为与 `Search.vue` 一致的 `searchCacheKey()` 函数，从 `useAuth()` 获取 `displayName` 拼接键名。同时满足两条业务约束：
+
+1. **用户级隔离**：`alice` 重建只清 `alice` 自己的缓存，`bob` 不受影响
+2. **裸键兜底**：匿名/未登录场景保留 `mind_sync_last_search` 裸键作为防御
+
+**教训**：修复多组件一致的逻辑（如缓存键生成）时，必须全局搜索所有引用点一并修改。一处提取为函数而另一处仍硬编码，会导致**键名漂移**——写入方和清除方使用不同的 key，缓存永远清不掉。这也印证了通用原则「一处提取，处处统一」——如果某个值在 ≥2 处出现，应提取为共享函数/常量。
+
 
 ---

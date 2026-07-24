@@ -313,15 +313,6 @@ def run_sync_job(
     finally:
         if conn:
             conn.close()
-        with SYNC_LOCK:
-            SYNC_STATE["running"] = False
-            SYNC_STATE["finished_at"] = time.time()
-            SYNC_STATE["indexed"] = indexed
-            SYNC_STATE["skipped"] = skipped
-            SYNC_STATE["deleted"] = deleted
-            SYNC_STATE["sources"] = source_stats
-            SYNC_STATE["current_source"] = None
-            SYNC_STATE["warnings"] = sync_warnings
     result = {
         "mode": "sync",
         "indexed": indexed,
@@ -334,5 +325,16 @@ def run_sync_job(
         "vault": vault_meta,
         "error": run_error,
     }
+    # 先持久化 last_completed，再标记 running=False，
+    # 避免前端轮询在窗口期拿到 running=false 但 last_completed 尚未更新
     finalize_sync_run(trigger, started_at, result, username or "")
+    with SYNC_LOCK:
+        SYNC_STATE["running"] = False
+        SYNC_STATE["finished_at"] = time.time()
+        SYNC_STATE["indexed"] = indexed
+        SYNC_STATE["skipped"] = skipped
+        SYNC_STATE["deleted"] = deleted
+        SYNC_STATE["sources"] = source_stats
+        SYNC_STATE["current_source"] = None
+        SYNC_STATE["warnings"] = sync_warnings
     return result

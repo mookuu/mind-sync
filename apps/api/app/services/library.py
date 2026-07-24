@@ -225,15 +225,17 @@ def build_library_index(conn: sqlite3.Connection, *, category: str | None = "sou
             web_root = "/data/web_snapshots/"
             prefix = ""
             if src_path.startswith(web_root) and src_path != web_root.rstrip("/"):
-                prefix = src_path[len(web_root):] + "/"
+                prefix = src_path[len(web_root):].rstrip("/") + "/"
             for d in docs:
                 rp = d.get("rel_path", "")
-                if prefix:
-                    d = dict(d)
-                    d["rel_path"] = prefix + rp
-                if rp not in seen_web_paths:
-                    seen_web_paths.add(rp)
-                    web_docs.append(d)
+                if not rp:
+                    continue
+                full_path = (prefix + rp) if prefix else rp
+                if full_path not in seen_web_paths:
+                    seen_web_paths.add(full_path)
+                    item = dict(d)
+                    item["rel_path"] = full_path
+                    web_docs.append(item)
 
             continue
 

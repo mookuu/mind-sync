@@ -81,3 +81,65 @@ meta_path = out_dir / f"{url_hash}.json"
 **教训**：时间字段的语义需区分——"创建时间"对默认库应是系统/用户创建时间，对动态添加的库应是首次索引时间。二者数据来源不同。
 
 ---
+
+### 82. 同步后 Web 快照树不展开——目录结构缺失
+
+**症状**：同步完成后，侧边栏「文档库 → 原始素材 → Web 快照」下的自定义子目录（如 `mydir1`）不显示，或目录节点存在但内部 md 文档未展开。服务器上 `mydir1/` 目录下文档正常生成。
+
+**根因**（两层）：
+
+1. **关键层——`library.py` 树构建三处缺陷**：
+
+   - **双斜杠路径**：`prefix = src_path[len(web_root):] + "/"` 在 `src_path` 带尾部 `/` 时产生 `mydir1//` 前缀，`rel_path` 拼接后变成 `mydir1//file.md`，`_insert_doc` 按 `/` 拆分路径会产生空字符串段，导致目录树异常。
+
+   ```python
+   # 修复前
+   prefix = src_path[len(web_root):] + "/"
+   # 修复后
+   prefix = src_path[len(web_root):].rstrip("/") + "/"
+   ```
+
+   - **空 rel_path 未跳过**：缺少 `if not rp: continue`，空路径文档直接进入 `_insert_doc`，产生无名称的异常节点。
+
+   - **去重键用裸 rp 而非 full_path**：`seen_web_paths` 以 `rp`（文件相对路径）为键，不同子目录下的同名文件（如两个源都有 `index.md`）会互相覆盖。修复后以 `full_path`（含目录前缀）为键。
+
+   ```python
+   # 修复前
+   if rp not in seen_web_paths:
+       seen_web_paths.add(rp)
+       web_docs.append(d)
+   # 修复后
+   full_path = (prefix + rp) if prefix else rp
+   if full_path not in seen_web_paths:
+       seen_web_paths.add(full_path)
+       item = dict(d)
+       item["rel_path"] = full_path
+       web_docs.append(item)
+   ```
+
+   同时改为 `item = dict(d)` 而非原地修改 `d`，避免污染 sqlite Row 原对象。
+
+2. **辅助层——树缓存清空后未收起展开状态**：同步完成时 `clearTreeCache()` 只将 `catTrees` 置 `null`，但 `catExpanded` 保持 `true`。用户看到已展开的树区域为空（数据已清），点击「原始素材」触发的是收起逻辑（`catExpanded=true → false`），需要点两次才能重新加载。
+
+   ```javascript
+   // 修复前
+   function clearTreeCache() {
+     catTrees.source = null;
+     catTrees.summary = null;
+     catTrees.query = null;
+   }
+   // 修复后：同步收起展开状态
+   function clearTreeCache() {
+     catTrees.source = null;
+     catTrees.summary = null;
+     catTrees.query = null;
+     catExpanded.source = false;
+     catExpanded.summary = false;
+     catExpanded.query = false;
+   }
+   ```
+
+**教训**：
+- 路径拼接操作必须防御尾部斜杠——`.rstrip("/")` 后再统一加 `/`，避免双斜杠破坏基于 `/` 分割的层级逻辑。
+- 去重键必须包含完整的唯一标识维度。当数据有「目录前缀 + 文件名」两级结构时，仅用文件名去重必然丢失不同目录下的同名文件。
+- 缓存失效与 UI 状态是一对：数据清空时，对应的展开/选中状态也应重置，否则 UI 进入「已展开但无数据」的僵尸态。

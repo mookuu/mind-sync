@@ -91,3 +91,51 @@ all_srcs = load_ordered_sources(username=username, role=role)
 **教训**：任何需要区分用户可见数据的 API 端点，都必须把用户上下文传递到底层数据查询函数。默认参数只适用于无需用户区分的场景。
 
 ---
+
+### 39. 同步完成后前端「上次同步」显示「尚未执行」
+
+**症状**：增量同步或全量重建完成后，「同步控制」页面的「上次同步」始终显示「尚未执行」，无法看到同步完成时间。同步本身正常（文档已入库）。
+
+**根因**（两层）：
+
+1. **关键层——Pydantic 响应模型丢弃字段**：`SyncStatusResponse`（`responses.py`）缺少 `last_completed`、`source_backoff`、`warnings` 三个字段定义。FastAPI 的 `response_model` 会对返回 dict 做 Pydantic 校验/序列化，未声明的字段被**静默丢弃**。`get_sync_status_payload()` 虽然返回了 `last_completed`，但到达前端时已不存在。
+
+```python
+# 修复前：SyncStatusResponse 缺少 last_completed
+class SyncStatusResponse(BaseModel):
+    running: bool
+    ...
+    error: str | None = None
+    # ← last_completed 未声明 → 被 FastAPI 丢弃
+
+# 修复后：补齐缺失字段
+class SyncStatusResponse(BaseModel):
+    ...
+    last_completed: dict[str, Any] | None = None
+    source_backoff: list[dict[str, Any]] | None = None
+    warnings: list[str] | None = None
+```
+
+2. **辅助层——状态更新竞态**：`run_sync_job` / `run_rebuild_job` 中 `SYNC_STATE["running"] = False` 在 `finalize_sync_run`（更新 `LAST_SYNC_SUMMARY`）之前执行。即使模型字段完整，轮询若在这两个操作之间的窗口命中，仍会拿到 `running=false` + 过期 `last_completed`。
+
+```python
+# 修复前（sync_engine.py）：
+finally:
+    with SYNC_LOCK:
+        SYNC_STATE["running"] = False  # ① 先标记完成
+    ...
+result = {...}
+finalize_sync_run(...)                 # ② 后更新 last_completed → 窗口期数据不一致
+
+# 修复后：先持久化摘要，再标记完成
+result = {...}
+finalize_sync_run(...)                 # ① 先更新 LAST_SYNC_SUMMARY
+with SYNC_LOCK:
+    SYNC_STATE["running"] = False      # ② 后标记完成
+```
+
+`rebuild_engine.py` 同样修复，且补上了 `finalize_sync_run` 缺失的 `username` 参数（原代码 `finalize_sync_run(trigger, started_at, result)` 未传 username，导致 `LAST_SYNC_SUMMARY` 的内存键与 DB 键不一致）。
+
+**教训**：
+- FastAPI 的 `response_model` 是一把双刃剑——它能自动过滤、校验，但也会**静默丢弃**未声明的字段。API 返回 dict 新增字段时，必须同步更新 Pydantic 模型。
+- 共享状态的写入顺序决定读取端看到的快照是否一致。`running=False` 是"任务结束"的信号，必须在所有收尾数据（`last_completed`）写入完成之后再发出。

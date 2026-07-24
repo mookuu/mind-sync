@@ -55,7 +55,7 @@ import api from "../api/index.js";
 import { toast } from "../composables/toast.js";
 import { useAuth } from "../composables/useAuth.js";
 
-const { canWrite } = useAuth();
+const { canWrite, displayName } = useAuth();
 
 const running = ref(false);
 const currentSource = ref("");
@@ -69,6 +69,10 @@ const autoSyncInterval = ref(60);
 const nextSyncAt = ref("");
 const showRebuildConfirm = ref(false);
 let pollTimer = null;
+
+function searchCacheKey() {
+  return displayName.value ? `mind_sync_last_search_${displayName.value}` : 'mind_sync_last_search';
+}
 
 async function loadStatus() {
   try {
@@ -115,7 +119,7 @@ async function loadSettings() {
 async function startSync() {
   statusText.value = "";
   statusError.value = false;
-  localStorage.removeItem('mind_sync_last_search');
+  localStorage.removeItem(searchCacheKey());
   running.value = true;
   startPolling();
   try {
@@ -131,7 +135,7 @@ async function doRebuild() {
   showRebuildConfirm.value = false;
   statusText.value = "";
   statusError.value = false;
-  localStorage.removeItem('mind_sync_last_search');
+  localStorage.removeItem(searchCacheKey());
   running.value = true;
   startPolling();
   try {

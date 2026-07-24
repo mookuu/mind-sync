@@ -35,6 +35,7 @@ import { useRoute } from 'vue-router';
 import api from "../api/index.js";
 import { markdownIt, rewriteImageUrls, hljs } from "../markdown-it.js";
 import Skeleton from "../components/Skeleton.vue";
+import { useAuth } from "../composables/useAuth.js";
 
 const route = useRoute();
 const deniedMsg = ref('');
@@ -92,8 +93,12 @@ function highlightContent(html) {
   return html.replace(regex, '$1$2<mark>$3</mark>$4$5');
 }
 
-const SEARCH_CACHE_KEY = 'mind_sync_last_search';
+const { displayName } = useAuth();
+
 const KEYBOARD_MODE_KEY = 'mind_sync_kbd_mode';
+function searchCacheKey() {
+  return displayName.value ? `mind_sync_last_search_${displayName.value}` : 'mind_sync_last_search';
+}
 
 async function openDoc(docId) {
   loadingDoc.value = true;
@@ -105,7 +110,7 @@ async function openDoc(docId) {
   } catch (e) {
     const msg = e.message || '';
     if (msg.includes('404')) {
-      localStorage.removeItem(SEARCH_CACHE_KEY);
+      localStorage.removeItem(searchCacheKey());
     }
     const displayMsg = msg.includes('403') ? '此文档属于私有知识库，你无权访问'
       : msg.includes('404') ? '文档不存在（可能索引已重建，请重新搜索）'

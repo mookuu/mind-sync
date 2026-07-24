@@ -28,7 +28,12 @@
                   <p v-if="catLoading[child.catKey]" class="subtle" style="padding:4px 10px 4px 48px;font-size:0.75rem">加载中…</p>
                   <template v-else v-for="node in (catTrees[child.catKey] || [])" :key="node.sourceId">
                     <TreeBranch :label="node.label" :source-id="node.sourceId" :count="node.count" :depth="2" :default-expanded="treeContains(node, activeDocId)">
-                      <TreeNode v-for="titem in (node.tree || [])" :key="titem.path || titem.name" :node="titem" :depth="3" :active-doc-id="activeDocId" @select="openDocFromSidebar" />
+                      <template v-for="titem in (node.tree || [])" :key="titem.path || titem.name">
+                        <TreeBranch v-if="titem.type === 'dir'" :label="titem.name" :depth="3" :default-expanded="treeContains(titem, activeDocId)">
+                          <TreeNode v-for="child in (titem.children || [])" :key="child.path || child.name" :node="child" :depth="4" :active-doc-id="activeDocId" @select="openDocFromSidebar" />
+                        </TreeBranch>
+                        <TreeNode v-else :node="titem" :depth="3" :active-doc-id="activeDocId" @select="openDocFromSidebar" />
+                      </template>
                     </TreeBranch>
                   </template>
                 </template>
@@ -83,6 +88,10 @@ function clearTreeCache() {
   catTrees.source = null;
   catTrees.summary = null;
   catTrees.query = null;
+  // 同时收起所有分类树，避免展示空白区域
+  catExpanded.source = false;
+  catExpanded.summary = false;
+  catExpanded.query = false;
 }
 
 // sync/rebuild 后精准清缓存

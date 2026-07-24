@@ -93,3 +93,6 @@ class SyncStatusResponse(BaseModel):
     skipped: int = 0
     deleted: int = 0
     error: str | None = None
+    last_completed: dict[str, Any] | None = None
+    source_backoff: list[dict[str, Any]] | None = None
+    warnings: list[str] | None = None

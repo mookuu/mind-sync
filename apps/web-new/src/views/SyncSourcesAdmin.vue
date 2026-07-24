@@ -235,12 +235,12 @@ function displayPath(path) {
     .replace(/^\/data\//, "~/data/mind-sync-data/");
 }
 
-async function loadSources() {
-  loading.value = true;
+async function loadSources(silent = false) {
+  if (!silent) loading.value = true;
   try {
     const data = await api("/api/admin/sources-status");
     sources.value = data.sources || [];
-    page.value = 1;
+    if (!silent) page.value = 1;
   } catch {
     sources.value = [];
   } finally {
@@ -319,7 +319,7 @@ onUnmounted(() => {
 
 // 从同步素材页切回时刷新（如添加/删除源后）
 onActivated(() => {
-  loadSources();
+  loadSources(true);
 });
 </script>
 

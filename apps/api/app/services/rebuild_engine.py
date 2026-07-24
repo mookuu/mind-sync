@@ -115,29 +115,6 @@ def run_rebuild_job(trigger: str = "manual", source_ids: list[str] | None = None
     finally:
         if conn:
             conn.close()
-        with SYNC_LOCK:
-            SYNC_STATE["running"] = False
-            SYNC_STATE["finished_at"] = time.time()
-            SYNC_STATE["indexed"] = indexed
-            SYNC_STATE["skipped"] = skipped
-            SYNC_STATE["deleted"] = deleted
-            SYNC_STATE["cleared"] = cleared
-            SYNC_STATE["sources"] = source_stats
-            SYNC_STATE["current_source"] = None
-
-    from .sync_engine import persist_last_sync_summary
-    persist_last_sync_summary({
-        "status": "success" if not run_error else "failed",
-        "mode": "rebuild",
-        "trigger": trigger,
-        "started_at": started_at,
-        "finished_at": time.time(),
-        "indexed": indexed,
-        "skipped": skipped,
-        "deleted": deleted,
-        "cleared": cleared,
-        "error": run_error,
-    }, username or "")
 
     result = {
         "mode": "rebuild",
@@ -148,7 +125,18 @@ def run_rebuild_job(trigger: str = "manual", source_ids: list[str] | None = None
         "sources": source_stats,
         "error": run_error,
     }
-    finalize_sync_run(trigger, started_at, result)
+    # 先持久化 last_completed，再标记 running=False，
+    # 避免前端轮询在窗口期拿到 running=false 但 last_completed 尚未更新
+    finalize_sync_run(trigger, started_at, result, username or "")
+    with SYNC_LOCK:
+        SYNC_STATE["running"] = False
+        SYNC_STATE["finished_at"] = time.time()
+        SYNC_STATE["indexed"] = indexed
+        SYNC_STATE["skipped"] = skipped
+        SYNC_STATE["deleted"] = deleted
+        SYNC_STATE["cleared"] = cleared
+        SYNC_STATE["sources"] = source_stats
+        SYNC_STATE["current_source"] = None
     detail = (
         f"trigger={trigger} mode=rebuild cleared={cleared} indexed={indexed} "
         f"skipped={skipped} deleted={deleted}"
