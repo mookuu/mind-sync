@@ -3,6 +3,8 @@
     <div class="view-header">
       <h2>📊 同步控制</h2>
     </div>
+    <div v-if="loading" class="subtle" style="padding:16px 0">加载中…</div>
+    <template v-else>
     <div class="sync-status-card">
       <div class="sync-status-row">
         <span class="sync-label">当前任务</span>
@@ -45,6 +47,7 @@
       </div>
       <p class="subtle">下次自动同步：{{ nextSyncAt || '--' }}</p>
     </div>
+    </template>
   </div>
 
 </template>
@@ -58,6 +61,7 @@ import { useAuth } from "../composables/useAuth.js";
 const { canWrite, displayName } = useAuth();
 
 const running = ref(false);
+const loading = ref(true);
 const currentSource = ref("");
 const processed = ref(0);
 const total = ref(0);
@@ -174,7 +178,8 @@ async function saveAutoSync() {
 onMounted(async () => {
   await loadStatus();
   if (running.value) startPolling();
-  loadSettings();
+  await loadSettings();
+  loading.value = false;
 });
 
 onActivated(async () => {

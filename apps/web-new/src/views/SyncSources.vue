@@ -250,6 +250,7 @@
         </div>
       </div>
       </template>
+      <div v-else class="subtle" style="padding:20px">加载同步素材…</div>
 
       <!-- 删除确认弹窗 -->
       <div v-if="confirmDelete" class="modal-overlay" @click.self="confirmDelete = null">

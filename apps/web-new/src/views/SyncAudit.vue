@@ -3,7 +3,8 @@
     <div class="view-header">
       <h2>📜 操作记录</h2>
     </div>
-    <div class="audit-list">
+    <div v-if="loading" class="subtle" style="padding:20px">加载中…</div>
+    <div v-else-if="events.length" class="audit-list">
       <div
         v-for="item in events"
         :key="item.id || item.created_at"
@@ -18,7 +19,7 @@
         <div class="audit-meta">{{ item.actor || "unknown" }} · {{ item.ip || "unknown" }}</div>
         <div v-if="item.detail" class="audit-detail">{{ formatDetail(item.detail) }}</div>
       </div>
-      <p v-if="!events.length" class="subtle">暂无操作记录</p>
+      <p v-if="!events.length && !loading" class="subtle">暂无操作记录</p>
     </div>
     <p class="status-msg">{{ statusText }}</p>
     <button class="btn btn-ghost btn-sm" @click="refresh">刷新</button>
@@ -33,7 +34,8 @@ import api from "../api/index.js";
 const router = useRouter();
 
 const events = ref([]);
-const statusText = ref("加载中…");
+const loading = ref(true);
+const statusText = ref("");
 
 const LABELS = {
   login_failed: "登录失败", login_success: "登录成功", logout: "退出登录",
@@ -83,6 +85,8 @@ async function refresh() {
   } catch (e) {
     statusText.value = `加载失败: ${e.message}`;
     events.value = [];
+  } finally {
+    loading.value = false;
   }
 }
 

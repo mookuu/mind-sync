@@ -4,14 +4,15 @@
       <h2>🕸 Wiki 图谱</h2>
       <p class="subtle">Wiki 页面之间的链接关系图（拖动节点，滚轮缩放）</p>
     </div>
-    <div class="graph-meta">
+    <div class="graph-meta" v-if="!loading">
       <span class="meta-item">{{ stats.nodeCount }} 节点</span>
       <span class="meta-item">{{ stats.edgeCount }} 条链接</span>
       <span v-if="stats.orphanCount" class="meta-item warn">{{ stats.orphanCount }} 孤儿页</span>
       <span v-if="stats.hubCount" class="meta-item info">{{ stats.hubCount }} 枢纽页</span>
       <span v-if="stats.brokenCount" class="meta-item danger">{{ stats.brokenCount }} 断链</span>
     </div>
-    <div class="graph-canvas-wrap">
+    <div v-if="loading" class="graph-loading">加载图谱数据…</div>
+    <div v-else class="graph-canvas-wrap">
       <canvas
         ref="canvasEl"
         class="graph-canvas"
@@ -38,6 +39,7 @@ const canvasEl = ref(null);
 const tooltip = ref(null);
 const tooltipStyle = ref({});
 
+const loading = ref(true);
 const stats = reactive({ nodeCount: 0, edgeCount: 0, orphanCount: 0, hubCount: 0, brokenCount: 0 });
 
 // Force simulation state
@@ -320,6 +322,8 @@ onMounted(async () => {
     resizeCanvas();
   } catch {
     // graph unavailable
+  } finally {
+    loading.value = false;
   }
 });
 
@@ -354,6 +358,15 @@ onUnmounted(() => {
   overflow: hidden;
   height: calc(100vh - var(--topbar-height) - 160px);
   min-height: 400px;
+}
+.graph-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100vh - var(--topbar-height) - 200px);
+  min-height: 400px;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
 }
 .graph-canvas {
   width: 100%;

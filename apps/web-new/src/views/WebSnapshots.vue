@@ -8,7 +8,8 @@
       <button class="btn btn-ghost btn-sm" @click="refresh" :disabled="refreshing">{{ refreshing ? '刷新中…' : '↻ 刷新' }}</button>
     </div>
 
-    <table class="snapshot-table" v-if="snapshots.length">
+    <div v-if="loading" class="subtle" style="padding:20px">加载中…</div>
+    <table v-else-if="snapshots.length" class="snapshot-table">
       <thead>
         <tr><th>ID</th><th>URL</th><th>存储路径</th><th>操作</th></tr>
       </thead>
@@ -23,7 +24,7 @@
         </tr>
       </tbody>
     </table>
-    <p v-else class="subtle" style="padding:20px">暂无 Web 快照</p>
+    <p v-else-if="!loading" class="subtle" style="padding:20px">暂无 Web 快照</p>
 
     <!-- 添加/编辑弹窗 -->
     <div v-if="showAdd" class="modal-overlay" @click.self="showAdd = false">
@@ -58,6 +59,7 @@ import { ref, onMounted, onActivated } from "vue";
 import api from "../api/index.js";
 
 const snapshots = ref([]);
+const loading = ref(true);
 const showAdd = ref(false);
 const editingSnap = ref(null);
 const saving = ref(false);
@@ -79,6 +81,8 @@ async function load() {
     snapshots.value = data.snapshots || [];
   } catch {
     snapshots.value = [];
+  } finally {
+    loading.value = false;
   }
 }
 

@@ -11,7 +11,8 @@
       <button class="btn btn-primary btn-sm" @click="openCreate">＋ 创建用户</button>
     </div>
 
-    <table class="user-table" v-if="users.length">
+    <div v-if="loading" class="subtle" style="padding:20px">加载中…</div>
+    <table v-else-if="users.length" class="user-table">
       <thead>
         <tr>
           <th>用户名</th>
@@ -52,7 +53,7 @@
         </tr>
       </tbody>
     </table>
-    <p v-else class="subtle" style="padding:20px">暂无用户</p>
+    <p v-else-if="!loading" class="subtle" style="padding:20px">暂无用户</p>
 
     <!-- 创建用户弹窗 -->
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
@@ -166,6 +167,7 @@ import api from "../api/index.js";
 import { toast } from "../composables/toast.js";
 
 const users = ref([]);
+const loading = ref(true);
 const refreshing = ref(false);
 const showCreate = ref(false);
 const createMsg = ref("");
@@ -199,6 +201,8 @@ async function loadUsers() {
     users.value = list;
   } catch {
     users.value = [];
+  } finally {
+    loading.value = false;
   }
 }
 

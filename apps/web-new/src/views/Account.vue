@@ -76,7 +76,8 @@
     <section class="settings-section">
       <h3>活跃会话</h3>
       <p class="subtle">当前设备标注为"当前会话"，可远程踢下线其他设备</p>
-      <div class="session-list">
+      <div v-if="sessionsLoading" class="subtle" style="padding:8px 0">加载中…</div>
+      <div v-else-if="sessions.length" class="session-list">
         <div v-for="s in sessions" :key="s.session_id" class="session-card" :class="{ current: s.current }">
           <div class="session-head">
             <span class="session-badge" :class="{ current: s.current }">
@@ -102,8 +103,8 @@
             {{ revoking === s.session_id ? "踢下线中…" : "踢下线" }}
           </button>
         </div>
-        <p v-if="!sessions.length" class="subtle">暂无会话</p>
       </div>
+      <p v-else class="subtle">暂无会话</p>
     </section>
 
     <!-- 确认弹窗 -->
@@ -234,6 +235,7 @@ async function changePassword() {
 
 // Sessions
 const sessions = ref([]);
+const sessionsLoading = ref(true);
 const revoking = ref("");
 
 async function loadSessions() {
@@ -242,6 +244,8 @@ async function loadSessions() {
     sessions.value = data.sessions || [];
   } catch {
     sessions.value = [];
+  } finally {
+    sessionsLoading.value = false;
   }
 }
 
