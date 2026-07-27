@@ -314,6 +314,13 @@ const {
 } = useSyncSettings();
 
 // 用于在「全部同步」灰掉时保留勾选显示
+// Auth state — MUST be declared before localAllKey/sectionsKey/privateGroupsKey
+// because those functions access currentUser.value during ref() initialization
+const isAdmin = ref(false);
+const currentUser = ref(null);
+const userHomeDir = ref("");
+const dataLoaded = ref(false);
+
 const backupIds = ref([]);
 function localAllKey() { return currentUser.value ? `sync_local_all_${currentUser.value}` : 'sync_local_all'; }
 function sectionsKey() { return currentUser.value ? `sync_sections_${currentUser.value}` : 'sync_sections'; }
@@ -373,11 +380,6 @@ const disabledStyle = computed(() => ({
   pointerEvents: "none",
 }));
 
-// Auth state
-const isAdmin = ref(false);
-const currentUser = ref(null);
-const userHomeDir = ref("");
-const dataLoaded = ref(false);
 
 // User display names map
 const userDisplayNames = ref({});
