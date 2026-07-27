@@ -313,11 +313,11 @@ const {
   load, reload, setPreset, setCustomSources,
 } = useSyncSettings();
 
-// 用于在「全部同步」灰掉时保留勾选显示
-// Auth state — MUST be declared before localAllKey/sectionsKey/privateGroupsKey
-// because those functions access currentUser.value during ref() initialization
-const isAdmin = ref(false);
+// Auth state (must be declared before any code that accesses them)
 const currentUser = ref(null);
+const isAdmin = ref(false);
+
+// 用于在「全部同步」灰掉时保留勾选显示
 const userHomeDir = ref("");
 const dataLoaded = ref(false);
 
