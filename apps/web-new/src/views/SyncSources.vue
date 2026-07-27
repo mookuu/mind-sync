@@ -6,6 +6,7 @@
     <section class="settings-section">
       
 
+      <Transition name="fade">
       <template v-if="dataLoaded">
       <div class="preset-list">
         <!-- 同步范围：radio button -->
@@ -250,7 +251,8 @@
         </div>
       </div>
       </template>
-      <div v-else class="subtle" style="padding:20px">加载同步素材…</div>
+      </Transition>
+      <div v-if="!dataLoaded" class="subtle" style="padding:20px">加载同步素材…</div>
 
       <!-- 删除确认弹窗 -->
       <div v-if="confirmDelete" class="modal-overlay" @click.self="confirmDelete = null">
@@ -302,7 +304,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, onActivated, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, onActivated, watch, Transition } from "vue";
 import { useRoute } from "vue-router";
 import api from "../api/index.js";
 import { toast } from "../composables/toast.js";
@@ -1115,5 +1117,13 @@ onActivated(() => {
 }
 .sync-range-radios .radio-option input[type="radio"] {
   margin-top: 3px;
+}
+
+/* 淡入过渡：消除页面数据加载后的瞬闪 */
+.fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from {
+  opacity: 0;
 }
 </style>

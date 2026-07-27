@@ -1,7 +1,7 @@
 <template>
   <div class="view-pane">
     <div class="view-header"><h2>🌍 Web 快照管理</h2></div>
-    <p class="subtle">管理 type:web 源，添加后通过同步控制页面执行抓取。</p>
+    <p class="subtle">管理 web 源，添加后通过同步控制页面执行抓取。</p>
 
     <div class="toolbar">
       <button class="btn btn-primary btn-sm" @click="openAdd">＋ 添加快照</button>

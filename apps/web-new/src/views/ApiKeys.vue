@@ -274,7 +274,8 @@ onMounted(() => {
   border-radius: 3px;
 }
 .col-date {
-  flex: 1;
+  width: 150px;
+  flex-shrink: 0;
   font-size: 0.78rem;
   color: var(--fg-subtle);
 }

@@ -5,6 +5,7 @@
     </div>
     <p class="subtle">管理所有用户的知识库，包含全局默认源和个人库。</p>
 
+    <Transition name="fade">
     <div v-if="loading" class="subtle" style="padding:20px">加载中…</div>
 
     <template v-else-if="sources.length">
@@ -111,6 +112,7 @@
       </div>
     </template>
     <p v-else class="subtle" style="padding:20px">暂无知识库</p>
+    </Transition>
 
     <!-- 删除确认弹窗 -->
     <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
@@ -448,5 +450,13 @@ onActivated(() => {
 .btn-row {
   display: flex;
   gap: 8px;
+}
+
+/* 淡入过渡：消除页面加载后的瞬闪 */
+.fade-enter-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from {
+  opacity: 0;
 }
 </style>
