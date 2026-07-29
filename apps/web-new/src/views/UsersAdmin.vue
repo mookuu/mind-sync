@@ -1,10 +1,7 @@
 <template>
   <div class="view-pane">
     <div class="view-header" style="display:flex;align-items:center">
-      <h2>👥 用户管理 <span class="subtle" style="font-size:0.75rem;font-weight:400">管理团队用户。新用户会自动创建专属目录和默认私有库。</span></h2>
-      <div style="margin-left:auto">
-        <button class="btn btn-ghost btn-sm" @click="refresh" :disabled="refreshing" title="刷新">↻</button>
-      </div>
+      <h2>👥 用户管理 <button class="btn btn-ghost btn-sm" @click="refresh" :disabled="refreshing" title="刷新">↻</button></h2>
     </div>
 
     <div class="toolbar">
