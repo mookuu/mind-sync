@@ -133,6 +133,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, onActivated } from "vue";
 import api from "../api/index.js";
+import { toast } from "../composables/toast.js";
 
 const sources = ref([]);
 const loading = ref(true);
@@ -280,7 +281,7 @@ async function doDelete() {
     sources.value = sources.value.filter(item => item.source_id !== s.source_id);
   } catch (e) {
     if (e.message && !e.message.includes("Internal Server Error")) {
-      alert(`删除失败: ${e.message || "未知错误"}`);
+      toast.error(`删除失败: ${e.message || "未知错误"}`);
     }
   } finally {
     acting.value = "";

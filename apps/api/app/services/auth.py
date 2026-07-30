@@ -1,4 +1,5 @@
 """Auth: server-side sessions via SQLite, API key, CSRF."""
+import logging
 
 import hashlib
 import time
@@ -7,6 +8,7 @@ from fastapi import HTTPException, Request
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from ..config import settings
+logger = logging.getLogger("mind-sync.auth")
 from ..db import get_db
 from .audit import cleanup_auth_meta
 from .password_util import verify_password
@@ -160,7 +162,7 @@ def resolve_api_key_user(request: Request) -> str | None:
         if row and row["username"]:
             return row["username"]
     except Exception:
-        pass
+        logger.warning("resolve_actor: session user lookup failed")
     finally:
         conn.close()
     return None

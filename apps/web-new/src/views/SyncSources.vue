@@ -727,7 +727,7 @@ async function doDelete() {
     await loadPrivateSources();
   } catch (e) {
     if (e.message && !e.message.includes("Internal Server Error")) {
-      alert(`删除失败: ${e.message || "未知错误"}`);
+      toast.error(`删除失败: ${e.message || "未知错误"}`);
     }
   } finally {
     deleting.value = "";

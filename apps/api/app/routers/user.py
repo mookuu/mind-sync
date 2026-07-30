@@ -1,9 +1,11 @@
 """User router: me, notifications, display-name, private sources."""
 from __future__ import annotations
+import logging
 import time
 from pathlib import Path
 from typing import Any
 import yaml
+logger = logging.getLogger("mind-sync.user")
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -207,7 +209,7 @@ def user_toggle_source_share(request: Request, source_id: str, _: Any = Depends(
                         _add_notification(target_user, f"{username} {action}了 {source_id}，请通过同步控制页面更新库信息",
                                           action_link="/sync/sources")
             except Exception:
-                pass
+                logger.warning("发送共享通知失败: source_id=%s target=%s", source_id, target_user)
     finally:
         conn2.close()
     add_audit_event("user_source_share_toggle", request, actor=resolve_actor(request),
@@ -238,9 +240,10 @@ def user_delete_source(request: Request, source_id: str, _: Any = Depends(requir
         clear_source_index(conn, source_id)
         conn.commit()
     except Exception:
-        pass
+        logger.warning("清理用户源索引失败: source_id=%s", source_id)
     finally:
         try: conn.close()
-        except Exception: pass
+        except Exception:
+            logger.warning("关闭数据库连接失败（清理用户源索引时）")
     add_audit_event("user_source_deleted", request, actor=resolve_actor(request), detail=f"id={source_id} owner={username}")
     return {"ok": True, "deleted": source_id}

@@ -1,4 +1,5 @@
 """Convert HTTP response bodies into indexable Markdown for web sources."""
+import logging
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 from html import unescape
 from typing import Any
 from urllib.parse import urlparse
+logger = logging.getLogger("mind-sync.web_extract")
 
 import yaml
 
@@ -55,7 +57,7 @@ def _html_to_markdown(url: str, html: str) -> tuple[str, str]:
             if meta and meta.title:
                 title = meta.title.strip()
         except Exception:
-            pass
+            logger.warning("解析 web 页面标题失败: url=%s", url)
     if not title:
         title = urlparse(url).path.rstrip("/").split("/")[-1] or urlparse(url).netloc or "Web snapshot"
     return title, body.strip()

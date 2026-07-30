@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .config import settings
 
-SCHEMA_VERSION = 9  # Increment when adding migrations in _run_migrations()
+SCHEMA_VERSION = 10  # Increment when adding migrations in _run_migrations()
 
 DATA_DIR = Path(settings.data_dir)
 DB_PATH = DATA_DIR / "db" / "mind_sync.db"
@@ -178,6 +178,14 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
             ("_schema_version", "9"),
+        )
+    if version < 10:
+        # V10: 向量库存储表
+        from .services.vector_store import VectorStore
+        VectorStore.ensure_table(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)",
+            ("_schema_version", "10"),
         )
 
 

@@ -300,3 +300,31 @@ def search(
     return {"items": items}
 
 
+
+@router.get("/api/vector-search")
+def vector_search(
+    q: str,
+    request: Request,
+    top_k: int = 10,
+    min_score: float = 0.0,
+    _: Any = Depends(require_any_auth),
+) -> dict[str, Any]:
+    """向量相似度搜索（基于本地 TF-IDF 向量库）。
+
+    可替换 embed_fn 实现语义搜索（如接入 sentence-transformers）。
+    """
+    if not q.strip():
+        return {"items": [], "count": 0}
+    q = q.strip()
+    try:
+        conn = get_db()
+        try:
+            from ..services.vector_store import VectorStore
+            store = VectorStore(conn)
+            items = store.search(q, top_k=top_k, min_score=min_score)
+            return {"items": items, "count": store.size}
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.exception("向量搜索失败: q=%s", q)
+        raise HTTPException(status_code=500, detail=f"向量搜索服务异常: {e}")

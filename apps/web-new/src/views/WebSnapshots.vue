@@ -57,6 +57,7 @@
 <script setup>
 import { ref, onMounted, onActivated } from "vue";
 import api from "../api/index.js";
+import { toast } from "../composables/toast.js";
 
 const snapshots = ref([]);
 const loading = ref(true);
@@ -138,7 +139,7 @@ function confirmDelete(s) {
   deleting.value = s.id;
   api(`/api/admin/web-snapshots/${encodeURIComponent(s.id)}`, { method: "DELETE" })
     .then(() => load())
-    .catch(e => alert(e.message || "删除失败"))
+    .catch(e => toast.error(e.message || "删除失败"))
     .finally(() => { deleting.value = ""; });
 }
 

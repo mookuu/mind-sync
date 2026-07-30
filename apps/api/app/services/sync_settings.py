@@ -1,8 +1,10 @@
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from ..models import Source
+logger = logging.getLogger("mind-sync.sync_settings")
 from .indexer import load_sources, load_sources_for_user, resolve_source_root
 from .source_sync_key import (
     expand_sync_keys,
@@ -117,7 +119,7 @@ def _parse_source_ids(raw: str | None) -> list[str]:
         if isinstance(data, list):
             return [str(x).strip() for x in data if str(x).strip()]
     except Exception:
-        pass
+        logger.warning("parse_sync_selected_keys: 解析失败，返回空列表")
     return []
 
 

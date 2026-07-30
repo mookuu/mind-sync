@@ -1,9 +1,11 @@
 """Admin router: sources, users, stats, reindex."""
 from __future__ import annotations
+import logging
 import time, traceback
 from pathlib import Path
 from typing import Any
 import yaml
+logger = logging.getLogger("mind-sync.admin")
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -354,10 +356,11 @@ def admin_delete_source(request: Request, body: dict[str, Any], _: Any = Depends
         clear_source_index(conn, cleanup_id)
         conn.commit()
     except Exception:
-        pass
+        logger.warning("清理源索引失败: cleanup_id=%s", cleanup_id)
     finally:
         try: conn.close()
-        except Exception: pass
+        except Exception:
+            logger.warning("关闭数据库连接失败（清理索引 cleanup 时）")
 
     actor = resolve_actor(request)
     if deleted_owner and deleted_owner != actor:
@@ -500,7 +503,7 @@ def admin_restore_user(request: Request, username: str, _: Any = Depends(require
             append_user_source_to_yaml(build_user_source_entry(username))
         reload_sources_config()
     except Exception:
-        pass
+        logger.warning("恢复用户时添加源失败")
     add_audit_event("user_restored", request, actor=resolve_actor(request), detail=f"username={username}")
     return {"ok": True, "username": username}
 
@@ -798,10 +801,11 @@ def admin_delete_any_source(request: Request, source_id: str, _: Any = Depends(r
         clear_source_index(conn, target.id)
         conn.commit()
     except Exception:
-        pass
+        logger.warning("清理源索引失败: target_id=%s", target.id)
     finally:
         try: conn.close()
-        except Exception: pass
+        except Exception:
+            logger.warning("关闭数据库连接失败（清理索引时）")
 
     actor = resolve_actor(request)
     if target.owner and target.owner != actor:
@@ -810,3 +814,35 @@ def admin_delete_any_source(request: Request, source_id: str, _: Any = Depends(r
     add_audit_event("admin_source_deleted", request, actor=actor,
                     detail=f"id={source_id} owner={target.owner or 'admin'}")
     return {"ok": True, "deleted": source_id}
+
+
+@router.post("/api/admin/vector-index/rebuild")
+def admin_rebuild_vector_index(request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """重建向量索引（管理员专用）。"""
+    conn = get_db()
+    try:
+        from ..services.vector_store import rebuild_vector_index
+        count = rebuild_vector_index(conn)
+        conn.commit()
+        add_audit_event("vector_index_rebuild", request, actor=resolve_actor(request),
+                        detail=f"docs_indexed={count}")
+        return {"ok": True, "docs_indexed": count}
+    except Exception as e:
+        logger.exception("重建向量索引失败")
+        raise HTTPException(status_code=500, detail=f"重建向量索引失败: {e}")
+    finally:
+        conn.close()
+
+
+@router.get("/api/admin/vector-index/status")
+def admin_vector_index_status(request: Request, _: Any = Depends(require_admin)) -> dict[str, Any]:
+    """向量索引状态。"""
+    conn = get_db()
+    try:
+        from ..services.vector_store import VectorStore
+        store = VectorStore(conn)
+        return {"size": store.size, "ok": True}
+    except Exception as e:
+        return {"size": 0, "ok": False, "error": str(e)}
+    finally:
+        conn.close()

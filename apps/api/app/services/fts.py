@@ -179,6 +179,7 @@ def search_for_query(
             item["category"] = classify_document(item["source_id"], item["rel_path"])
         if _weights_active(weights):
             items = _rank_with_weights(items, weights, question)
+        _boost_keyword_phrase(items, question)
         return items[:limit]
     return _like_fallback(conn, question, limit=limit)
 
@@ -205,6 +206,41 @@ def _boost_filename_match(items: list[dict[str, Any]], query: str) -> None:
 
     # Re-sort: boosted items move up within their bm25 rank range
     items.sort(key=lambda x: x.get("_filename_boost", 0), reverse=True)
+
+
+def _boost_keyword_phrase(items: list[dict[str, Any]], query: str) -> None:
+    """Boost documents whose title/path/snippet contains specific knowledge-pattern phrases.
+
+    Detects patterns like 'xxx基本用法', 'xxx入门', 'xxx教程', 'xxx指南' etc.
+    and boosts documents that contain the exact matched phrase.
+    Lower rank_score = better (SQLite bm25 convention).
+    """
+    if not query or not items:
+        return
+    q = query.strip()
+    if not q:
+        return
+    # Known knowledge-pattern suffixes
+    _PATTERN_SUFFIXES = ('基本用法', '入门', '教程', '指南', '介绍', '详解', '入门指南', '快速开始')
+    matched_phrase = ''
+    for suffix in _PATTERN_SUFFIXES:
+        if suffix in q:
+            # Extract the full phrase from the query (up to the suffix)
+            idx = q.index(suffix)
+            start = max(0, idx - 20)  # take up to 20 chars before suffix
+            matched_phrase = q[start:idx + len(suffix)].strip().lower()
+            break
+    if not matched_phrase:
+        return
+
+    boost_multiplier = 0.5  # lower rank_score = better, so < 1 boosts
+    for item in items:
+        title = (item.get('title') or '').lower()
+        path = (item.get('rel_path') or '').lower()
+        snippet = (item.get('snippet') or '').lower()
+        if matched_phrase in title or matched_phrase in path or matched_phrase in snippet:
+            cur = float(item.get('rank_score', 0))
+            item['rank_score'] = cur * boost_multiplier
 
 
 def _sort_items(items: list[dict[str, Any]], sort: str, conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -283,6 +319,7 @@ def search_documents(
 
     # 文件名匹配提升：搜索词与文件名相似时提升排序权重（最后应用，不被他排序覆盖）
     _boost_filename_match(items, q)
+    _boost_keyword_phrase(items, q)
 
     if len(items) >= limit:
         trimmed = items[:limit]
