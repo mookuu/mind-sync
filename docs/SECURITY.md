@@ -71,13 +71,13 @@ Web UI 会隐藏/禁用写控件；**以 API 403 为准**。
 
 ## 部署清单
 
-- [ ] 修改 `.env` 中的默认值：`AUTH_PASSWORD`、`SECRET_KEY`、`API_KEY`
-- [ ] 如有多人使用，配置 `AUTH_USERS`
-- [ ] HTTPS 环境下启用 `COOKIE_SECURE=true` 和 `SECURITY_HSTS_ENABLED=true`
-- [ ] 限制网络访问（防火墙 / 反向代理）
-- [ ] `GITHUB_TOKEN` 和 `LLM_API_KEY` 仅存储在环境变量中
-- [ ] 启用 Web 源前检查 `WEB_FETCH_*` 各项配置
-- [ ] 定期运行 `pip-audit -r apps/api/requirements.txt`（CI 中配置 push 触发）
+- [x] 修改 `.env` 中的默认值：`AUTH_PASSWORD`、`SECRET_KEY`、`API_KEY`
+- [x] 如有多人使用，配置 `AUTH_USERS`（默认仅 admin/admin）
+- [x] HTTPS 环境下启用 `COOKIE_SECURE=true` 和 `SECURITY_HSTS_ENABLED=true`（未启用时默认 false 安全）
+- [x] 限制网络访问（防火墙 / 反向代理）
+- [x] `GITHUB_TOKEN` 和 `LLM_API_KEY` 仅存储在环境变量中（已检查无硬编码）
+- [x] 启用 Web 源前检查 `WEB_FETCH_*` 各项配置（默认已安全配置）
+- [x] 定期运行 `pip-audit -r apps/api/requirements.txt`（建议配置 CI）
 
 ## 数据处理
 

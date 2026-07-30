@@ -30,6 +30,7 @@
             <div class="filter-dropdown-item" @click="filterType = 'local'; openDropdown = ''">📁 本地</div>
             <div class="filter-dropdown-item" @click="filterType = 'github'; openDropdown = ''">🌐 远程</div>
             <div class="filter-dropdown-item" @click="filterType = 'web'; openDropdown = ''">🌍 网页</div>
+            <div class="filter-dropdown-item" @click="filterType = 'smb'; openDropdown = ''">🖥️ SMB</div>
           </div>
         </div>
         <div class="filter-dropdown-wrapper">
@@ -168,7 +169,7 @@ const shareFilterLabel = computed(() => {
 });
 
 const typeFilterLabel = computed(() => {
-  const m = { local: "📁 本地", github: "🌐 远程", web: "🌍 网页" };
+  const m = { local: "📁 本地", github: "🌐 远程", web: "🌍 网页", smb: "🖥️ SMB" };
   return m[filterType.value] || "类型";
 });
 
@@ -221,11 +222,11 @@ function formatTime(ts) {
 // 从 "库名:类型" label 中提取库名
 function labelName(label) {
   if (!label) return "";
-  return label.replace(/:本地$|:远程$|:网页$/, "");
+  return label.replace(/:本地$|:远程$|:网页$|:SMB$/, "");
 }
 // 从 "库名:类型" label 中提取类型标签
 function typeLabel(sourceType) {
-  const m = { local: "本地", github: "远程", web: "网页" };
+  const m = { local: "本地", github: "远程", web: "网页", smb: "SMB" };
   return m[sourceType] || "";
 }
 

@@ -99,3 +99,38 @@
   height: 16px;
   cursor: pointer;
 }
+
+/* ── <768px 响应式 ────────────────────────── */
+@media (max-width: 767px) {
+  .view-pane { padding: 8px; }
+  .view-header { flex-wrap: wrap; gap: 6px; }
+  .view-header h2 { font-size: 1rem; }
+
+  /* 表格：水平滚动 */
+  table, .user-table, .source-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+  table th, table td, .user-table th, .user-table td {
+    padding: 6px 8px;
+    font-size: 0.78rem;
+  }
+
+  /* 弹窗：全屏 */
+  .modal { width: calc(100% - 16px) !important; max-width: 100% !important; margin: 8px; max-height: 90vh; }
+  .modal-sm { width: calc(100% - 16px) !important; }
+  .confirm-dialog { margin: 8px; max-width: calc(100% - 16px) !important; }
+
+  /* 工具栏按钮：紧凑排列 */
+  .toolbar { gap: 4px; }
+  .toolbar .btn { font-size: 0.78rem; padding: 4px 8px; }
+
+  /* 筛选栏：堆叠 */
+  .filter-bar { flex-wrap: wrap; gap: 4px; }
+  .filter-dropdown-wrapper { width: 100%; }
+  .filter-dropdown-wrapper .btn { width: 100%; text-align: left; }
+
+  .settings-section { padding: 8px; }
+}

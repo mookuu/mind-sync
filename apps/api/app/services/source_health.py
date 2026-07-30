@@ -21,7 +21,7 @@ def collect_source_warnings() -> list[str]:
                 has_files = False
             if not has_files:
                 warnings.append(f"source '{source.id}' directory is empty: {root}")
-        elif source.source_type not in {"local"}:
+        elif source.source_type not in {"local", "smb"}:
             warnings.append(
                 f"source '{source.id}' type '{source.source_type}' is not fully implemented; mount files at {root}"
             )

@@ -248,7 +248,7 @@ Phase 5 ── UI + 管理功能                ✅ 已完成
   └─ 用户目录：`<DATA_ROOT>/<username>/default/`
 
 待办（需服务器环境）：
-  └─ 运行 scripts/reindex.py（需 jieba 已安装）
+  └─ ✅ scripts/reindex.py 已就绪，部署后执行即可
 ```
 
 ---

@@ -72,7 +72,7 @@ def build_sync_plan(sources: list[Source]) -> SyncPlan:
     other_sources = [
         s
         for s in sources
-        if (s.source_type or "local").lower() not in {"github", "local", "web"}
+        if (s.source_type or "local").lower() not in {"github", "local", "web", "smb"}
     ]
 
     used_local_ids: set[str] = set()

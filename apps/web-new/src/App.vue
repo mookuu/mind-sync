@@ -39,8 +39,12 @@
 
     <!-- App -->
     <template v-else-if="isLoggedIn">
-      <aside class="sidebar">
-        <AppSidebar :user-role="role" />
+      <button class="sidebar-toggle" @click="sidebarOpen = !sidebarOpen" :class="{ open: sidebarOpen }">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="sidebar-overlay" v-if="sidebarOpen" @click="sidebarOpen = false"></div>
+      <aside class="sidebar" :class="{ open: sidebarOpen }">
+        <AppSidebar :user-role="role" @navigate="sidebarOpen = false" />
       </aside>
       <header class="topbar">
         <div class="topbar-left">
@@ -152,6 +156,7 @@ window.addEventListener("mind-notify-count", (e) => {
 });
 
 const checkingSession = ref(true);
+const sidebarOpen = ref(false);
 
 const authState = computed(() => {
   if (checkingSession.value) return "checking";

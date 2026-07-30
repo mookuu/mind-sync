@@ -9,7 +9,7 @@
             :to="item.path"
             class="nav-item parent"
             :class="{ active: isActive(item.path) }"
-            @click="onParentClick(item.path)"
+            @click="onParentClick(item.path); emit('navigate')"
           >
             <span class="nav-icon">{{ item.icon }}</span>
             <span class="nav-label">{{ item.label }}</span>
@@ -195,6 +195,7 @@ watch(() => route.path, (path) => {
   }
 });
 
+const emit = defineEmits(["navigate"]);
 const props = defineProps({
   userRole: { type: String, default: "" },
 });

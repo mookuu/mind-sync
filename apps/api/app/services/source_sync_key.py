@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..models import Source
 
-_VALID_TYPES = frozenset({"local", "github", "web"})
+_VALID_TYPES = frozenset({"smb", "local", "github", "web"})
 
 
 def source_sync_key(source: Source) -> str:
