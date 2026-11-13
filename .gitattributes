@@ -1,2 +1,41 @@
 # Ensure line endings for config files that are parsed by Docker
 .env text eol=lf
+
+# ---- 换行符约定（方案 A：仓库存 LF，检出/提交用 CRLF）----
+* text=auto eol=crlf
+
+# 脚本与容器配置必须保持 LF，否则 WSL/Linux 下执行报 bad interpreter
+*.sh         text eol=lf
+*.bash       text eol=lf
+Makefile     text eol=lf
+makefile     text eol=lf
+*.mk         text eol=lf
+Dockerfile   text eol=lf
+*.dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+
+# 明确按二进制处理，避免被 text=auto 误判
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.bmp binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.jar binary
+*.7z binary
+*.gz binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
+*.class binary
+*.ser binary
+*.bin binary
+*.db binary
+*.sqlite binary
+*.mp3 binary
+*.mp4 binary
+*.woff binary
+*.woff2 binary
